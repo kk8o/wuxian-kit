@@ -105,6 +105,7 @@ demo:Event("changed", { doc = "the volume changed", data = { volume = "number" }
 - `title`：玩家看到的名称（名词，如「客户端设置」）。
 - `doc`：给 Agent 的说明（英文）。
 - `args`：参数声明 `{ 名称 = 类型 }`。类型是 `"string"`、`"number"`、`"boolean"`、`"table"`、`"any"`，可以用 `|` 组合（`"string|number"`），也可以是可选的几个值（`"guild|party"`）；末尾加 `?` 表示可选。未声明的参数会被拒绝。
+- `proposes = true`（读取、存储、指引类）：立即执行，答一个由别的步骤组成的提案，例如 `tune.profile.apply`。清单里注明，App 给它加上提案选项 `_title`、`_ttl`、`_after`，不把它当成只指不改的指引。
 
 预览、标签、格式化里凡是来自参数的内容，都要经 `WuxianKit:Escape(text)` 转义（`|` 变成 `||`，换行变成空格），外来文字里的颜色、图标、链接代码就不会生效。Setting 的默认显示已经转义；自己写 `preview`、`label`、`format` 时自己转义。
 
@@ -138,7 +139,7 @@ demo:Setting("volume", {
 
 生成 `demo.volume.get`（读取）和 `demo.volume.set`（更改）。核心负责预览「旧 → 新」、执行前存旧值、执行后读回核对（游戏没有保留新值就算失败，这一步也还原旧值）、撤销还原旧值。
 
-可选字段：`key`（指明是哪一个值的参数，如 `{ name = "string" }`）、`validate`、`normalize`、`format`、`label`、`explain`、`info`、`same`、`check`、`settle = true`（过一会儿才生效）、`keep` / `restore`（撤销需要多存的内容）、`reload = true`。
+可选字段：`key`（指明是哪一个值的参数，如 `{ name = "string" }`）、`change`（只在更改时成立的说明，只写进 `.set` 的说明：不填值的结果、长度限制、游戏过一会儿才显示）、`validate`、`normalize`、`format`、`label`、`explain`、`info`、`same`、`check`、`settle = true`（过一会儿才生效）、`keep` / `restore`（撤销需要多存的内容）、`reload = true`。
 
 ### Feed：一段时间里监听一组游戏事件
 

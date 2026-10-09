@@ -66,8 +66,8 @@ local function Load(name)
 end
 
 tune:Setting("talent", { title = L"TALENT", scope = "talents", settle = true, settleTime = 10,
-	doc = "the talent loadout in use, by its name (tune.talent.list: the current specialization's saved loadouts); the "
-		.. "client loads it a moment later, out of combat",
+	doc = "the talent loadout in use, by its name (tune.talent.list: the current specialization's saved loadouts)",
+	change = "the client loads it a moment later, out of combat",
 	key = {}, value = "string",
 	check = function()
 		if not Spec() then return "no specialization yet" end

@@ -51,8 +51,8 @@ local function Use(name)
 end
 
 tune:Setting("layout", { title = L"LAYOUT", scope = "layouts", settle = true,
-	doc = "the Edit Mode layout in use, by its name: the client's presets or the player's own (tune.layout.list); the "
-		.. "client shows the change a moment later",
+	doc = "the Edit Mode layout in use, by its name: the client's presets or the player's own (tune.layout.list)",
+	change = "the client shows the change a moment later",
 	key = {}, value = "string",
 	validate = function(_, _, v)
 		if not Index(v) then return ("no layout %s (tune.layout.list lists them)"):format(v) end

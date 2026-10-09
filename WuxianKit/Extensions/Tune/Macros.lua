@@ -63,8 +63,9 @@ local function Placed(i)
 end
 
 tune:Setting("macro", { title = L"MACRO", scope = "macros", settle = true,
-	doc = "a macro's text by its name (the account's or the character's; a new one is the account's, with the "
-		.. "question-mark icon); no text deletes it; at most 255 bytes; the client makes it a moment later",
+	doc = "a macro's text by its name (the account's or the character's)",
+	change = "a new one is the account's, with the question-mark icon; no text deletes it; at most 255 bytes; the client "
+		.. "makes it a moment later",
 	key = { name = "string" }, value = "string?",
 	check = function(_, k)
 		if k.name == "" or #k.name > MAX_NAME then return ("a macro's name is 1 to %d bytes"):format(MAX_NAME) end

@@ -62,7 +62,8 @@ end
 tune:Setting("binding", { title = L"BINDING", scope = "bindings",
 	doc = "what a key does: key as the client writes it (CTRL-SHIFT-F, 1, NUMPAD5, BUTTON4, MOUSEWHEELUP; modifiers in any "
 		.. "order), value a command: a binding's name (ACTIONBUTTON1, TOGGLEWORLDMAP; tune.binding.find lists them), SPELL "
-		.. "<name>, ITEM <name>, MACRO <name> or CLICK <frame>:<button>; no value unbinds the key",
+		.. "<name>, ITEM <name>, MACRO <name> or CLICK <frame>:<button>",
+	change = "no value unbinds the key",
 	key = { key = "string" }, value = "string?",
 	check = function(_, k)
 		local _, why = KeyName(k.key)

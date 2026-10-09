@@ -31,8 +31,9 @@ local function Split(args)
 end
 
 local function Doc(cap)
-	local text = ("[%s] %s Args: %s."):format(KIND_DOC[cap.kind], cap.doc, cap.argText)
-	if ns.KINDS[cap.kind].proposed then
+	local kind = cap.proposes and "Proposes: runs at once and answers with a proposal of other steps." or KIND_DOC[cap.kind]
+	local text = ("[%s] %s Args: %s."):format(kind, cap.doc, cap.argText)
+	if ns.KINDS[cap.kind].proposed or cap.proposes then
 		text = text .. " Answers with the proposal {id, state, steps}: the player confirms it in the game (unless they let"
 			.. " its scope go without asking); its end is the event kit.proposal. Options: _title, _ttl (10-600 s), _after"
 			.. " (a time() before which it may not run)."

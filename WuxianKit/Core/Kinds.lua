@@ -48,6 +48,8 @@ local function Declare(ext, kind, name, spec)
 		cap.undoable = kind == "do" and type(spec.snapshot) == "function" or nil
 	elseif type(spec.run) ~= "function" then
 		error(("%s: a %s capability has run(self, args)"):format(id, kind), 3)
+	else
+		cap.proposes = spec.proposes and true or nil     -- runs at once and answers with a proposal (tune.profile.apply)
 	end
 	if not ext.caps[name] then ext.capOrder[#ext.capOrder + 1] = name end
 	ext.caps[name] = cap
@@ -90,7 +92,8 @@ end
 --   <name>.get  (See)  { value, ...info(self, key) }
 --   <name>.set  (Do)   the preview "label: old → new" (and explain(self, key, value) under it), the old value as the
 --                      snapshot, the value read back after set (a value the game did not keep fails the step), undo = the old one
--- More of the spec: title / titleGet, doc (what the setting is), scope, check(self, key, reading) -> why it cannot be
+-- More of the spec: title / titleGet, doc (what the setting is: both docs have it), change (what only changing it
+-- involves, for .set's doc: what no value does, limits, that the game shows it later), scope, check(self, key, reading) -> why it cannot be
 -- changed (or read, when reading), validate(self, key, value) -> why it cannot take that value, normalize(self, value)
 -- -> the value as the game keeps it, label(self, key), format(self, value) -> how a value reads (none reads as such),
 -- info(self, key) -> more fields for .get, same(a, b) -> whether two match; settle = true when the game shows a change
@@ -150,7 +153,8 @@ function Extension:Setting(name, spec)
 			if type(spec.scope) == "function" then return spec.scope(self, Key(a)) end
 			return spec.scope
 		end,
-		doc = ("change %s: a proposal the player confirms; the old value is kept, so it can be undone"):format(spec.doc or name),
+		doc = ("change %s%s; the old value is kept, so it can be undone"):format(spec.doc or name,
+			spec.change and ("; " .. spec.change) or ""),
 		check = function(self, a)
 			local k = Key(a)
 			local why = spec.check and spec.check(self, k)
@@ -341,10 +345,11 @@ end
 local function About(c)
 	local args = {}
 	for k, s in pairs(c.args) do args[k] = s.text end
-	return { id = c.id, kind = c.kind, title = ns.T(c.title), doc = c.doc, args = args, undoable = c.undoable }
+	return { id = c.id, kind = c.kind, title = ns.T(c.title), doc = c.doc, args = args, undoable = c.undoable,
+		proposes = c.proposes }
 end
 
--- every live capability: { id, kind, title, doc, args = { name = spec text }, undoable }, extension by extension
+-- every live capability: { id, kind, title, doc, args = { name = spec text }, undoable, proposes }, extension by extension
 function Kit:Capabilities()
 	local out = {}
 	for _, eid in ipairs(ns.order) do
@@ -388,7 +393,8 @@ local function Revision(m)
 	for _, e in ipairs(m.extensions) do
 		parts[#parts + 1] = table.concat({ e.id, e.version or "", e.state, e.title or "", e.docs or "" }, "\1")
 		for _, c in ipairs(e.capabilities or {}) do
-			parts[#parts + 1] = table.concat({ c.id, c.kind, c.title or "", c.doc, Specs(c.args), tostring(c.undoable) }, "\1")
+			parts[#parts + 1] = table.concat({ c.id, c.kind, c.title or "", c.doc, Specs(c.args), tostring(c.undoable),
+				tostring(c.proposes) }, "\1")
 		end
 		for _, v in ipairs(e.events or {}) do parts[#parts + 1] = table.concat({ v.topic, v.doc, Specs(v.data) }, "\1") end
 	end

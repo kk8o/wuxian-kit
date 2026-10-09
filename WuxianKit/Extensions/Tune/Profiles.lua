@@ -114,7 +114,7 @@ tune:See("profile.get", { title = L"GET", args = { name = "string" },
 		return { name = a.name, steps = p.steps, saved = p.saved }
 	end })
 
-tune:Point("profile.apply", { title = L"APPLY", args = { name = "string" },
+tune:Point("profile.apply", { title = L"APPLY", args = { name = "string" }, proposes = true,
 	doc = "make a proposal of a profile's steps (one click runs them all, undo takes them all back): answers with the "
 		.. "proposal; options _title, _ttl, _after as for any proposal. An imported profile always waits for the "
 		.. "player's click (pre-approval does not count for it)",

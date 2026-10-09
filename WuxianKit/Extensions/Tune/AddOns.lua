@@ -23,7 +23,8 @@ end
 local function On(name) return (tonumber(C_AddOns.GetAddOnEnableState(name, Me())) or 0) > 0 end
 
 tune:Setting("addon", { title = L"ADDON", scope = "addons", reload = true,
-	doc = "whether an addon is on for this character, by its folder name (tune.addon.list); it takes effect after a reload",
+	doc = "whether an addon is on for this character, by its folder name (tune.addon.list)",
+	change = "it takes effect after a reload",
 	key = { name = "string" }, value = "boolean",
 	check = function(_, k, reading)
 		if not Exists(k.name) then return ("no addon %s (tune.addon.list lists them)"):format(k.name) end

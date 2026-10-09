@@ -331,6 +331,19 @@ class Tune(unittest.TestCase):
         self.assertEqual((s.lua.eval(b"__cvars.nameplateShowAll.value"), s.lua.eval(b"__editMode.activeLayout"),
                           py(s.g("__bindings")).get("CTRL-F")), (b"0", 3, None))
 
+    def test_the_docs_an_agent_reads(self):
+        """a Setting's .get doc says what the value is, and only its .set doc what changing it involves (a macro read is
+        no deletion); tune.profile.apply, which runs at once and answers with a proposal, says so in the manifest"""
+        s = self.start()
+        caps = {c["id"]: c for e in py(s.lua.eval(b"WuxianKit:Manifest()"))["extensions"] for c in e.get("capabilities") or []}
+        for name, change in (("macro", "no text deletes it"), ("binding", "no value unbinds the key"),
+                             ("layout", "a moment later"), ("talent", "a moment later"), ("addon", "after a reload")):
+            self.assertNotIn(change, caps[f"tune.{name}.get"]["doc"], name)
+            self.assertIn(change, caps[f"tune.{name}.set"]["doc"], name)
+            self.assertTrue(caps[f"tune.{name}.set"]["doc"].endswith("so it can be undone"), name)
+        self.assertTrue(caps["tune.profile.apply"].get("proposes"))
+        self.assertEqual([c for c, v in caps.items() if v.get("proposes")], ["tune.profile.apply"])
+
 
 if __name__ == "__main__":
     unittest.main()
