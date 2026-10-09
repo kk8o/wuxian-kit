@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="WUXIANKIT_YES" header="WUXIANKIT" category="ADDONS">
+		WuxianKit_Yes()
+	</Binding>
+	<Binding name="WUXIANKIT_NO" category="ADDONS">
+		WuxianKit_No()
+	</Binding>
+</Bindings>

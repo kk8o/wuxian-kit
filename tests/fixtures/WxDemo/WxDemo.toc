@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: WxDemo
+## Notes: a third-party WuxianKit extension, for the tests
+## Version: 1.2.3
+## Dependencies: WuxianKit
+## LoadOnDemand: 1
+## X-WuxianKit-Extension: demo
+
+WxDemo.lua

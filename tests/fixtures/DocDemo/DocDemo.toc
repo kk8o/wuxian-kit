@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: DocDemo
+## Notes: the example of ARCHITECTURE.md, as written there (the tests keep the document honest)
+## Version: 1.0.0
+## Dependencies: WuxianKit
+## X-WuxianKit-Extension: demo
+## LoadOnDemand: 1
+
+DocDemo.lua
