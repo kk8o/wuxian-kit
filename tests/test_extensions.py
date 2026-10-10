@@ -107,7 +107,7 @@ class Extensions(unittest.TestCase):
     def test_settings_looked_up(self):
         s = self.start()
         found = [c["name"] for c in self.call(s, "tune.cvar.find", "{ text = 'nameplate' }")]
-        self.assertEqual(found, ["nameplateClamped", "nameplateMaxDistance", "nameplateShowAll"])
+        self.assertEqual(found, ["nameplateCastBarDisplay", "nameplateClamped", "nameplateMaxDistance", "nameplateShowAll"])
         vol = self.call(s, "tune.cvar.find", "{ text = 'volume', limit = 1 }")
         self.assertEqual((len(vol), vol[0]["name"], vol[0]["category"]), (1, "Sound_MasterVolume", "sound"))
         self.assertEqual(self.call(s, "tune.cvar.get", "{ name = 'secureThing' }")["secure"], True)

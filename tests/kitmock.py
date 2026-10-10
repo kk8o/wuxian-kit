@@ -198,6 +198,8 @@ __cvars = {
 	readOnlyThing = { value = "1", default = "1", category = 2, help = "a read-only one", readOnly = true },
 	stubborn = { value = "a", default = "a", category = 4, help = "the client keeps its value", keep = true },
 	nameplateClamped = { value = "41", default = "41", category = 4, help = "the client clamps it at 60", max = 60 },
+	nameplateCastBarDisplay = { value = "\2[", default = "\2[", category = 4, help = "which cast bars nameplates show" },
+	closedInfoFrames = { value = "\2@@@D", default = "\2", category = 4, help = "tutorials seen" },
 }
 local function cv(name)
 	for k, c in pairs(__cvars) do
@@ -219,6 +221,24 @@ C_CVar = {
 		elseif not c.keep then
 			c.value = tostring(value)
 		end
+		return true
+	end,
+	-- a bit-field setting: the byte 2, then six bits a byte from "@" (64); bits count from 1
+	GetCVarBitfield = function(name, index)
+		local c = cv(name)
+		local b = c and c.value:byte(math.floor((index - 1) / 6) + 2)
+		return b ~= nil and math.floor((b - 64) / 2 ^ ((index - 1) % 6)) % 2 == 1
+	end,
+	SetCVarBitfield = function(name, index, on)
+		local c = cv(name)
+		if not c or c.secure or c.readOnly then return false end
+		local bytes, slot, bit = { c.value:byte(2, -1) }, math.floor((index - 1) / 6) + 1, (index - 1) % 6
+		for j = #bytes + 1, slot do bytes[j] = 64 end
+		local has = math.floor((bytes[slot] - 64) / 2 ^ bit) % 2 == 1
+		if on and not has then bytes[slot] = bytes[slot] + 2 ^ bit elseif not on and has then bytes[slot] = bytes[slot] - 2 ^ bit end
+		local out = { string.char(2) }
+		for j = 1, #bytes do out[#out + 1] = string.char(bytes[j]) end
+		c.value = table.concat(out)
 		return true
 	end,
 }

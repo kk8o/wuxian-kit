@@ -2,7 +2,7 @@
 --   kit.extensions        (See)  the extensions: built in, another addon's (loaded or not), on or off
 --   kit.capabilities      (See)  every live capability with its kind, doc and args
 --   kit.proposals         (See)  the proposals still open and the last finished ones; kit.proposal one of them
---   kit.history           (See)  what ran on this character (of the last 50), to undo
+--   kit.history           (See)  what ran on this character (the last `limit`, 20, of the 50 kept), to undo
 --   kit.extension.get/set        a Setting: whether an extension is on; turning one on or off is a proposal, undoable
 --   kit.undo              (Do)   undo a proposal that ran
 local _, ns = ...
@@ -35,16 +35,17 @@ kit:See("proposal", { title = L"ONE_PROPOSAL", args = { id = "number" },
 		return Kit:Proposal(a.id) or error(("no proposal %d (only the open and the recent ones are kept)"):format(a.id), 0)
 	end })
 
-kit:See("history", { title = L"HISTORY",
-	doc = "what ran on this character, newest last (of the last 50 proposals): id, title, source, ran (time()), steps "
-		.. "{cap, args (a long text shortened), preview}, undoable, undone",
-	run = function()                                     -- as the proposals read: no snapshots, no layout strings in full
-		local out = {}
-		for i, e in ipairs(ns.History()) do
-			local steps = {}
+kit:See("history", { title = L"HISTORY", args = { limit = "number?" },
+	doc = "what ran on this character, newest last: the last `limit` proposals (20, up to 50: all that are kept): id, "
+		.. "title, source, ran (time()), steps {cap, args (a long text shortened), preview}, undoable, undone",
+	run = function(_, a)                                 -- as the proposals read: no snapshots, no layout strings in full
+		local all, out = ns.History(), {}
+		local limit = math.max(1, math.min(math.floor(tonumber(a and a.limit) or 20), 50))
+		for i = math.max(1, #all - limit + 1), #all do
+			local e, steps = all[i], {}
 			for j, s in ipairs(e.steps or {}) do steps[j] = { cap = s.cap, args = ns.Brief(s.args), preview = s.preview } end
-			out[i] = { id = e.id, title = e.title, source = e.source, ran = e.ran, steps = steps, undoable = e.undoable,
-				undone = e.undone }
+			out[#out + 1] = { id = e.id, title = e.title, source = e.source, ran = e.ran, steps = steps,
+				undoable = e.undoable, undone = e.undone }
 		end
 		return out
 	end })

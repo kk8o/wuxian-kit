@@ -4,7 +4,8 @@ Changes the player's game setup: settings (CVars), key bindings, macros, Edit Mo
 sets, bag sorting, addons on or off, and profiles.
 
 - Look before you change: `wk_tune_cvar_find`, `wk_tune_binding_find`, `wk_tune_macro_list`, `wk_tune_layout_list`,
-  `wk_tune_talent_list`, `wk_tune_gear_list`, `wk_tune_addon_list`. Each `*_get` reads one value.
+  `wk_tune_talent_list`, `wk_tune_gear_list`, `wk_tune_addon_list`. Each `*_get` reads one value. A few settings are
+  bit fields (`bits: true`): they read as the bits that are on, `bits:1,4`, and are set the same way.
 - Every `*_set`, `wk_tune_gear_use`, `wk_tune_gear_save`, `wk_tune_layout_import` and `wk_tune_bags_sort` is a
   proposal the player confirms. A setting's preview shows old → new. All of them can be undone except
   `wk_tune_bags_sort`; a deleted macro comes back to the macro list, but not to the action bars.

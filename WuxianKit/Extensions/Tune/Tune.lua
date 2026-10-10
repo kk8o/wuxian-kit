@@ -50,10 +50,58 @@ local function Info(name)
 	return value, default, { account = account, character = character, locked = locked, secure = secure, readOnly = readOnly }
 end
 
+-- A bit-field setting keeps bytes, not text: the byte 2, then six bits a byte (from "@", 64). It reads as "bits:" and the
+-- bits that are on, counted from 1 as C_CVar.GetCVarBitfield counts them ("bits:1,2,4,5"), and changes a bit at a time.
+local function IsBits(raw)
+	if type(raw) ~= "string" or raw:byte(1) ~= 2 then return false end
+	for i = 2, #raw do
+		local b = raw:byte(i)
+		if b < 64 or b > 127 then return false end
+	end
+	return true
+end
+
+local function BitsOf(raw)                               -- the bits that are on (a set), and how many the value holds
+	local on = {}
+	for i = 2, #raw do
+		local b = raw:byte(i) - 64
+		for k = 1, 6 do
+			if b % 2 == 1 then on[(i - 2) * 6 + k] = true end
+			b = math.floor(b / 2)
+		end
+	end
+	return on, (#raw - 1) * 6
+end
+
+local function BitsText(on)
+	local list = {}
+	for i in pairs(on) do list[#list + 1] = i end
+	table.sort(list)
+	return "bits:" .. table.concat(list, ",")
+end
+
+local function Wanted(v)                                -- the bits a "bits:1,4" value has on; false when it is not one
+	local list = type(v) == "string" and v:match("^%s*bits:(.*)$")
+	if not list then return false end
+	local on = {}
+	for n in list:gmatch("[^,%s]+") do
+		local i = tonumber(n)
+		if not i or i < 1 or i > 4096 or i % 1 ~= 0 then return nil end
+		on[i] = true
+	end
+	return on
+end
+
+local function Readable(raw)                             -- a value as the agent and the preview read it
+	if IsBits(raw) then return BitsText((BitsOf(raw))) end
+	return raw
+end
+
 tune:Setting("cvar", { title = L"CVAR",
-	doc = "a setting (CVar) of the client",
-	change = "a value is a string, number or boolean (true / false as 1 / 0); its pre-approval category is "
-		.. "settings.<category> (graphics, sound, game, combat, net, other); secure, read-only and locked ones are refused",
+	doc = "a setting (CVar) of the client (a bit-field one, bits = true, reads as the bits that are on: \"bits:1,4\")",
+	change = "a value is a string, number or boolean (true / false as 1 / 0), for a bit-field one the bits to have on "
+		.. "(\"bits:1,4\"; \"bits:\" turns all off); its pre-approval category is settings.<category> (graphics, sound, game, "
+		.. "combat, net, other); secure, read-only and locked ones are refused",
 	key = { name = "string" }, value = "string|number|boolean",
 	scope = function(_, k)
 		local c = Entry(k.name).category
@@ -67,10 +115,28 @@ tune:Setting("cvar", { title = L"CVAR",
 		if f.readOnly then return ("%s is read-only"):format(k.name) end
 		if f.locked then return ("%s is locked"):format(k.name) end
 	end,
-	get = function(_, k) return (Info(k.name)) end,
-	set = function(_, k, v) C_CVar.SetCVar(k.name, v) end,
+	validate = function(_, k, v)
+		local bits, wanted = IsBits((Info(k.name))), Wanted(v)
+		if bits and not wanted then
+			return ("%s is a bit-field setting: give the bits to have on, as bits:1,4 (numbers from 1)"):format(k.name)
+		end
+		if not bits and wanted ~= false then return ("%s is no bit-field setting"):format(k.name) end
+	end,
+	get = function(_, k) return Readable((Info(k.name))) end,
+	set = function(_, k, v)
+		local raw = Info(k.name)
+		local wanted = IsBits(raw) and Wanted(v)
+		if not wanted then return C_CVar.SetCVar(k.name, v) end
+		local on, count = BitsOf(raw)
+		for i in pairs(wanted) do count = math.max(count, i) end
+		for i = 1, count do
+			if (on[i] or false) ~= (wanted[i] or false) then C_CVar.SetCVarBitfield(k.name, i, wanted[i] or false) end
+		end
+	end,
 	normalize = function(_, v)
 		if type(v) == "boolean" then return v and "1" or "0" end
+		local wanted = Wanted(v)
+		if wanted then return BitsText(wanted) end
 		return tostring(v)
 	end,
 	label = function(_, k) return Entry(k.name).name or k.name end,
@@ -79,11 +145,11 @@ tune:Setting("cvar", { title = L"CVAR",
 		return help and (#help > 90 and (help:sub(1, 87) .. "...") or help)
 	end,
 	info = function(_, k)
-		local _, default, f = Info(k.name)
+		local value, default, f = Info(k.name)
 		local e = Entry(k.name)
-		return { name = e.name or k.name, default = default, category = e.category, help = e.help,
+		return { name = e.name or k.name, default = default and Readable(default), category = e.category, help = e.help,
 			secure = f and f.secure or nil, readOnly = f and f.readOnly or nil, locked = f and f.locked or nil,
-			stored = f and (f.account and "account" or f.character and "character") or nil }
+			stored = f and (f.account and "account" or f.character and "character") or nil, bits = IsBits(value) or nil }
 	end })
 
 tune:See("cvar.find", { title = L"FIND", args = { text = "string", limit = "number?" },
@@ -105,7 +171,7 @@ tune:See("cvar.find", { title = L"FIND", args = { text = "string", limit = "numb
 		for _, list in ipairs({ first, rest }) do
 			for _, e in ipairs(list) do
 				if #out >= limit then return out end
-				out[#out + 1] = { name = e.name, value = (Info(e.name)), category = e.category, help = e.help }
+				out[#out + 1] = { name = e.name, value = Readable((Info(e.name))), category = e.category, help = e.help }
 			end
 		end
 		return out

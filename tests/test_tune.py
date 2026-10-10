@@ -377,6 +377,53 @@ class Tune(unittest.TestCase):
         brief = self.call(s, "kit.proposals")
         self.assertIn(f"...({len(text)} bytes)", [x for x in brief if x["id"] == py(s.g("__long"))["id"]][0]["steps"][0]["args"]["text"])
 
+    def test_a_bit_field_setting(self):
+        """a setting that keeps bytes (a bit field: the byte 2, then six bits a byte from "@") reads as the bits that are
+        on and changes a bit at a time; undo puts them back; a plain value for it, or bits for a plain one, is refused"""
+        s = self.start()
+        got = self.call(s, "tune.cvar.get", "{ name = 'nameplateCastBarDisplay' }")
+        self.assertEqual((got["value"], got["default"], got["bits"]), ("bits:1,2,4,5", "bits:1,2,4,5", True))
+        self.assertNotIn("bits", self.call(s, "tune.cvar.get", "{ name = 'nameplateShowAll' }"))
+        found = self.call(s, "tune.cvar.find", "{ text = 'closedinfo' }")
+        self.assertEqual([(f["name"], f["value"]) for f in found], [("closedInfoFrames", "bits:21")])
+        same = self.call(s, "tune.cvar.set", "{ name = 'nameplateCastBarDisplay', value = 'bits:5,4,2,1' }")
+        self.assertEqual(same["steps"][0]["preview"][0], "nameplateCastBarDisplay: bits:1,2,4,5 (unchanged)")
+        self.run_it(s)
+        s.run(0.3)
+        p = self.call(s, "tune.cvar.set", "{ name = 'nameplateCastBarDisplay', value = 'bits: 9, 1,2' }")
+        self.assertEqual(p["steps"][0]["preview"][0], "nameplateCastBarDisplay: bits:1,2,4,5 → bits:1,2,9")
+        self.run_it(s)
+        s.run(0.3)
+        self.assertTrue(self.done(s, p["id"]))
+        self.assertEqual(s.lua.eval(b"__cvars.nameplateCastBarDisplay.value"), b"\x02CD")
+        self.assertEqual(self.call(s, "tune.cvar.get", "{ name = 'nameplateCastBarDisplay' }")["value"], "bits:1,2,9")
+        self.undo(s, p["id"])
+        s.run(0.3)
+        self.assertEqual(self.call(s, "tune.cvar.get", "{ name = 'nameplateCastBarDisplay' }")["value"], "bits:1,2,4,5")
+        none = self.call(s, "tune.cvar.set", "{ name = 'closedInfoFrames', value = 'bits:' }")
+        self.assertEqual(none["steps"][0]["preview"][0], "closedInfoFrames: bits:21 → bits:")
+        for code, why in (("WuxianKit:Call('tune.cvar.set', { name = 'nameplateCastBarDisplay', value = 3 })",
+                           "nameplateCastBarDisplay is a bit-field setting: give the bits to have on, as bits:1,4"),
+                          ("WuxianKit:Call('tune.cvar.set', { name = 'nameplateCastBarDisplay', value = 'bits:0,2' })",
+                           "is a bit-field setting"),
+                          ("WuxianKit:Call('tune.cvar.set', { name = 'nameplateShowAll', value = 'bits:1' })",
+                           "nameplateShowAll is no bit-field setting")):
+            self.assertIn(why, self.fails(s, code))
+
+    def test_the_history_takes_a_limit(self):
+        """kit.history gives the last `limit` that ran (20 when not given, at most the 50 kept), newest last"""
+        s = self.start()
+        ran = []
+        for value in range(42, 46):
+            p = self.call(s, "tune.cvar.set", f"{{ name = 'nameplateMaxDistance', value = {value} }}")
+            self.run_it(s)
+            s.run(0.3)
+            ran.append(p["id"])
+        self.assertEqual([h["id"] for h in self.call(s, "kit.history")], ran)
+        self.assertEqual([h["id"] for h in self.call(s, "kit.history", "{ limit = 2 }")], ran[-2:])
+        self.assertEqual([h["id"] for h in self.call(s, "kit.history", "{ limit = 0 }")], ran[-1:])
+        self.assertEqual(len(self.call(s, "kit.history", "{ limit = 500 }")), 4)
+
 
 if __name__ == "__main__":
     unittest.main()
