@@ -5,14 +5,28 @@
 -- proposal; the player confirms it in the game and its end comes as the event "kit.proposal". A single call's proposal
 -- options ride in its args as _title, _ttl and _after. A capability of an extension that went off stays exposed (WoWBridge
 -- has no way back) and refuses the call. Without WoWBridge nothing here does anything: the core runs the same for addons.
+-- It binds to WoWBridge 0.9.7 or later only: the first whose calls come as data (an agent's call runs here as addon code,
+-- with hot loading off too); an older one leaves the core on its own (ns.bound false), as no WoWBridge does. Nothing
+-- WoWBridge does may break the core: every call into it is protected, and what it refuses is left out.
 -- WoWBridge carries 10 events a second for an addon (20 at once) and drops the rest: the core's own events (kit.*,
--- a proposal's end above all) are sent again until they go, and the extensions' (a busy chat feed) take at most
--- FEED_RATE a second of it, so the core's always find room; what was dropped is told every DROPPED_EVERY seconds
--- (kit.dropped).
+-- a proposal's end above all) wait here (the last KEPT) and are sent again when there is room, and the extensions' (a
+-- busy chat feed) take at most FEED_RATE a second of it, so the core's find room; what was dropped is told every
+-- DROPPED_EVERY seconds (kit.dropped). While 无限工坊 is not linked, WoWBridge itself keeps only its last few events.
 local addonName, ns = ...
 local Kit = ns.Kit
 
-local WB = WoWBridge and WoWBridge.Bind and WoWBridge.Bind(addonName) or nil
+local function Supported(v)                              -- "0.9.7" or later
+	local a, b, c = tostring(v or ""):match("^(%d+)%.(%d+)%.(%d+)")
+	a, b, c = tonumber(a), tonumber(b), tonumber(c)
+	return a ~= nil and (a > 0 or b > 9 or (b == 9 and c >= 7))
+end
+
+local WB
+if type(WoWBridge) == "table" and type(WoWBridge.Bind) == "function" and Supported(WoWBridge.VERSION) then
+	local ok, handle = pcall(WoWBridge.Bind, addonName)
+	if ok and type(handle) == "table" then WB = handle end
+end
+ns.bound = WB ~= nil
 local FEED_RATE, FEED_BURST, KEPT, DROPPED_EVERY = 6, 12, 50, 5
 local OPTIONS = { _title = "title", _ttl = "ttl", _after = "after" }
 local KIND_DOC = { see = "See: runs at once.", keep = "Keep: runs at once.", point = "Point: runs at once, changes nothing.",
@@ -69,13 +83,29 @@ local function ForAgent(cap, result)
 	return result
 end
 
+-- fn(...) for the agent: an error the core throws at its caller (level 2 points here) goes as its message alone, so the
+-- App leaves out the stack WoWBridge adds; an error from deeper (an extension's bug) keeps its place
+local function Called(fn, ...)
+	local ok, res = pcall(fn, ...)
+	if ok then return res end
+	if type(res) == "string" then res = res:gsub("^[^\n]-Bridge%.lua:%d+: ", "", 1) end
+	error(res, 0)
+end
+
 local function Expose(cap)
 	if not WB or exposed[cap.id] == cap then return end
-	exposed[cap.id] = cap
-	WB:Expose(cap.id, function(args)
+	local ok = pcall(WB.Expose, WB, cap.id, function(args)
 		local clean, opts = Split(args)
-		return ForAgent(cap, Kit:Call(cap.id, clean, opts))
+		return ForAgent(cap, Called(Kit.Call, Kit, cap.id, clean, opts))
 	end, Doc(cap))
+	if ok then exposed[cap.id] = cap end                  -- one WoWBridge refused stays out of the agent's reach
+end
+
+-- an event to WoWBridge: "sent", "busy" (not now: try again) or "bad" (it refused this one: never again)
+local function Send(topic, data)
+	local ok, taken = pcall(WB.Emit, WB, topic, data)
+	if not ok then return "bad" end
+	return taken and "sent" or "busy"
 end
 
 local again = {}                                         -- the core's events WoWBridge could not take yet, in order
@@ -86,23 +116,24 @@ function ns.Forward(topic, data)
 	if not WB then return end
 	if topic == "kit.proposal" then data = Plainly(data) end
 	if topic:sub(1, 4) == "kit." then
-		if #again == 0 and WB:Emit(topic, data) then return end
+		if #again == 0 and Send(topic, data) ~= "busy" then return end
 		if #again >= KEPT then table.remove(again, 1) end
 		again[#again + 1] = { topic, data }
 		return
 	end
 	local now = GetTime()
 	tokens, at = math.min(FEED_BURST, tokens + (now - at) * FEED_RATE), now
-	if tokens >= 1 and WB:Emit(topic, data) then
+	local sent = tokens >= 1 and Send(topic, data)
+	if sent == "sent" then
 		tokens = tokens - 1
-	else
+	elseif sent ~= "bad" then
 		dropped[topic] = (dropped[topic] or 0) + 1
 	end
 end
 
 if WB then
 	C_Timer.NewTicker(0.25, function()
-		while again[1] and WB:Emit(again[1][1], again[1][2]) do table.remove(again, 1) end
+		while again[1] and Send(again[1][1], again[1][2]) ~= "busy" do table.remove(again, 1) end
 		if next(dropped) and GetTime() - droppedAt >= DROPPED_EVERY then
 			local count = 0
 			for _, n in pairs(dropped) do count = count + n end
@@ -114,13 +145,13 @@ if WB then
 end
 
 if WB then
-	WB:Expose("kit.propose", function(a)
+	pcall(WB.Expose, WB, "kit.propose", function(a)
 		a = type(a) == "table" and a or {}
 		local steps = {}
 		for i, s in ipairs(type(a.steps) == "table" and a.steps or {}) do
 			steps[i] = type(s) == "table" and { s.cap or s[1], s.args or s[2] } or s
 		end
-		return Plainly(Kit:Propose(steps, { source = "agent", title = a.title, ttl = a.ttl, after = a.after }))
+		return Plainly(Called(Kit.Propose, Kit, steps, { source = "agent", title = a.title, ttl = a.ttl, after = a.after }))
 	end, "Several say / do steps in one proposal the player confirms once: {title, steps: [{cap, args}], ttl (10-600 s),"
 		.. " after (time())}. Answers with the proposal; its end is the event kit.proposal.")
 	for _, cap in pairs(ns.caps) do Expose(cap) end      -- what went live before this file loaded

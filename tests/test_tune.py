@@ -160,6 +160,14 @@ class Tune(unittest.TestCase):
         self.assertEqual(s.lua.eval(b"__talents.selected"), 101)
         self.assertEqual(self.call(s, "tune.talent.export")["text"], "TALENTS101")
         self.assertIn("no loadout Raid", self.fails(s, "WuxianKit:Call('tune.talent.set', { value = 'Raid' })"))
+        s.lua.execute(b"__loads = 0 local load = C_ClassTalents.LoadConfig "
+                      b"C_ClassTalents.LoadConfig = function(...) __loads = __loads + 1 return load(...) end")
+        again = self.call(s, "tune.talent.set", "{ value = 'Leveling' }")      # the one in use: loaded again, not skipped
+        self.assertEqual(again["steps"][0]["preview"], ["Active loadout: Leveling → Leveling"])
+        self.run_it(s)
+        s.run(1)
+        self.assertTrue(self.done(s, again["id"]))
+        self.assertEqual(s.lua.eval(b"__loads"), 1)
 
     def test_a_macros_icon_and_its_place_on_the_bars(self):
         """a change of text leaves the icon the macro keeps (a question-mark one keeps following its spell), and undo
@@ -348,8 +356,8 @@ class Tune(unittest.TestCase):
 
     def test_what_the_agent_gets_back(self):
         """no value is {none = true}, not an empty table (a list to the agent); a value that is already so previews as
-        unchanged and its step leaves the game alone; kit.history leaves out the snapshots and shortens a long argument
-        as kit.proposals does (the previews' plain text for the agent: test_agent)"""
+        unchanged, its step leaves the game alone and keeps nothing to undo; kit.history leaves out the snapshots and
+        shortens a long argument as kit.proposals does (the previews' plain text for the agent: test_agent)"""
         s = self.start()
         self.assertEqual(self.call(s, "tune.macro.get", "{ name = 'nonexistent' }"), {"none": True})
         s.lua.execute(b"__sets = 0 local set = C_CVar.SetCVar C_CVar.SetCVar = function(...) __sets = __sets + 1 "
@@ -369,13 +377,17 @@ class Tune(unittest.TestCase):
         text = "EM1:{ systems = {}, pad = \"" + "x" * 300 + "\" }"                     # a share string as the mock makes them
         s.lua.execute(b"__long = WuxianKit:Propose({ { 'tune.layout.import', { name = 'Long', text = '"
                       + text.encode() + b"' } } }, { source = 'agent' })")
+        brief = self.call(s, "kit.proposals")
+        self.assertIn(f"...({len(text)} bytes)", [x for x in brief if x["id"] == py(s.g("__long"))["id"]][0]["steps"][0]["args"]["text"])
+        self.run_it(s)
+        s.run(1)
         history = self.call(s, "kit.history")
-        self.assertEqual([h["id"] for h in history], [same["id"], p["id"]])
+        self.assertEqual([h["id"] for h in history], [same["id"], p["id"], py(s.g("__long"))["id"]])
         for h in history:
             self.assertEqual(set(h["steps"][0]), {"cap", "args", "preview"})
         self.assertEqual(history[1]["steps"][0]["args"], {"name": "nameplateShowAll", "value": 1})
-        brief = self.call(s, "kit.proposals")
-        self.assertIn(f"...({len(text)} bytes)", [x for x in brief if x["id"] == py(s.g("__long"))["id"]][0]["steps"][0]["args"]["text"])
+        self.assertEqual([bool(h.get("undoable")) for h in history[:2]], [False, True])   # the unchanged one: nothing to undo
+        self.assertIn(f"...({len(text)} bytes)", history[2]["steps"][0]["args"]["text"])
 
     def test_a_bit_field_setting(self):
         """a setting that keeps bytes (a bit field: the byte 2, then six bits a byte from "@") reads as the bits that are
@@ -402,6 +414,15 @@ class Tune(unittest.TestCase):
         self.assertEqual(self.call(s, "tune.cvar.get", "{ name = 'nameplateCastBarDisplay' }")["value"], "bits:1,2,4,5")
         none = self.call(s, "tune.cvar.set", "{ name = 'closedInfoFrames', value = 'bits:' }")
         self.assertEqual(none["steps"][0]["preview"][0], "closedInfoFrames: bits:21 → bits:")
+        raw = self.call(s, "tune.cvar.set", "{ name = 'nameplateCastBarDisplay', value = '\\2[' }")   # as a 0.4.0 profile kept it
+        self.assertEqual(raw["steps"][0]["preview"][0], "nameplateCastBarDisplay: bits:1,2,4,5 (unchanged)")
+        gone = self.call(s, "tune.cvar.set", "{ name = 'nameplateCastBarDisplay', value = 'bits:1' }")
+        s.lua.execute(b"__cvars.nameplateCastBarDisplay.value = ''")        # no bit field when the step runs
+        s.lua.execute(f"SlashCmdList.WUXIANKIT('yes {gone['id']}')".encode())
+        s.run(0.3)
+        self.assertIn(gone["id"], [x["id"] for x in self.proposals(s, "failed")])
+        self.assertEqual(s.lua.eval(b"__cvars.nameplateCastBarDisplay.value"), b"")
+        s.lua.execute(b"__cvars.nameplateCastBarDisplay.value = '\\2['")
         for code, why in (("WuxianKit:Call('tune.cvar.set', { name = 'nameplateCastBarDisplay', value = 3 })",
                            "nameplateCastBarDisplay is a bit-field setting: give the bits to have on, as bits:1,4"),
                           ("WuxianKit:Call('tune.cvar.set', { name = 'nameplateCastBarDisplay', value = 'bits:0,2' })",
@@ -409,6 +430,14 @@ class Tune(unittest.TestCase):
                           ("WuxianKit:Call('tune.cvar.set', { name = 'nameplateShowAll', value = 'bits:1' })",
                            "nameplateShowAll is no bit-field setting")):
             self.assertIn(why, self.fails(s, code))
+
+    def test_the_history_default_and_cap(self):
+        """of 55 kept, kit.history gives the last 20 by default and at most 50"""
+        s = self.start(saved={"WuxianKitDB": b"{ history = (function() local h = {} for i = 1, 55 do "
+                                              b"h[i] = { id = i, title = 't' .. i, ran = 1000 + i, steps = {} } end return h end)() }"})
+        self.assertEqual([h["id"] for h in self.call(s, "kit.history")], list(range(36, 56)))
+        self.assertEqual([h["id"] for h in self.call(s, "kit.history", "{ limit = 50 }")], list(range(6, 56)))
+        self.assertEqual(len(self.call(s, "kit.history", "{ limit = 500 }")), 50)
 
     def test_the_history_takes_a_limit(self):
         """kit.history gives the last `limit` that ran (20 when not given, at most the 50 kept), newest last"""

@@ -161,17 +161,28 @@ local function Hears(want, topic)
 	return want:sub(-2) == ".*" and topic:sub(1, #want - 1) == want:sub(1, -2)
 end
 
+-- an event's topic and a capability's id are at most NAME_MAX bytes: what WoWBridge carries, and the same without it
+ns.NAME_MAX = 64
+
 function Kit:Emit(topic, data)
-	if type(topic) ~= "string" or topic == "" then error("WuxianKit:Emit(topic, data): topic is a string", 2) end
+	if type(topic) ~= "string" or topic == "" or #topic > ns.NAME_MAX then
+		error(("WuxianKit:Emit(topic, data): topic is a string of at most %d bytes"):format(ns.NAME_MAX), 2)
+	end
 	for _, l in pairs(listeners) do
 		if Hears(l.topic, topic) then Safe(l.fn, topic, data) end
 	end
-	if ns.Forward then ns.Forward(topic, data) end
+	if ns.Forward then pcall(ns.Forward, topic, data) end   -- the agent's copy (Bridge.lua) never breaks the bus
 end
 
--- whether an agent is connected now (无限工坊's WoWBridge with its link online)
+-- whether 无限工坊 is linked now: WuxianKit took a WoWBridge handle (ns.bound, Bridge.lua) and the link is online. A
+-- WoWBridge with Online() says so itself; an older one is read with care (its insides may change)
 function Kit:AgentOnline()
-	local wb = WoWBridgeNS and WoWBridgeNS.WoWBridge
-	local link = wb and wb.Link
-	return link ~= nil and link.State() == "online"
+	if not ns.bound then return false end
+	local ok, online = pcall(function()
+		if type(WoWBridge) == "table" and type(WoWBridge.Online) == "function" then return WoWBridge.Online() end
+		local wb = type(WoWBridgeNS) == "table" and WoWBridgeNS.WoWBridge
+		local link = type(wb) == "table" and wb.Link
+		return type(link) == "table" and type(link.State) == "function" and link.State() == "online"
+	end)
+	return ok and online == true
 end

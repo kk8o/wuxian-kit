@@ -290,7 +290,7 @@ function UI.DrawWindow()
 	if not (f and f:IsShown()) then return end
 	f.title:SetText(L.TITLE)
 	f.more:SetText(L.SCROLL)
-	f.agent:SetText(Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)
+	f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)   -- none without 无限工坊
 	local list = ns.ExtensionList()
 	local current
 	for i, e in ipairs(list) do
@@ -352,7 +352,7 @@ end
 
 function UI.Tick()
 	UI.TickProposal()
-	if f and f:IsShown() then f.agent:SetText(Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF) end
+	if f and f:IsShown() then f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF) end
 end
 
 ------------------------------------------------------------------------------------------------------------------------

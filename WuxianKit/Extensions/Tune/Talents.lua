@@ -67,8 +67,8 @@ end
 
 tune:Setting("talent", { title = L"TALENT", scope = "talents", settle = true, settleTime = 10,
 	doc = "the talent loadout in use, by its name (tune.talent.list: the current specialization's saved loadouts)",
-	change = "the client loads it a moment later, out of combat",
-	key = {}, value = "string",
+	change = "the client loads it a moment later, out of combat; the loadout in use loads again too (its unsaved edits go)",
+	key = {}, value = "string", always = true,
 	check = function()
 		if not Spec() then return "no specialization yet" end
 	end,

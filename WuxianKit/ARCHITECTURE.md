@@ -178,7 +178,9 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 
 - 清单：`Kit:Manifest()`（Agent 经 `kit.manifest` 读取）：`protocol`、`kit`（版本）、`language`、`revision`，以及每个扩展的 `id`、`title`、`version`、`addon`、`builtin`、`state`、`docs`；已启用扩展还有 `capabilities` 和 `events`。
 - 修订号：扩展启用或停用、能力变化、语言切换时改变；变化后约 0.5 秒发出 `kit.changed`，这半秒内的变化合并为一次。
-- 事件经开发组件交给 Agent：核心的事件（`kit.*`）被挡下时会重发，保证送到；扩展的事件限速，丢掉的每 5 秒用 `kit.dropped` 报告一次。
+- 事件经开发组件交给 Agent：核心的事件（`kit.*`）被挡下时留在队列里（最多 50 条）等有空再发；扩展的事件限速，丢掉的每 5 秒用 `kit.dropped` 报告一次。无限工坊未连接时，开发组件只保留最近的少数事件。
+- 能力的完整 id（`<扩展>.<名称>`）与事件的完整主题都不超过 64 字节（开发组件能传的长度）；超出的在声明或发出时就报错，有没有无限工坊都一样。
+- Agent 接入需要开发组件 WoWBridge 0.9.7 或更新版本（调用以数据传入，关闭热加载也能用）；没有它或版本更旧时，扩展框架照常运行，只是 Agent 用不到。
 - 说明与技能放在 `docs` 指向的文件夹（`Interface\AddOns\<插件>[\<docs>]`）：`AGENT.md`，以及 `skills/<名称>.md`。无限工坊 App 直接从磁盘读取，不经过游戏。
 - 技能文件开头写：
 
@@ -213,7 +215,7 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
    `## OptionalDeps: WuxianKit`（不写 `LoadOnDemand`），并只在 `if WuxianKit then ... end` 里注册扩展。
 2. 代码：`Kit:Words`、`Kit:Extension`，再声明能力、事件、类别（见第 3–5 节）。
 3. 在插件文件夹放 `AGENT.md`，需要时加 `skills/`。
-4. 检查：用无限工坊的 `check` 检查插件；进游戏后 `/wk` 里应出现它的一页；Agent 用 `wk_docs` 查看它的工具和说明。
+4. 检查：用无限工坊的 `check` 检查插件；进游戏后 `/wk` 里应出现它的一页（不装无限工坊时，也可以用 `/run` 调 `WuxianKit:Capabilities()` 看能力是否齐全）；装了无限工坊时，Agent 用 `wk_docs` 查看它的工具和说明。
 5. 发布：可以申请收录进无限工坊网站的扩展目录，玩家就能在 App 的「扩展」页安装。
 
 ## 9. 公共接口与约定

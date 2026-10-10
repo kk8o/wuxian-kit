@@ -315,7 +315,11 @@ function Continue(p, i)
 			if applied and s.snap ~= nil then p.done[#p.done + 1] = s end   -- it may have changed the game before it failed
 			return Fail(p, j, failed)
 		end
-		p.done[#p.done + 1] = s
+		if type(s.result) == "table" and s.result.unchanged then
+			s.snap = nil                                    -- it changed nothing: nothing to put back, on undo or on a failure
+		else
+			p.done[#p.done + 1] = s
+		end
 		if type(spec.settled) == "function" then
 			local ok, yes = pcall(spec.settled, ext, s.args, s.result)
 			if not (ok and yes) then

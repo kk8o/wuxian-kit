@@ -164,6 +164,9 @@ function Extension:Event(topic, spec)
 	if type(topic) ~= "string" or not topic:match("^[a-z][a-z0-9_.]*$") then
 		error("ext:Event(topic, spec): topic is lowercase letters, digits, _ and .", 2)
 	end
+	if #self.id + 1 + #topic > ns.NAME_MAX then
+		error(("ext:Event(topic, spec): %s.%s is longer than %d bytes"):format(self.id, topic, ns.NAME_MAX), 2)
+	end
 	spec = spec or {}
 	if not self.emits[topic] then self.emitOrder[#self.emitOrder + 1] = topic end
 	self.emits[topic] = { topic = self.id .. "." .. topic, doc = spec.doc or "", data = spec.data }

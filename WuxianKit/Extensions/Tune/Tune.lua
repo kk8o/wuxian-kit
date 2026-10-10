@@ -124,9 +124,10 @@ tune:Setting("cvar", { title = L"CVAR",
 	end,
 	get = function(_, k) return Readable((Info(k.name))) end,
 	set = function(_, k, v)
-		local raw = Info(k.name)
-		local wanted = IsBits(raw) and Wanted(v)
-		if not wanted then return C_CVar.SetCVar(k.name, v) end
+		local wanted = Wanted(v)
+		if wanted == false then return C_CVar.SetCVar(k.name, v) end
+		local raw = Info(k.name)                          -- bits: never written as text, whatever the setting holds now
+		if not wanted or not IsBits(raw) then error(("%s is no bit-field setting now"):format(k.name), 0) end
 		local on, count = BitsOf(raw)
 		for i in pairs(wanted) do count = math.max(count, i) end
 		for i = 1, count do
@@ -135,6 +136,7 @@ tune:Setting("cvar", { title = L"CVAR",
 	end,
 	normalize = function(_, v)
 		if type(v) == "boolean" then return v and "1" or "0" end
+		if IsBits(v) then return Readable(v) end           -- a raw bit-field value (a profile kept by 0.4.0)
 		local wanted = Wanted(v)
 		if wanted then return BitsText(wanted) end
 		return tostring(v)

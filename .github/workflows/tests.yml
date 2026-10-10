@@ -15,3 +15,24 @@ jobs:
       - run: python -m pip install "lupa>=2.8,<3"
       - run: python -c "import lupa.lua51"
       - run: python -m unittest discover -s tests -t tests
+
+  # the same with 无限工坊's source beside it: tests/test_agent.py runs WuxianKit with the real WoWBridge, link and Service
+  joint:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: kk8o/wuxian-workshop
+          path: workshop
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install 无限工坊
+        run: python -m pip install -e "./workshop[ui,mcp,test]"
+      - name: Tests with 无限工坊
+        env:
+          WUXIAN_WORKSHOP: ${{ github.workspace }}/workshop
+          WUXIAN_HEADLESS: "1"
+        run: python -m unittest discover -s tests -t tests

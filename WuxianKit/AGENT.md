@@ -48,4 +48,4 @@ Read them with `events` (addon `WuxianKit`, a topic such as `chat.message` or a 
 - `kit.feed`: a feed started or stopped (by itself too, when its time is up).
 - `kit.extension`: an extension went on or off.
 - `kit.dropped`: extension events that were not sent because they came too fast (how many, by topic). WuxianKit's own
-  events always go.
+  events wait and go again when there is room (the last 50); while 无限工坊 is not linked, only the last few are kept.

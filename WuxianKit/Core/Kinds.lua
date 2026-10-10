@@ -40,6 +40,7 @@ local function Declare(ext, kind, name, spec)
 	end
 	if type(spec) ~= "table" then error(("%s.%s: its spec is a table"):format(ext.id, name), 3) end
 	local id = ext.id .. "." .. name
+	if #id > ns.NAME_MAX then error(("%s: a capability's id is at most %d bytes"):format(id, ns.NAME_MAX), 3) end
 	local args, argText = Schema.Parse(spec.args)
 	local cap = { id = id, ext = ext, name = name, kind = kind, title = spec.title or name, doc = spec.doc or "",
 		args = args, argText = argText, spec = spec }
@@ -98,7 +99,9 @@ end
 -- -> the value as the game keeps it, label(self, key), format(self, value) -> how a value reads (none reads as such),
 -- info(self, key) -> more fields for .get, same(a, b) -> whether two match; settle = true when the game shows a change
 -- a moment later (read back until it does, settleTime); keep(self, key) -> what else undo needs, and restore(self, key,
--- value, kept) puts it all back (else set does); reload = true when it takes effect after a reload.
+-- value, kept) puts it all back (else set does); reload = true when it takes effect after a reload. A value it already has
+-- previews as unchanged and its step leaves the game alone, unless always = true (talents: loading the loadout in use again
+-- drops its unsaved edits).
 
 local function Same(a, b)
 	local x, y = tonumber(a), tonumber(b)
@@ -166,7 +169,7 @@ function Extension:Setting(name, spec)
 		preview = function(self, a)
 			local k, v = Key(a), Value(self, a.value)
 			local now = spec.get(self, k)
-			local lines = { Matches(now, v) and L.UNCHANGED:format(Label(self, k), Shown(self, v))
+			local lines = { not spec.always and Matches(now, v) and L.UNCHANGED:format(Label(self, k), Shown(self, v))
 				or L.CHANGE:format(Label(self, k), Shown(self, now), Shown(self, v)) }
 			local more = spec.explain and spec.explain(self, k, v)
 			for line in (more and ns.Text(more) .. "\n" or ""):gmatch("([^\r\n]*)\r?\n") do   -- a line each, escaped
@@ -182,7 +185,7 @@ function Extension:Setting(name, spec)
 		end,
 		apply = function(self, a)
 			local k, v = Key(a), Value(self, a.value)
-			if Matches(spec.get(self, k), v) then return { value = v, unchanged = true } end   -- (a profile's step that agrees)
+			if not spec.always and Matches(spec.get(self, k), v) then return { value = v, unchanged = true } end   -- (a profile's step that agrees)
 			spec.set(self, k, v)
 			if spec.settle then return { value = v } end      -- read back once it shows (settled)
 			return { value = Kept(self, k, v) }
