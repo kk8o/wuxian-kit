@@ -4,9 +4,9 @@ Extension id `gate`. Sends a proposal to other players who also use WuxianKit. N
 on the addon channel (a whisper to one player, or the group's or the guild's).
 
 - Use it only when the player asks. Sending is itself a proposal: your player clicks 执行 (Run) first.
-- `wk_gate_propose` with `{"to": "Name-Realm", "title": "Map key", "steps": [{"cap": "tune.binding.set", "args":
-  {"key": "CTRL-M", "value": "TOGGLEWORLDMAP"}}]}`. Give either `to` (one player's full name) or `channel` (`party`,
-  `raid` or `guild`), never both.
+- `wk_gate_propose` with `{"to": "<name>", "title": "Map key", "steps": [{"cap": "tune.binding.set", "args":
+  {"key": "CTRL-M", "value": "TOGGLEWORLDMAP"}}]}`. Give either `to` (one player's whole name, as for a whisper: both
+  parts where a name has two, `Name-Realm` from another realm) or `channel` (`party`, `raid` or `guild`), never both.
 - `steps`: 1–20 Change steps of the tune extension only (`tune.*` capability ids: settings, key bindings, macros,
   layouts, talents, gear, bags, addons, profiles).
 - `ttl`: seconds each receiver's proposal waits for them. `_ttl`: how long your own player's confirmation waits.

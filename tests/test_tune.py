@@ -314,6 +314,11 @@ class Tune(unittest.TestCase):
                            ("{ { cap = 'tune.cvar.set', args = { name = 'x', value = 1, extra = 2 } } }", "takes no argument extra")):
             self.assertIn(why, self.fails(s, f"WuxianKit:Call('tune.profile.save', {{ name = 'bad', steps = {steps} }})"))
         self.assertIn("damaged", self.fails(s, "WuxianKit:Call('tune.profile.import', { text = 'WK1:zz' })"))
+        typo = self.call(s, "tune.profile.save", "{ name = 'typo', steps = { { cap = 'tune.cvar.set', args = { name = "
+                                                 "'nameplateShowAl', value = 1 } } } }")   # kept, with a warning
+        self.assertEqual((typo["steps"], typo["warnings"]),
+                         (1, ["step 1 (tune.cvar.set): no setting nameplateShowAl (tune.cvar.find looks them up)"]))
+        self.call(s, "tune.profile.delete", "{ name = 'typo' }")
         self.call(s, "tune.profile.delete", "{ name = 'copy' }")
         self.assertEqual([x["name"] for x in self.call(s, "tune.profile.list")], ["base"])
 

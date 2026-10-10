@@ -172,7 +172,7 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 - 执行过的提案保留最近 50 条，按角色区分：只能在执行它的角色上撤销。玩家可以在窗口里撤销，Agent 用 `kit.undo` 发起撤销提案。
 - 每次状态变化都发出总线事件 `kit.proposal`。
 
-接口：`Kit:Call(id, args, opts)`（读取、存储、指引类立即返回结果；发送、更改类返回提案）、`Kit:Propose(steps, opts)`、`Kit:Proposal(id)`、`Kit:Proposals()`。
+接口：`Kit:Call(id, args, opts)`（读取、存储、指引类立即返回结果；发送、更改类返回提案）、`Kit:Propose(steps, opts)`、`Kit:Check(id, args)`（预检：现在提议是否会被拒及原因，不产生提案）、`Kit:Proposal(id)`、`Kit:Proposals()`。
 
 ## 7. Agent 接入
 

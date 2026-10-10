@@ -3,8 +3,8 @@
 Extension id `sense`. Reads the player's character. All tools are Read tools: they answer at once and change nothing,
 so call them freely.
 
-- `wk_sense_character`: name, realm, level, class, race, faction, experience, money, item level, specialization,
-  guild.
+- `wk_sense_character`: name (whole, as others address the player), realm, level, class, race, faction, experience,
+  money, item level, specialization, guild.
 - `wk_sense_position`: the map, zone and subzone, x and y on the map (0–100), the instance.
 - `wk_sense_bags`: free and total slots; with `text`, e.g. `{"text": "potion"}`, the stacks whose item name holds it;
   without, the items summed, most first.

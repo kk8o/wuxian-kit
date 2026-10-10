@@ -111,7 +111,13 @@ kit:Do("undo", { title = L"UNDO", args = { id = "number" }, scope = "undo", note
 			if h.id == a.id then
 				for j = #h.steps, 1, -1 do
 					local s = h.steps[j]
-					if s.snap ~= nil and s.preview and s.preview[1] then lines[#lines + 1] = L.UNDO_LINE:format(s.preview[1]) end
+					if s.snap ~= nil then
+						for _, line in ipairs(s.preview or {}) do
+							if type(line) == "string" and not line:find("^|cff9c9ea6") then
+								lines[#lines + 1] = L.UNDO_LINE:format(line)
+							end
+						end
+					end
 				end
 			end
 		end

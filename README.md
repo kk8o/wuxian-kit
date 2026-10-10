@@ -17,7 +17,7 @@
 
 | 扩展 | 能力 |
 |---|---|
-| 调校 | 设置项、按键、宏、编辑模式布局、天赋配置、装备方案、背包整理、插件启用与停用；配置档的保存、应用与分享 |
+| 调校 | 系统设置（按设置面板中的名称查找与修改）、按键、宏、编辑模式布局、天赋配置、装备方案、背包整理、插件启用与停用；配置档的保存、应用与分享 |
 | 聊天 | 收听公会、小队、团队、密语等频道；发送消息 |
 | 角色信息 | 角色、位置、背包、任务、专业、声望、货币、队伍 |
 | 指引 | 高亮界面元素、显示说明、标记地图、分步讲解 |
@@ -88,7 +88,7 @@ WuxianKit is an extension framework for World of Warcraft: Wuxian addons that wo
 
 WuxianKit is optional: Wuxian Workshop does not install it.
 
-Built-in extensions: Tune (settings, key bindings, macros, Edit Mode layouts, talent loadouts, equipment sets, bag sorting, addons on or off, profiles), Chat, Character info, Guide, Data, and Remote (tune proposals between players; accepting them is off by default).
+Built-in extensions: Tune (the game's settings, found by their names in the Settings panel; key bindings, macros, Edit Mode layouts, talent loadouts, equipment sets, bag sorting, addons on or off, profiles), Chat, Character info, Guide, Data, and Remote (tune proposals between players; accepting them is off by default).
 
 Install it from the Extensions page of the Wuxian Workshop app, or unzip the download from the [extension catalog](https://wuxianwow.com/workshop/extensions) into `Interface\AddOns` and restart the game. `/wk` opens its window.
 

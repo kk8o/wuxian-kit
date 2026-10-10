@@ -208,7 +208,7 @@ class Core(unittest.TestCase):
         regions = [r for r in w[b"body"][b"__regions"].values() if r[b"shown"]]
         self.assertLessEqual(max(-r[b"point"][5] + 14 for r in regions), 404)    # inside the page
         p = self.call(s, "kit.undo", "{ id = 12 }")
-        self.assertEqual(p["steps"][0]["preview"], ["Undo proposal #12", "Revert: graphicsQuality: 1 → 2"])
+        self.assertEqual(p["steps"][0]["preview"], ["Undo proposal #12", "Undo: graphicsQuality: 1 → 2"])
         self.sessions = [s]
 
     def test_options_and_commands(self):
@@ -267,9 +267,12 @@ class Core(unittest.TestCase):
         self.assertIn("语言：中文", s.chat())
         self.assertEqual(py(s.g("WuxianKitDB"))["lang"], "zhCN")
         body = texts(w[b"body"])
-        self.assertTrue(body[0].startswith("调校  |cff9c9ea6版本 "))
-        self.assertIn("更改：客户端设置、按键绑定、宏、编辑模式布局、导入布局、天赋配置、切换装备方案、保存装备方案、整理背包、插件启用状态",
-                      body)
+        self.assertEqual(body[0], "调校")                                  # its kind a capsule after it, then the version
+        self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "系统扩展")
+        self.assertTrue(body[1].startswith("版本 "))
+        self.assertIn("更改：客户端设置、系统设置选项、按键绑定、宏、编辑模式布局、导入布局、天赋配置、切换装备方案、保存装备方案、整理背包、"
+                      "插件启用状态", body)
+        self.assertIn("系统扩展", texts(w[b"list"]))                       # the list: WuxianKit's own, then other addons'
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
@@ -415,9 +418,9 @@ class Core(unittest.TestCase):
         self.assertEqual(self.call(s, "tune.cvar.set", "{ name = 'graphicsQuality', value = 2 }")["state"], "pending")
         public = py(s.lua.eval(b"(function() local out = {} for k in pairs(WuxianKit) do out[#out + 1] = k end "
                                b"table.sort(out) return out end)()"))
-        self.assertEqual(public, ["AgentOnline", "Call", "Capabilities", "Capability", "Comm", "Emit", "Escape", "Extension",
-                                  "Granted", "Manifest", "Off", "On", "Proposal", "Proposals", "Propose", "Skin", "VERSION", "Window",
-                                  "Words"])
+        self.assertEqual(public, ["AgentOnline", "Call", "Capabilities", "Capability", "Check", "Comm", "Emit", "Escape",
+                                  "Extension", "Granted", "Manifest", "Off", "On", "Proposal", "Proposals", "Propose", "Skin",
+                                  "VERSION", "Window", "Words"])
         s.lua.execute(b"WuxianKitDB = { grants = { ['tune.settings.sound'] = true } }")   # even replaced
         s.fire("PLAYER_LOGOUT")
         self.assertEqual(py(s.g("WuxianKitDB"))["grants"], {"tune.settings.game": True})

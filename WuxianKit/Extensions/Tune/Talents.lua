@@ -99,7 +99,9 @@ tune:See("talent.list", { title = L"LIST",
 tune:See("talent.export", { title = L"EXPORT", args = { name = "string?" },
 	doc = "a loadout's share string, as the talent window's Share gives it (the one in use without a name)",
 	run = function(_, a)
-		local l, why = Named(a.name or InUse() or "")
+		local name = a.name or InUse()
+		if not name then error("no loadout in use (tune.talent.list lists the saved ones)", 0) end
+		local l, why = Named(name)
 		if not l then error(why, 0) end
 		return { name = l.name, text = C_Traits.GenerateImportString(l.id) }
 	end })

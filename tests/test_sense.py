@@ -23,7 +23,7 @@ class Sense(unittest.TestCase):
         c = self.call(s, "sense.character")
         self.assertEqual({k: c.get(k) for k in ("name", "realm", "level", "class", "classToken", "race", "faction", "xp",
                                                 "xpMax", "money", "itemLevel", "spec", "guild")},
-                         {"name": "Wuxian", "realm": "Forever", "level": 8, "class": "Priest", "classToken": "PRIEST",
+                         {"name": "Wuxian Forever", "realm": "Forever", "level": 8, "class": "Priest", "classToken": "PRIEST",
                           "race": "Night Elf", "faction": "Alliance", "xp": 190, "xpMax": 5400, "money": 480,
                           "itemLevel": 9.5, "spec": {"id": 1484, "name": "Holy"},
                           "guild": {"name": "Wuxian Guild", "rank": "Member"}})
@@ -57,7 +57,7 @@ class Sense(unittest.TestCase):
         self.assertEqual(self.call(s, "sense.group"), {"kind": "none", "members": {}})
         s.lua.execute(b"__group = { { name = 'Ally', class = 'MAGE', level = 9, role = 'DAMAGER' } }")
         self.assertEqual(self.call(s, "sense.group"), {"kind": "party", "members": [
-            {"name": "Wuxian", "class": "PRIEST", "level": 8, "role": "NONE", "online": True, "leader": True},
+            {"name": "Wuxian Forever", "class": "PRIEST", "level": 8, "role": "NONE", "online": True, "leader": True},
             {"name": "Ally", "class": "MAGE", "level": 9, "role": "DAMAGER", "online": True}]})
 
 

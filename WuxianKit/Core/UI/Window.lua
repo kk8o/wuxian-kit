@@ -128,8 +128,13 @@ end
 
 local function Page(e)
 	local ext = ns.extensions[e.id]
-	Put(0, C.fg, ("%s  |cff9c9ea6%s · %s%s|r"):format(e.title or e.id, L.VERSION:format(e.version or "?"), StateText(e),
-		e.builtin and not e.core and (" · " .. L.BUILTIN) or ""))
+	local title = Put(0, C.fg, e.title or e.id, W - LEFT - 160, true)  -- the title, its kind as a capsule after it
+	f.pill.Set(e.builtin and L.GROUP.sys or L.GROUP.custom, e.builtin and "sys" or "custom")
+	f.pill:ClearAllPoints()
+	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
+	f.pill:Show()
+	Put(0, C.muted, ("%s · %s%s"):format(L.VERSION:format(e.version or "?"), StateText(e),
+		not e.builtin and e.addon and (" · " .. e.addon) or ""))
 	if not e.core and e.state ~= "disabled" and e.state ~= "missing" then
 		PutCheck(0, L.ENABLED, e.state == "on", function(on) ns.Act("switch", e.id, on) end)
 	end
@@ -256,7 +261,8 @@ local function Frame()
 	f.more = S.Text(f, C.muted, true)
 	f.more:SetPoint("TOPRIGHT", -40, -34)
 	f.more:SetText(L.SCROLL)
-	f.texts, f.checks, f.buttons, f.edits = {}, {}, {}, {}
+	f.texts, f.checks, f.buttons, f.edits, f.heads = {}, {}, {}, {}, {}
+	f.pill = S.Pill(f.body)
 	local sep = f:CreateTexture(nil, "BORDER")
 	sep:SetPoint("TOPLEFT", LEFT + 2, -56)
 	sep:SetSize(1, H - 66)
@@ -269,7 +275,6 @@ local function Item(i)
 	if not b then
 		b = CreateFrame("Button", nil, f.list)
 		b:SetSize(LEFT - 14, 22)
-		b:SetPoint("TOPLEFT", 0, -(i - 1) * 24)
 		b.bg = b:CreateTexture(nil, "BACKGROUND")
 		b.bg:SetAllPoints()
 		b.label = S.Text(b, C.fg)
@@ -292,17 +297,37 @@ function UI.DrawWindow()
 	f.more:SetText(L.SCROLL)
 	f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)   -- none without 无限工坊
 	local list = ns.ExtensionList()
-	local current
-	for i, e in ipairs(list) do
-		local b = Item(i)
-		b.id = e.id
-		b.label:SetText(e.title or e.id)
-		S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
-		S.Ink(b.label, e.state == "on" and C.fg or C.muted)
-		b:Show()
-		if e.id == selected then current = e end
+	local groups = { { kind = "sys", list = {} }, { kind = "custom", list = {} } }   -- WuxianKit's own, then other addons'
+	for _, e in ipairs(list) do table.insert(groups[e.builtin and 1 or 2].list, e) end
+	local current, n, nHead, y = nil, 0, 0, 0
+	for _, g in ipairs(groups) do
+		if #g.list > 0 then
+			nHead = nHead + 1
+			local h = f.heads[nHead] or S.Text(f.list, C.muted, true)
+			f.heads[nHead] = h
+			h:ClearAllPoints()
+			h:SetPoint("TOPLEFT", f.list, "TOPLEFT", 8, -y - 3)
+			h:SetText(L.GROUP[g.kind])
+			h:Show()
+			y = y + 20
+			for _, e in ipairs(g.list) do
+				n = n + 1
+				local b = Item(n)
+				b:ClearAllPoints()
+				b:SetPoint("TOPLEFT", 0, -y)
+				b.id = e.id
+				b.label:SetText(e.title or e.id)
+				S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
+				S.Ink(b.label, e.state == "on" and C.fg or C.muted)
+				b:Show()
+				if e.id == selected then current = e end
+				y = y + 24
+			end
+			y = y + 8
+		end
 	end
-	for i = #list + 1, #f.items do f.items[i]:Hide() end
+	for i = n + 1, #f.items do f.items[i]:Hide() end
+	for i = nHead + 1, #f.heads do f.heads[i]:Hide() end
 	if not current then selected, current = "kit", list[1] end
 	f.nText, f.nCheck, f.nButton, f.nEdit, f.y = 0, 0, 0, 0, 0
 	Page(current)

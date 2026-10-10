@@ -6,7 +6,8 @@ local UI = {}
 ns.UI = UI
 
 local HEX = { panel = "23242a", panel2 = "2b2f37", line = "35363d", fg = "e8e4d8", muted = "9c9ea6", gold = "d8a85a",
-	goldD = "8a6424", goldSoft = "3a3120", sky = "7fb3e0", ok = "6fcf97", bad = "f28b82", ink = "1b1c21" }
+	goldD = "8a6424", goldSoft = "3a3120", sky = "7fb3e0", skySoft = "323b47", ok = "6fcf97", bad = "f28b82",
+	ink = "1b1c21" }
 local C = {}
 for k, hex in pairs(HEX) do
 	C[k] = { tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255, 1 }
@@ -18,6 +19,42 @@ ns.Kit.Skin = S                           -- the core's look for extensions that
 
 function S.Fill(t, c, a) t:SetColorTexture(c[1], c[2], c[3], a or c[4]) end
 function S.Ink(fs, c) fs:SetTextColor(c[1], c[2], c[3], c[4]) end
+
+-- a capsule: a short label on a fill with round ends (the client's own circle mask rounds them: no file of ours), in a
+-- tone: "sys" grey, "custom" sky (as 无限工坊's App tags an extension). p.Set(text, tone) sizes it to its text
+local PILL = { sys = { fill = "panel2", ink = "muted" }, custom = { fill = "skySoft", ink = "sky" } }
+local MASK = "Interface\\Masks\\CircleMaskScalable"
+
+function S.Pill(parent)
+	local p = CreateFrame("Frame", nil, parent)
+	p:SetHeight(16)
+	p.parts = {}
+	for i, side in ipairs({ "LEFT", "RIGHT" }) do               -- the round ends: a circle each, under the middle's edge
+		local t = p:CreateTexture(nil, "BACKGROUND")
+		t:SetSize(16, 16)
+		t:SetPoint(side)
+		if p.CreateMaskTexture and t.AddMaskTexture then
+			local m = p:CreateMaskTexture()
+			m:SetTexture(MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+			m:SetAllPoints(t)
+			t:AddMaskTexture(m)
+		end
+		p.parts[i] = t
+	end
+	p.parts[3] = p:CreateTexture(nil, "BACKGROUND")
+	p.parts[3]:SetPoint("TOPLEFT", 8, 0)
+	p.parts[3]:SetPoint("BOTTOMRIGHT", -8, 0)
+	p.text = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	p.text:SetPoint("CENTER", 0, 0)
+	function p.Set(text, tone)
+		local look = PILL[tone] or PILL.sys
+		p.text:SetText(text)
+		S.Ink(p.text, C[look.ink])
+		for _, t in ipairs(p.parts) do S.Fill(t, C[look.fill]) end
+		p:SetWidth(math.ceil(p.text:GetStringWidth()) + 18)
+	end
+	return p
+end
 
 function S.Text(parent, color, small)
 	local fs = parent:CreateFontString(nil, "OVERLAY", small and "GameFontHighlightSmall" or "GameFontNormal")

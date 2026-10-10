@@ -60,6 +60,16 @@ end
 -- the preview of a step: its lines (the spec's preview: a line or a list of them; its title without one; plain: each
 -- line made safe, for another player's proposal), and what the core knows by itself (unless the spec says notes =
 -- false): a Do it cannot undo, a change that waits for a reload
+-- whether a step takes effect after a reload: reload = true, or reload(self, args) for one that depends on its args
+function ns.Reloads(cap, args)
+	local r = cap.spec.reload
+	if type(r) == "function" then
+		local ok, v = pcall(r, cap.ext, args)
+		return ok and v and true or false
+	end
+	return r and true or false
+end
+
 local function Lines(cap, args, plain)
 	local spec, out = cap.spec, { ns.T(cap.title) }
 	if type(spec.preview) == "function" then
@@ -77,7 +87,7 @@ local function Lines(cap, args, plain)
 	end
 	if spec.notes == false then return out end
 	if cap.kind == "do" and not cap.undoable then out[#out + 1] = "|cff9c9ea6" .. L.NO_UNDO .. "|r" end
-	if spec.reload then out[#out + 1] = "|cff9c9ea6" .. L.RELOAD_NOTE .. "|r" end
+	if ns.Reloads(cap, args) then out[#out + 1] = "|cff9c9ea6" .. L.RELOAD_NOTE .. "|r" end
 	return out
 end
 
@@ -259,7 +269,7 @@ local function Finish(p)
 	Remember(p)
 	ns.Say((p.auto and L.AUTO_DONE or L.DONE):format(p.id))
 	for _, s in ipairs(p.steps) do
-		if s.cap.spec.reload then
+		if ns.Reloads(s.cap, s.args) then
 			ns.Say(L.RELOAD_HINT)
 			break
 		end

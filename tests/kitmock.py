@@ -713,6 +713,111 @@ C_Map.ClearUserWaypoint = function() __waypoint = nil end
 C_SuperTrack = { SetSuperTrackedUserWaypoint = function(on) __superTracked = on end }
 function IsInGuild() return __guild end
 C_GuildInfo = { MemberExistsByName = function(name) return __guildMembers[name] == true end }
+
+-- the Settings panel's options that are no single CVar, as the client keeps them: the action bars shown (the server
+-- mirrors a change back __barMirror seconds later), the modifier keys, guild invites, the window's size (a moment
+-- later), the character models; UpdateWindow and RestartGx counted; a graphics quality's values for its details
+for name, value in pairs({ statusText = "0", statusTextDisplay = "NONE", autoSelfCast = "1", softTargetEnemy = "1",
+	cameraYawMoveSpeed = "180", cameraPitchMoveSpeed = "90", autoLootDefault = "0", lootUnderMouse = "1",
+	gxMaximize = "0", gxMaxFrameLatency = "3", gxapi = "D3D11", vsync = "1", graphicsShadowQuality = "3",
+	graphicsViewDistance = "6", graphicsParticleDensity = "4", graphicsSSAO = "2", raidGraphicsQuality = "3",
+	raidGraphicsShadowQuality = "2" }) do
+	__cvars[name] = { value = value, default = value, category = name:find("^gx") and 1 or name:find("raphics") and 1 or 4,
+		help = name }
+end
+__barToggles, __barMirror = { false, false, false, false, false, false, false }, 0.2
+function GetActionBarToggles() return unpack(__barToggles, 1, 7) end
+function SetActionBarToggles(...)
+	local want = { ... }
+	C_Timer.After(__barMirror, function()
+		for i = 1, 7 do __barToggles[i] = want[i] and true or false end
+	end)
+end
+__modifiers = { SELFCAST = "ALT", FOCUSCAST = "NONE", PICKUPACTION = "SHIFT", AUTOLOOTTOGGLE = "SHIFT", MOUSEOVERCAST = "NONE" }
+function GetModifiedClick(action) return __modifiers[action] end
+function SetModifiedClick(action, key)
+	if __modifiers[action] then __modifiers[action] = key end
+end
+__declineGuild = false
+function GetAutoDeclineGuildInvites() return __declineGuild end
+function SetAutoDeclineGuildInvites(on) __declineGuild = on and true or false end
+__window, __windowUpdates, __gxRestarts = { x = 1295, y = 971 }, 0, 0
+C_VideoOptions = {
+	GetGameWindowSizes = function() return { { x = 1280, y = 720 }, { x = 1295, y = 971 }, { x = 1920, y = 1080 } } end,
+	GetCurrentGameWindowSize = function() return { x = __window.x, y = __window.y } end,
+	SetGameWindowSize = function(x, y) C_Timer.After(0.1, function() __window = { x = x, y = y } end) end,
+}
+function UpdateWindow() __windowUpdates = __windowUpdates + 1 end
+function RestartGx() __gxRestarts = __gxRestarts + 1 end
+__sd = false
+C_GameRules = C_GameRules or {}
+C_GameRules.IsSDHDToggleEnabled = function() return true end
+C_GameRules.AccountHasSDEnabled = function() return __sd end
+C_GameRules.SetSDHDToggleValue = function(on) __sd = on end
+-- a quality's value for a detail: the quality less one, at most 4 (a raid's one less still)
+function GetGraphicsCVarValueForQualityLevel(cvar, level, raid) return math.max(0, math.min(level - 1, 4) - (raid and 1 or 0)) end
+Enum.SoftTargetEnableFlags = { None = 0, Gamepad = 1, Kbm = 2, Any = 3 }
+STATUSTEXT_LABEL, STATUS_TEXT_VALUE, STATUS_TEXT_PERCENT, STATUS_TEXT_BOTH, NONE = "Status Text", "Numeric Value",
+	"Percentage", "Both", "None"
+OPTION_SHOW_ACTION_BAR, AUTO_SELF_CAST_KEY_TEXT, SELF_CAST = "Action Bar %d", "Self Cast Key", "Self Cast"
+ALT_KEY, CTRL_KEY, SHIFT_KEY, NONE_KEY = "ALT key", "CTRL key", "SHIFT key", "None"
+SELF_CAST_AUTO, SELF_CAST_KEY_PRESS, SELF_CAST_AUTO_AND_KEY_PRESS = "Auto", "Key Press", "Auto and Key Press"
+BLOCK_GUILD_INVITES, WINDOW_SIZE, CHARACTER_MODELS = "Block Guild Invites", "Window Size", "Character Models"
+STANDARD_DEFINITION, HIGH_DEFINITION, TRIPLE_BUFFER = "Classic", "Modern", "Triple Buffering"
+
+-- the Settings panel (Blizzard_Settings_Shared) as tables: the game's categories in two groups and an addon's, their
+-- lists' initializers and the settings they show: CVars' (one shown negated, one with a slider), proxies (an option, one
+-- that stands for a CVar, one the player changes), a modifier key, a check box with a slider, the graphics quality
+-- section (its settings by CVar), one mirrored in a second category
+CVarSettingMixin, ProxySettingMixin = { Init = function() end }, { Init = function() end }
+ModifiedClickSettingMixin = { Init = function() end }
+Settings = Settings or {}
+Settings.CategorySet = { Game = 1, AddOns = 2 }
+local function Setting(mixin, variable, kind, name, more)
+	local s = { variable = variable, variableType = kind, name = name, Init = mixin.Init }
+	for k, v in pairs(more or {}) do s[k] = v end
+	return s
+end
+local function Init(data) return { data = data } end
+local loot = Init({ setting = Setting(CVarSettingMixin, "autoLootDefault", "boolean", "Auto Loot"), name = "Auto Loot",
+	tooltip = "Loot everything at once" })
+local controls = { name = "Controls", subcategories = {}, categorySet = 1 }
+local bars = { name = "Action Bars", subcategories = {}, categorySet = 1 }
+local graphics = { name = "Graphics", subcategories = {}, categorySet = 1 }
+local addon = { name = "SomeAddon", subcategories = {}, categorySet = 2 }
+local quality = Setting(ProxySettingMixin, "PROXY_GRAPHICS_QUALITY", "number", "Graphics Quality", { cvar = "graphicsQuality" })
+local shadows = Setting(ProxySettingMixin, "PROXY_SHADOW_QUALITY", "number", "Shadow Quality", { cvar = "graphicsShadowQuality" })
+SettingsPanel = {
+	CategoryList = { groups = {
+		{ groupText = "Gameplay", categorySet = 1, categories = { controls, bars } },
+		{ groupText = "System", categorySet = 1, categories = { graphics } },
+		{ groupText = "AddOns", categorySet = 2, categories = { addon } } } },
+	categoryLayouts = {
+		[controls] = { initializers = {
+			loot,
+			Init({ setting = Setting(CVarSettingMixin, "lootUnderMouse", "boolean", "Open Loot Window at Mouse",
+				{ valueTransformer = function(v) return not v end }), name = "Open Loot Window at Mouse" }),
+			Init({ setting = Setting(ModifiedClickSettingMixin, "SELFCAST", "string", "Self Cast Key"), name = "Self Cast Key" }),
+			Init({ setting = Setting(ProxySettingMixin, "PROXY_SELF_CAST", "number", "Self Cast"), name = "Self Cast" }),
+			Init({ setting = Setting(ProxySettingMixin, "PROXY_STATUS_TEXT", "number", "Status Text"), name = "Status Text",
+				tooltip = "Show health and power on the unit frames" }),
+			Init({ setting = Setting(ProxySettingMixin, "PROXY_DISABLE_CHAT", "boolean", "Disable Chat"), name = "Disable Chat" }),
+			Init({ cbSetting = Setting(CVarSettingMixin, "Sound_MasterVolume", "number", "Master"), cbLabel = "Master Volume",
+				sliderSetting = Setting(ProxySettingMixin, "PROXY_MOUSE_LOOK_SPEED", "number", "Mouse Look Speed"),
+				sliderLabel = "Mouse Look Speed", sliderOptions = { minValue = 90, maxValue = 270, steps = 18 } }),
+			{ data = { name = "Movement Keys", bindingIndex = 3 } } } },               -- a key binding: no setting
+		[bars] = { initializers = {
+			Init({ setting = Setting(ProxySettingMixin, "PROXY_SHOW_ACTIONBAR_2", "boolean", "Action Bar 2"), name = "Action Bar 2" }),
+			loot } },                                                                   -- mirrored from Controls
+		[graphics] = { initializers = {
+			Init({ setting = Setting(ProxySettingMixin, "PROXY_DISPLAY_MODE", "boolean", "Display Mode"), name = "Display Mode" }),
+			Init({ setting = Setting(ProxySettingMixin, "PROXY_RESOLUTION", "string", "Window Size"), name = "Window Size" }),
+			{ data = { name = "Graphics Quality", settings = { graphicsQuality = quality, graphicsShadowQuality = shadows },
+				raidSettings = {} }, searchTags = { "PICTURE", "SHADOW QUALITY" } } } },        -- the panel's search words
+		[addon] = { initializers = { Init({ setting = Setting(CVarSettingMixin, "nameplateShowAll", "boolean", "Addon's"),
+			name = "Addon's" }) } },
+	},
+}
 """
 
 

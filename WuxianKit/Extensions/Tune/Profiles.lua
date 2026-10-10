@@ -47,10 +47,18 @@ local function Profile(self, name)
 	return p
 end
 
+-- keeps a profile; answers {name, steps, imported, warnings}: the steps that would be refused now (a name this client
+-- lacks, a value out of range ...), kept all the same (a profile may suit another time, or another computer)
 local function Keep(self, name, steps, imported)
 	if type(name) ~= "string" or name == "" then error("name: the profile's name", 0) end
-	self.db.profiles[name] = { steps = Checked(steps), saved = time(), imported = imported or nil }
-	return { name = name, steps = #self.db.profiles[name].steps, imported = imported or nil }
+	local kept = Checked(steps)
+	self.db.profiles[name] = { steps = kept, saved = time(), imported = imported or nil }
+	local warnings = {}
+	for i, s in ipairs(kept) do
+		local why = Kit:Check(s.cap, s.args)
+		if why then warnings[#warnings + 1] = ("step %d (%s): %s"):format(i, s.cap, why) end
+	end
+	return { name = name, steps = #kept, imported = imported or nil, warnings = #warnings > 0 and warnings or nil }
 end
 
 -- the value a .get capability reads now
@@ -62,17 +70,24 @@ end
 
 tune:Keep("profile.save", { title = L"SAVE", args = { name = "string", steps = "table" },
 	doc = "keeps a profile: a name and steps [{cap, args}], at most 40, each cap the id of a Change capability with dots "
-		.. "(\"tune.cvar.set\", \"tune.binding.set\", \"tune.layout.set\" ...; not the tool name); a profile of that name is replaced",
+		.. "(\"tune.cvar.set\", \"tune.binding.set\", \"tune.layout.set\" ...; not the tool name); a profile of that name is "
+		.. "replaced. Answers {name, steps, warnings}: warnings lists the steps that would be refused now (a misspelled "
+		.. "setting ...); the profile is kept all the same",
 	run = function(self, a) return Keep(self, a.name, a.steps) end })
 
 tune:Keep("profile.capture", { title = L"CAPTURE",
-	args = { name = "string", cvars = "table?", keys = "table?", macros = "table?", layout = "boolean?", talent = "boolean?" },
-	doc = "keep things as they are now as a profile: the settings named in cvars, the keys in keys, the macros in macros, "
-		.. "and with layout / talent true the layout and the talent loadout in use; applying it later puts them back",
+	args = { name = "string", cvars = "table?", options = "table?", keys = "table?", macros = "table?", layout = "boolean?",
+		talent = "boolean?" },
+	doc = "keep things as they are now as a profile: the settings named in cvars, the Settings panel's options named in "
+		.. "options (tune.setting.find's names for tune.option.set), the keys in keys, the macros in macros, and with "
+		.. "layout / talent true the layout and the talent loadout in use; applying it later puts them back",
 	run = function(self, a)
 		local steps = {}
 		for _, name in ipairs(a.cvars or {}) do
 			steps[#steps + 1] = { cap = "tune.cvar.set", args = { name = name, value = Now("tune.cvar.get", { name = name }) } }
+		end
+		for _, name in ipairs(a.options or {}) do
+			steps[#steps + 1] = { cap = "tune.option.set", args = { name = name, value = Now("tune.option.get", { name = name }) } }
 		end
 		for _, key in ipairs(a.keys or {}) do
 			steps[#steps + 1] = { cap = "tune.binding.set", args = { key = key, value = Now("tune.binding.get", { key = key }) } }

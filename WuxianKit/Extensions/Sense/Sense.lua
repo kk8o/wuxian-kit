@@ -20,6 +20,13 @@ local function V(v)
 	return v
 end
 
+-- a player's name as other players address them, what a whisper (chat.send) takes: whole where this client gives a
+-- name two parts ("Name Surname"), with the realm of a player from another one ("Name-Realm")
+local function FullName(unit)
+	if GetUnitName then return V(GetUnitName(unit, true)) end
+	return V((UnitName(unit)))
+end
+
 local function Round(v, places)
 	v = V(v)
 	if type(v) ~= "number" then return nil end
@@ -32,11 +39,12 @@ local function Count(limit, default, most)
 end
 
 sense:See("character", { title = L"CHARACTER",
-	doc = "the player's character: name, realm, level, class and classToken, race, faction, xp and xpMax, rested (xp), "
+	doc = "the player's character: name (whole, as other players address it: a whisper's target), realm, level, class and "
+		.. "classToken, race, faction, xp and xpMax, rested (xp), "
 		.. "money (copper), itemLevel, spec {id, name}, guild {name, rank}, resting",
 	run = function()
 		local className, classToken = UnitClass("player")
-		local out = { name = V(UnitName("player")), realm = V(GetRealmName()), level = V(UnitLevel("player")),
+		local out = { name = FullName("player"), realm = V(GetRealmName()), level = V(UnitLevel("player")),
 			class = V(className), classToken = V(classToken), race = V((UnitRace("player"))),
 			faction = V((UnitFactionGroup("player"))), xp = V(UnitXP("player")), xpMax = V(UnitXPMax("player")),
 			rested = GetXPExhaustion and V(GetXPExhaustion()) or nil, money = V(GetMoney()), resting = V(IsResting()) or nil,
@@ -188,13 +196,14 @@ sense:See("currency", { title = L"CURRENCY",
 	end })
 
 sense:See("group", { title = L"GROUP",
-	doc = "the group: kind (none, party, raid) and members {name, class, level, role, online, leader}",
+	doc = "the group: kind (none, party, raid) and members {name (whole, as for a whisper), class, level, role, online, "
+		.. "leader}",
 	run = function()
 		if not IsInGroup() then return { kind = "none", members = {} } end
 		local raid, members = IsInRaid(), {}
 		for i = 1, GetNumGroupMembers() do
 			local unit = raid and ("raid" .. i) or (i == 1 and "player" or ("party" .. (i - 1)))
-			local name = V(UnitName(unit))
+			local name = FullName(unit)
 			if name then
 				local _, class = UnitClass(unit)
 				members[#members + 1] = { name = name, class = V(class), level = V(UnitLevel(unit)),

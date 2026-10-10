@@ -95,13 +95,14 @@ end
 --                      snapshot, the value read back after set (a value the game did not keep fails the step), undo = the old one
 -- More of the spec: title / titleGet, doc (what the setting is: both docs have it), change (what only changing it
 -- involves, for .set's doc: what no value does, limits, that the game shows it later), scope, check(self, key, reading) -> why it cannot be
--- changed (or read, when reading), validate(self, key, value) -> why it cannot take that value, normalize(self, value)
--- -> the value as the game keeps it, label(self, key), format(self, value) -> how a value reads (none reads as such),
--- info(self, key) -> more fields for .get, same(a, b) -> whether two match; settle = true when the game shows a change
--- a moment later (read back until it does, settleTime); keep(self, key) -> what else undo needs, and restore(self, key,
--- value, kept) puts it all back (else set does); reload = true when it takes effect after a reload. A value it already has
--- previews as unchanged and its step leaves the game alone, unless always = true (talents: loading the loadout in use again
--- drops its unsaved edits).
+-- changed (or read, when reading), validate(self, key, value) -> why it cannot take that value, normalize(self, value,
+-- key) -> the value as the game keeps it, label(self, key), format(self, value, key) -> how a value reads (none reads as
+-- such), info(self, key) -> more fields for .get, same(a, b) -> whether two match; settle = true when the game shows a
+-- change a moment later (read back until it does, settleTime); keep(self, key) -> what else undo needs, and
+-- restore(self, key, value, kept) puts it all back (else set does); reload = true (or reload(self, key) -> true) when it
+-- takes effect after a reload. A value it already has previews as unchanged and its step leaves the game alone, unless
+-- always = true (talents: loading the loadout in use again drops its unsaved edits). A step's result is {value}, or
+-- {none = true} when the setting is left without one.
 
 local function Same(a, b)
 	local x, y = tonumber(a), tonumber(b)
@@ -118,15 +119,16 @@ function Extension:Setting(name, spec)
 		for _, n in ipairs(keys) do k[n] = a[n] end
 		return k
 	end
-	local function Value(self, v)
-		if spec.normalize then return spec.normalize(self, v) end
+	local function Value(self, v, k)
+		if spec.normalize then return spec.normalize(self, v, k) end
 		return v
 	end
-	local function Shown(self, v)                         -- (a spec's format escapes what it shows of v itself)
+	local function Shown(self, v, k)                      -- (a spec's format escapes what it shows of v itself)
 		if v == nil then return L.NONE end
-		if spec.format then return spec.format(self, v) end
+		if spec.format then return spec.format(self, v, k) end
 		return ns.Escape(v)
 	end
+	local function Result(v) return { value = v, none = v == nil or nil } end
 	local function Matches(a, b) return (spec.same or Same)(a, b) end
 	local function Label(self, k)                         -- (so does a spec's label)
 		if spec.label then return spec.label(self, k) end
@@ -150,10 +152,12 @@ function Extension:Setting(name, spec)
 		end })
 	local function Kept(self, k, v)                       -- the game has v now, or an error that says what it has
 		local now = spec.get(self, k)
-		if not Matches(now, v) then error(("the game kept %s at %s"):format(Label(self, k), Shown(self, now)), 0) end
+		if not Matches(now, v) then error(("the game kept %s at %s"):format(Label(self, k), Shown(self, now, k)), 0) end
 		return now
 	end
-	return self:Do(name .. ".set", { title = spec.title, args = setArgs, reload = spec.reload, settleTime = spec.settleTime,
+	local reload = spec.reload
+	if type(reload) == "function" then reload = function(self, a) return spec.reload(self, Key(a)) end end
+	return self:Do(name .. ".set", { title = spec.title, args = setArgs, reload = reload, settleTime = spec.settleTime,
 		scope = spec.scope and function(self, a)
 			if type(spec.scope) == "function" then return spec.scope(self, Key(a)) end
 			return spec.scope
@@ -164,13 +168,14 @@ function Extension:Setting(name, spec)
 			local k = Key(a)
 			local why = spec.check and spec.check(self, k)
 			if why then return why end
-			return spec.validate and spec.validate(self, k, Value(self, a.value))
+			return spec.validate and spec.validate(self, k, Value(self, a.value, k))
 		end,
 		preview = function(self, a)
-			local k, v = Key(a), Value(self, a.value)
+			local k = Key(a)
+			local v = Value(self, a.value, k)
 			local now = spec.get(self, k)
-			local lines = { not spec.always and Matches(now, v) and L.UNCHANGED:format(Label(self, k), Shown(self, v))
-				or L.CHANGE:format(Label(self, k), Shown(self, now), Shown(self, v)) }
+			local lines = { not spec.always and Matches(now, v) and L.UNCHANGED:format(Label(self, k), Shown(self, v, k))
+				or L.CHANGE:format(Label(self, k), Shown(self, now, k), Shown(self, v, k)) }
 			local more = spec.explain and spec.explain(self, k, v)
 			for line in (more and ns.Text(more) .. "\n" or ""):gmatch("([^\r\n]*)\r?\n") do   -- a line each, escaped
 				if line ~= "" then lines[#lines + 1] = "|cff9c9ea6" .. ns.Escape(line) .. "|r" end
@@ -184,17 +189,23 @@ function Extension:Setting(name, spec)
 			return snap
 		end,
 		apply = function(self, a)
-			local k, v = Key(a), Value(self, a.value)
-			if not spec.always and Matches(spec.get(self, k), v) then return { value = v, unchanged = true } end   -- (a profile's step that agrees)
+			local k = Key(a)
+			local v = Value(self, a.value, k)
+			if not spec.always and Matches(spec.get(self, k), v) then   -- (a profile's step that agrees)
+				local out = Result(v)
+				out.unchanged = true
+				return out
+			end
 			spec.set(self, k, v)
-			if spec.settle then return { value = v } end      -- read back once it shows (settled)
-			return { value = Kept(self, k, v) }
+			if spec.settle then return Result(v) end         -- read back once it shows (settled)
+			return Result(Kept(self, k, v))
 		end,
 		settled = spec.settle and function(self, a)
-			local k, v = Key(a), Value(self, a.value)
+			local k = Key(a)
+			local v = Value(self, a.value, k)
 			local now = spec.get(self, k)
 			if Matches(now, v) then return true end
-			return false, ("the game shows %s at %s"):format(Label(self, k), Shown(self, now))
+			return false, ("the game shows %s at %s"):format(Label(self, k), Shown(self, now, k))
 		end or nil,
 		restore = function(self, snap)
 			local k = Key(snap)
@@ -333,6 +344,18 @@ function Kit:Call(id, args, opts)
 	local a = Schema.Check(cap, args)
 	if KINDS[cap.kind].proposed then return ns.Propose({ { cap = cap, args = a } }, opts) end
 	return cap.spec.run(cap.ext, a, type(opts) == "table" and opts or {})
+end
+
+-- why a Say / Do step would be refused if it were proposed now (its args, then its capability's check), or nil: a dry
+-- run, nothing is proposed
+function Kit:Check(id, args)
+	local cap = ns.caps[id]
+	if not cap then return ("no capability %s (its extension may be off)"):format(ns.Text(id)) end
+	local ok, a = pcall(Schema.Check, cap, args)
+	if not ok then return ns.Text(a) end
+	if type(cap.spec.check) ~= "function" then return nil end
+	local fine, why = pcall(cap.spec.check, cap.ext, a)
+	if not fine or why then return ns.Text(why) end
 end
 
 -- one proposal of several Say / Do steps, each { "<capability>", args } (or { cap = ..., args = ... }), confirmed once

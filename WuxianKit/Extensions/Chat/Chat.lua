@@ -154,8 +154,10 @@ chat:Say("send", { title = L"SEND",
 	doc = "proposes a chat message in `channel`. It is sent when the player clicks Run, or at once if they "
 		.. "pre-approved that channel (guild, officer, party, raid, instance or whisper; never say, yell or channel). "
 		.. "text: one line without |, at most 255 bytes once links are in; {item:<id>:<name>} and {spell:<id>:<name>} "
-		.. "become links, {quest:<id>:<name>} the name in brackets. target: for whisper the player's name (Name-Realm from "
-		.. "another realm), for channel the channel number. say, yell and channel must each be a proposal of their own",
+		.. "become links, {quest:<id>:<name>} the name in brackets. target: for whisper the player's whole name, as "
+		.. "sense.character, sense.group and chat.listen give it (both parts where a name has two, \"Name Surname\"; "
+		.. "Name-Realm from another realm), for channel the channel number. say, yell and channel must each be a proposal "
+		.. "of their own",
 	scope = function(_, a) return CAN_GRANT[a.channel] and a.channel or nil end,
 	alone = function(_, a) return not CAN_GRANT[a.channel] end,   -- say, yell, channel: from the click itself
 	check = function(_, a)

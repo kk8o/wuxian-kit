@@ -20,8 +20,10 @@ Extension id `chat`. Listens to chat channels and sends messages for the player.
 
 ## Sending
 
-- `wk_chat_send` with `{"channel": "guild", "text": "..."}`; a whisper: `{"channel": "whisper", "target": "Name-Realm",
-  "text": "..."}`.
+- `wk_chat_send` with `{"channel": "guild", "text": "..."}`; a whisper: `{"channel": "whisper", "target": "<name>",
+  "text": "..."}`, the player's whole name as `wk_sense_character`, `wk_sense_group` and a heard message's `sender` give
+  it: both parts where the client gives a name two ("Name Surname"), `Name-Realm` for a player of another realm. A name
+  the server does not find is answered in the player's chat, not here.
 - `text`: one line, no `|`, at most 255 bytes. `{item:<id>:<name>}` and `{spell:<id>:<name>}` become links.
 - The player clicks 执行 (Run) to send it. If they pre-approved that channel (guild, officer, party, raid, instance or
   whisper), it is sent at once, without a click.
