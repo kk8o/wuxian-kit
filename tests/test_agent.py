@@ -73,7 +73,7 @@ class Agent(unittest.TestCase):
                      "chat.send", "chat.listen", "chat.listen.stop"):
             self.assertIn(want, names)
         doc = next(e["doc"] for e in api["exposed"] if e["name"] == "tune.cvar.set")
-        self.assertTrue(doc.startswith("[Do: a proposal.] change a setting (CVar) of the client"), doc)
+        self.assertTrue(doc.startswith("[Change: a proposal.] proposes to change a client setting (CVar)"), doc)
         self.assertIn("Options: _title, _ttl", doc)
         ready = self.events("kit.ready")[0]["data"]
         self.assertEqual({e["id"] for e in ready["extensions"]}, {"kit", "chat", "tune", "gate", "data", "guide", "sense"})

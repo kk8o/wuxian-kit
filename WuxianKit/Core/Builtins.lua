@@ -26,7 +26,7 @@ kit:See("proposals", { title = L"LIST_PROPOSALS",
 	doc = "the proposals still open and the last finished ones: id, state (pending: waits for the player; waiting: "
 		.. "pre-approved or confirmed, for its time or until it can run; queued: after combat; running: a step waits for "
 		.. "the game to show it; done, failed, declined, expired, undone), title, source, steps with their preview and "
-		.. "result, error. Pending and waiting ones expire; queued and running ones do not",
+		.. "result, error. Pending and waiting ones expire; queued and running ones do not; a UI reload drops the open ones",
 	run = function() return Kit:Proposals() end })
 
 kit:See("proposal", { title = L"ONE_PROPOSAL", args = { id = "number" },
@@ -37,7 +37,7 @@ kit:See("proposal", { title = L"ONE_PROPOSAL", args = { id = "number" },
 
 kit:See("history", { title = L"HISTORY", args = { limit = "number?" },
 	doc = "what ran on this character, newest last: the last `limit` proposals (20, up to 50: all that are kept): id, "
-		.. "title, source, ran (time()), steps {cap, args (a long text shortened), preview}, undoable, undone",
+		.. "title, source, ran (Unix time), steps {cap, args (a long text shortened), preview}, undoable, undone",
 	run = function(_, a)                                 -- as the proposals read: no snapshots, no layout strings in full
 		local all, out = ns.History(), {}
 		local limit = math.max(1, math.min(math.floor(tonumber(a and a.limit) or 20), 50))
@@ -93,7 +93,8 @@ kit:Event("feed", { doc = "a feed started or stopped", data = { extension = "str
 	ends = "number?", options = "table?" } })
 
 kit:Do("undo", { title = L"UNDO", args = { id = "number" }, scope = "undo", notes = false,
-	doc = "undo a proposal that ran (see kit.history): what its steps changed is put back, last step first",
+	doc = "proposes to undo a proposal that ran (its id from kit.history): what its steps changed is put back, last step "
+		.. "first; only on the character it ran on; what cannot be undone (a sent message, a bag sort) stays",
 	check = function(_, a)
 		for _, h in ipairs(ns.History()) do
 			if h.id == a.id then

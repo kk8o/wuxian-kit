@@ -348,11 +348,11 @@ class Tune(unittest.TestCase):
                              ("layout", "a moment later"), ("talent", "a moment later"), ("addon", "after a reload")):
             self.assertNotIn(change, caps[f"tune.{name}.get"]["doc"], name)
             self.assertIn(change, caps[f"tune.{name}.set"]["doc"], name)
-            self.assertTrue(caps[f"tune.{name}.set"]["doc"].endswith("so it can be undone"), name)
+            self.assertTrue(caps[f"tune.{name}.set"]["doc"].endswith("so the change can be undone"), name)
         self.assertTrue(caps["tune.profile.apply"].get("proposes"))
         self.assertEqual([c for c, v in caps.items() if v.get("proposes")], ["tune.profile.apply"])
         self.assertNotIn("refused", caps["tune.cvar.get"]["doc"])                   # reading a read-only one works
-        self.assertIn("read-only and locked ones are refused", caps["tune.cvar.set"]["doc"])
+        self.assertIn("read-only and locked settings are refused", caps["tune.cvar.set"]["doc"])
 
     def test_what_the_agent_gets_back(self):
         """no value is {none = true}, not an empty table (a list to the agent); a value that is already so previews as

@@ -138,8 +138,8 @@ function Extension:Setting(name, spec)
 	local getArgs, setArgs = {}, { value = spec.value or "any" }
 	for k, v in pairs(spec.key or {}) do getArgs[k], setArgs[k] = v, v end
 	self:See(name .. ".get", { title = spec.titleGet or spec.title, args = getArgs,
-		doc = ("read %s: its value (none = true when there is none)%s"):format(spec.doc or name,
-			spec.info and " and more about it" or ""),
+		doc = ("reads %s: answers {value}%s ({none = true} when it has no value)"):format(spec.doc or name,
+			spec.info and " and more fields about it" or ""),
 		run = function(self, a)
 			local why = spec.check and spec.check(self, a, true)
 			if why then error(("%s.%s.get: %s"):format(self.id, name, why), 0) end
@@ -158,7 +158,7 @@ function Extension:Setting(name, spec)
 			if type(spec.scope) == "function" then return spec.scope(self, Key(a)) end
 			return spec.scope
 		end,
-		doc = ("change %s%s; the old value is kept, so it can be undone"):format(spec.doc or name,
+		doc = ("proposes to change %s%s; the old value is kept, so the change can be undone"):format(spec.doc or name,
 			spec.change and ("; " .. spec.change) or ""),
 		check = function(self, a)
 			local k = Key(a)
@@ -273,8 +273,9 @@ function Extension:Feed(name, spec)
 	local title = spec.title or name
 	self:Event(topic, { doc = spec.eventDoc or spec.doc, data = spec.data })
 	self:See(name, { title = title, args = args,
-		doc = ("%s, for `minutes` (%d, at most %d); starting again replaces it; each one is the event %s.%s"):format(
-			spec.doc or name, spec.minutes or 60, spec.most or 720, self.id, topic),
+		doc = ("starts a feed that %s, for `minutes` (default %d, at most %d); calling it again replaces the running "
+			.. "one. Each item is the event %s.%s: read it with the events tool (addon \"WuxianKit\", topic \"%s.%s\")"):format(
+			spec.doc or name, spec.minutes or 60, spec.most or 720, self.id, topic, self.id, topic),
 		run = function(self, a)
 			local o = {}
 			for k in pairs(spec.options or {}) do o[k] = a[k] end
@@ -288,12 +289,13 @@ function Extension:Feed(name, spec)
 			Kit:Emit("kit.feed", { extension = self.id, feed = name, on = true, ends = s.ends, options = o })
 			return Status(feed)
 		end })
-	self:See(name .. ".stop", { title = function() return L.STOP .. " · " .. ns.T(title) end, doc = ("stop: %s"):format(spec.doc or name),
+	self:See(name .. ".stop", { title = function() return L.STOP .. " · " .. ns.T(title) end,
+		doc = ("stops the feed %s.%s; answers its status"):format(self.id, name),
 		run = function()
 			ns.FeedStop(feed)
 			return Status(feed)
 		end })
-	self:See(name .. ".status", { title = title, doc = ("whether it runs (on), until when (ends: a time()), its options"),
+	self:See(name .. ".status", { title = title, doc = "answers whether the feed runs: {on, ends (Unix time), and its options}",
 		run = function() return Status(feed) end })
 	return feed
 end

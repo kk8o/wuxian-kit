@@ -21,9 +21,14 @@ What the player wants: {{goal}}
    - `tune.cvar.set` {name, value}, `tune.binding.set` {key, value} (no value clears the key),
      `tune.macro.set` {name, value}, `tune.layout.set` {value}, `tune.talent.set` {value},
      `tune.gear.use` {name}, `tune.addon.set` {name, value};
-   - a short `title` that says what it is for.
-5. Tell the player what will change and that they confirm it in the game, then `wk_wait` with the proposal's id.
+   - a short `title` that says what it is for. Example: `{"title": "Auto loot and a map key", "steps": [{"cap":
+     "tune.cvar.set", "args": {"name": "autoLootDefault", "value": "1"}}, {"cap": "tune.binding.set", "args": {"key":
+     "CTRL-M", "value": "TOGGLEWORLDMAP"}}]}`;
+   - `cap` is a capability id with dots; the options here are `title`, `ttl` and `after`, without the underscore.
+5. Tell the player what will change and that they confirm it in the game. If the answer's `state` is already `done`,
+   the categories were pre-approved and it ran. Otherwise call `wk_wait` with `{"proposal": <id>}`.
 6. After it:
+   - `timeout: true`: the player has not decided yet; call `wk_wait` again or ask them;
    - done: say what changed. It can be undone as one from the /wk window (执行记录), or with `wk_kit_undo` when the
      player asks;
    - failed: say why; the steps before the failing one were rolled back;

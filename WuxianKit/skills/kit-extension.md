@@ -22,10 +22,15 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - an existing addon that must keep working without WuxianKit: `## OptionalDeps: WuxianKit`,
      `## X-WuxianKit-Extension: <id>`, and register only `if WuxianKit then ... end`.
 4. The code: `Kit:Words` with Chinese and English, `Kit:Extension(id, { title = L"TITLE", version = ... })`, then the
-   declarations. Use `L"KEY"` in declarations and `L.KEY` at run time. Every Change capability takes a `snapshot` so it
-   can be undone; a change the client makes a moment later declares `settled`. Whatever a preview, label or format
-   shows of the args goes through `WuxianKit:Escape`; a message to a public channel declares `alone`. Player-facing words short and plain;
-   `doc` texts and errors in English.
+   declarations. Use `L"KEY"` in declarations and `L.KEY` at run time.
+   - `snapshot(self, args)`: every Change capability returns what an undo needs (without it the change cannot be
+     undone);
+   - `settled(self, args, result)`: only for a change the client makes a moment later; it returns true once the game
+     shows the change (the step fails after 5 s);
+   - `alone = true`: a message to a public channel; it must be a proposal of its own;
+   - whatever a preview, label or format shows of the args goes through `WuxianKit:Escape`;
+   - `doc`: one English sentence starting with a verb (Returns... / Proposes to...), naming other capabilities by
+     their id; errors in English; player-facing words short and plain.
 5. Docs: an `AGENT.md` in the addon folder (what the tools are for, how to use them together, cautions), and
    `skills/<name>.md` only for a workflow that needs several tools in order.
 6. Check: the workshop's `check` on the addon until it reports no errors. Keep each capability's full id

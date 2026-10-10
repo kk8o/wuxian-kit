@@ -98,10 +98,11 @@ local function Readable(raw)                             -- a value as the agent
 end
 
 tune:Setting("cvar", { title = L"CVAR",
-	doc = "a setting (CVar) of the client (a bit-field one, bits = true, reads as the bits that are on: \"bits:1,4\")",
-	change = "a value is a string, number or boolean (true / false as 1 / 0), for a bit-field one the bits to have on "
-		.. "(\"bits:1,4\"; \"bits:\" turns all off); its pre-approval category is settings.<category> (graphics, sound, game, "
-		.. "combat, net, other); secure, read-only and locked ones are refused",
+	doc = "a client setting (CVar) by its name; a bit-field setting (bits = true) reads as the bits that are on, e.g. "
+		.. "\"bits:1,4\"",
+	change = "value: a string, number or boolean (true and false are written as 1 and 0); for a bit-field setting, all "
+		.. "the bits that should be on (\"bits:1,4\"; \"bits:\" turns all off). Its pre-approval category is the setting's "
+		.. "(graphics, sound, game, combat, net or other). Secure, read-only and locked settings are refused",
 	key = { name = "string" }, value = "string|number|boolean",
 	scope = function(_, k)
 		local c = Entry(k.name).category

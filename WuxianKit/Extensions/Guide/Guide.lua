@@ -219,7 +219,8 @@ guide:Event("tour", { doc = "a tour's progress: a step shown, the tour done or c
 
 guide:Point("highlight", { title = L"HIGHLIGHT", args = { frame = "string", text = "string?", seconds = "number?" },
 	doc = "a glowing frame round a part of the UI (frame: its global name or a path from one, e.g. CharacterMicroButton, "
-		.. "PlayerFrame.healthbar), text under it, for seconds (30, at most 600); answers whether that frame shows now",
+		.. "PlayerFrame.healthbar), text under it, for seconds (30, at most 600); answers {frame, shown}: shown = false, the "
+		.. "frame is hidden (ask the player to open its window first)",
 	run = function(_, a)
 		local target, why = Target(a.frame)
 		if not target then error(why, 0) end
@@ -243,8 +244,8 @@ guide:Point("note", { title = L"NOTE", args = { text = "string", frame = "string
 	end })
 
 guide:Point("waypoint", { title = L"WAYPOINT", args = { x = "number", y = "number", map = "number?" },
-	doc = "the map's pin at x, y (0-100) on a map (its id; the one the player is on without), with its arrow; it takes the "
-		.. "place of a pin the player had",
+	doc = "sets the player's map pin, with its arrow, at x, y (0-100, as sense.position gives them) on map `map` (a map "
+		.. "id; default the player's); it replaces a pin the player had set",
 	run = function(_, a)
 		local map = a.map or C_Map.GetBestMapForUnit("player")
 		if not map then error("no map here", 0) end

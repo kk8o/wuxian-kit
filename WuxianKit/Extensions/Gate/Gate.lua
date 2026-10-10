@@ -187,11 +187,13 @@ end)
 
 gate:Say("propose", { title = L"PROPOSE", scope = "propose",
 	args = { to = "string?", channel = "party|raid|guild?", title = "string", steps = "table", ttl = "number?" },
-	doc = "hand a proposal to other players' WuxianKit: to (a player's whole name) or channel (party, raid, guild), a "
-		.. "title, steps [{cap, args}] of Change capabilities of the tune extension only (tune.*: settings, key bindings, "
-		.. "macros, layouts, talents, gear, bags, addons, profiles), ttl; each one sees it as from you and clicks or not, "
-		.. "and takes it only if they allow you; each one's end comes back as the event gate.result {from, id, state} "
-		.. "(refused says no more)",
+	doc = "proposes to send a proposal to other players' WuxianKit: either `to` (one player's full name) or `channel` "
+		.. "(party, raid or guild), never both; a title; steps [{cap, args}], 1-20 Change steps of the tune extension only "
+		.. "(tune.* capability ids). ttl: seconds each receiver's proposal waits for them (_ttl: how long your own player's "
+		.. "confirmation waits). Each receiver clicks Run themselves (their pre-approvals never apply) and takes it only "
+		.. "if they allow you. Each receiver's end comes back as the event gate.result {from, id, state}: done, declined, "
+		.. "expired, failed, busy (one of yours is still open there) or refused (no reason given); id is the one in your "
+		.. "proposal's step result",
 	check = function(_, a)
 		if (a.to == nil) == (a.channel == nil) then return "one of to (a player) or channel (party, raid, guild)" end
 		if not Steps(a.steps) then return ("steps: 1 to %d of {cap, args}, each cap a tune.* one"):format(MAX_STEPS) end

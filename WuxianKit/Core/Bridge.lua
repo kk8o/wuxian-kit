@@ -29,8 +29,8 @@ end
 ns.bound = WB ~= nil
 local FEED_RATE, FEED_BURST, KEPT, DROPPED_EVERY = 6, 12, 50, 5
 local OPTIONS = { _title = "title", _ttl = "ttl", _after = "after" }
-local KIND_DOC = { see = "See: runs at once.", keep = "Keep: runs at once.", point = "Point: runs at once, changes nothing.",
-	say = "Say: a proposal.", ["do"] = "Do: a proposal." }
+local KIND_DOC = { see = "Read: runs at once, changes nothing.", keep = "Store: runs at once.",
+	point = "Guide: runs at once, changes no setting.", say = "Send: a proposal.", ["do"] = "Change: a proposal." }
 local exposed = {}
 
 -- the args of an agent's call without the proposal options, and the options
@@ -45,12 +45,12 @@ local function Split(args)
 end
 
 local function Doc(cap)
-	local kind = cap.proposes and "Proposes: runs at once and answers with a proposal of other steps." or KIND_DOC[cap.kind]
+	local kind = cap.proposes and "Proposal: runs at once and answers with a proposal of other steps." or KIND_DOC[cap.kind]
 	local text = ("[%s] %s Args: %s."):format(kind, cap.doc, cap.argText)
 	if ns.KINDS[cap.kind].proposed or cap.proposes then
-		text = text .. " Answers with the proposal {id, state, steps}: the player confirms it in the game (unless they let"
-			.. " its scope go without asking); its end is the event kit.proposal. Options: _title, _ttl (10-600 s), _after"
-			.. " (a time() before which it may not run)."
+		text = text .. " Answers with the proposal {id, state, steps}: the player confirms it in the game, unless they"
+			.. " pre-approved its category; its end is the event kit.proposal. Options: _title, _ttl (10-600 s), _after"
+			.. " (a Unix time before which it may not run; not a delay)."
 	end
 	return text
 end

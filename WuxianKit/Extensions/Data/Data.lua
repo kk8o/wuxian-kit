@@ -59,14 +59,14 @@ data:Keep("put", { title = L"PUT", args = { key = "string", value = "any" },
 		return { key = key, bytes = size }
 	end })
 
-data:Keep("get", { title = L"GET", args = { key = "string" },
-	doc = "a record: {key, value, bytes}, or {key} when there is none of that key",
+data:See("get", { title = L"GET", args = { key = "string" },
+	doc = "reads a record: {key, value, bytes}, or only {key} when there is none",
 	run = function(self, a)
 		return { key = a.key, value = Copy(self.db.records[a.key]), bytes = self.db.sizes[a.key] }
 	end })
 
-data:Keep("list", { title = L"LIST", args = { prefix = "string?" },
-	doc = "the records whose key starts with prefix (all without): {key, bytes}, by key",
+data:See("list", { title = L"LIST", args = { prefix = "string?" },
+	doc = "lists the records, all or those whose key starts with `prefix`: [{key, bytes}] by key, without values",
 	run = function(self, a)
 		local out = {}
 		for key, size in pairs(self.db.sizes) do
@@ -77,7 +77,7 @@ data:Keep("list", { title = L"LIST", args = { prefix = "string?" },
 	end })
 
 data:Keep("delete", { title = L"DELETE", args = { key = "string" },
-	doc = "delete a record; answers whether there was one",
+	doc = "deletes a record at once, for good (no undo); answers true when there was one",
 	run = function(self, a)
 		local had = self.db.sizes[a.key] ~= nil
 		self.db.records[a.key], self.db.sizes[a.key] = nil, nil

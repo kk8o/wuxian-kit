@@ -64,7 +64,7 @@ tune:Do("gear.use", { title = L"USE", scope = "gear", args = { name = "string" }
 	end })
 
 tune:Do("gear.save", { title = L"SAVE", scope = "gear", args = { name = "string" },
-	doc = "what is worn now as a new equipment set of that name (up to 16 bytes); undo deletes it",
+	doc = "proposes to save what the character wears now as a new equipment set named `name` (1-16 bytes); undo deletes it",
 	check = function(_, a)
 		local why = Usable()
 		if why then return why end

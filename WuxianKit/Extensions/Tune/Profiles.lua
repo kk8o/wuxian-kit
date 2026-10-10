@@ -61,8 +61,8 @@ local function Now(id, args)
 end
 
 tune:Keep("profile.save", { title = L"SAVE", args = { name = "string", steps = "table" },
-	doc = "keep a profile: a name and steps, [{cap, args}], each a Do capability of any extension (tune.cvar.set, "
-		.. "tune.binding.set, tune.layout.set, tune.macro.set ...), at most 40; a profile of that name is replaced",
+	doc = "keeps a profile: a name and steps [{cap, args}], at most 40, each cap the id of a Change capability with dots "
+		.. "(\"tune.cvar.set\", \"tune.binding.set\", \"tune.layout.set\" ...; not the tool name); a profile of that name is replaced",
 	run = function(self, a) return Keep(self, a.name, a.steps) end })
 
 tune:Keep("profile.capture", { title = L"CAPTURE",
@@ -115,9 +115,8 @@ tune:See("profile.get", { title = L"GET", args = { name = "string" },
 	end })
 
 tune:Point("profile.apply", { title = L"APPLY", args = { name = "string" }, proposes = true,
-	doc = "make a proposal of a profile's steps (one click runs them all, undo takes them all back): answers with the "
-		.. "proposal; options _title, _ttl, _after as for any proposal. An imported profile always waits for the "
-		.. "player's click (pre-approval does not count for it)",
+	doc = "makes one proposal of a profile's steps (one click runs them all, one undo takes them all back). An imported "
+		.. "profile always waits for the player's click (pre-approval does not count for it)",
 	run = function(self, a, opts)
 		local p, steps = Profile(self, a.name), {}
 		for i, s in ipairs(p.steps) do steps[i] = { s.cap, s.args } end
