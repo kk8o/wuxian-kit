@@ -55,6 +55,7 @@ ns.WORDS = {
 		NOT_OPEN = "提案 #%d 不在待处理状态",
 		-- patterns
 		CHANGE = "%s：%s → %s",
+		UNCHANGED = "%s：%s（不变）",
 		ON = "开启",
 		OFF = "关闭",
 		FEED_STARTED = "%s：%s，至 %s",
@@ -159,6 +160,7 @@ ns.WORDS = {
 		NONE_OPEN = "No pending proposals",
 		NOT_OPEN = "Proposal #%d is not pending",
 		CHANGE = "%s: %s → %s",
+		UNCHANGED = "%s: %s (unchanged)",
 		ON = "On",
 		OFF = "Off",
 		FEED_STARTED = "%s: %s, until %s",

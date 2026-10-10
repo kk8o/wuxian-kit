@@ -135,12 +135,14 @@ function Extension:Setting(name, spec)
 	local getArgs, setArgs = {}, { value = spec.value or "any" }
 	for k, v in pairs(spec.key or {}) do getArgs[k], setArgs[k] = v, v end
 	self:See(name .. ".get", { title = spec.titleGet or spec.title, args = getArgs,
-		doc = ("read %s: its value%s"):format(spec.doc or name, spec.info and " and more about it" or ""),
+		doc = ("read %s: its value (none = true when there is none)%s"):format(spec.doc or name,
+			spec.info and " and more about it" or ""),
 		run = function(self, a)
 			local why = spec.check and spec.check(self, a, true)
 			if why then error(("%s.%s.get: %s"):format(self.id, name, why), 0) end
 			local out = spec.info and spec.info(self, a) or {}
 			out.value = spec.get(self, a)
+			if out.value == nil then out.none = true end      -- else an empty answer reads as a list to the agent
 			return out
 		end })
 	local function Kept(self, k, v)                       -- the game has v now, or an error that says what it has
@@ -163,7 +165,9 @@ function Extension:Setting(name, spec)
 		end,
 		preview = function(self, a)
 			local k, v = Key(a), Value(self, a.value)
-			local lines = { L.CHANGE:format(Label(self, k), Shown(self, spec.get(self, k)), Shown(self, v)) }
+			local now = spec.get(self, k)
+			local lines = { Matches(now, v) and L.UNCHANGED:format(Label(self, k), Shown(self, v))
+				or L.CHANGE:format(Label(self, k), Shown(self, now), Shown(self, v)) }
 			local more = spec.explain and spec.explain(self, k, v)
 			for line in (more and ns.Text(more) .. "\n" or ""):gmatch("([^\r\n]*)\r?\n") do   -- a line each, escaped
 				if line ~= "" then lines[#lines + 1] = "|cff9c9ea6" .. ns.Escape(line) .. "|r" end
@@ -178,6 +182,7 @@ function Extension:Setting(name, spec)
 		end,
 		apply = function(self, a)
 			local k, v = Key(a), Value(self, a.value)
+			if Matches(spec.get(self, k), v) then return { value = v, unchanged = true } end   -- (a profile's step that agrees)
 			spec.set(self, k, v)
 			if spec.settle then return { value = v } end      -- read back once it shows (settled)
 			return { value = Kept(self, k, v) }

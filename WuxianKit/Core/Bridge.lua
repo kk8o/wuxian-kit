@@ -41,12 +41,40 @@ local function Doc(cap)
 	return text
 end
 
+-- a proposal (or an entry of kit.history) as the agent reads it: its steps' previews as plain text (ns.Plain), without
+-- the color codes and escapes the window and the other addons get
+local function Plainly(p)
+	if type(p) ~= "table" or type(p.steps) ~= "table" then return p end
+	local copy, steps = {}, {}
+	for k, v in pairs(p) do copy[k] = v end
+	for i, s in ipairs(p.steps) do
+		local step = {}
+		for k, v in pairs(s) do step[k] = v end
+		step.preview = ns.Plain(s.preview)
+		steps[i] = step
+	end
+	copy.steps = steps
+	return copy
+end
+
+local LISTS = { ["kit.proposals"] = true, ["kit.history"] = true }
+
+local function ForAgent(cap, result)
+	if ns.KINDS[cap.kind].proposed or cap.proposes or cap.id == "kit.proposal" then return Plainly(result) end
+	if LISTS[cap.id] and type(result) == "table" then
+		local out = {}
+		for i, p in ipairs(result) do out[i] = Plainly(p) end
+		return out
+	end
+	return result
+end
+
 local function Expose(cap)
 	if not WB or exposed[cap.id] == cap then return end
 	exposed[cap.id] = cap
 	WB:Expose(cap.id, function(args)
 		local clean, opts = Split(args)
-		return Kit:Call(cap.id, clean, opts)
+		return ForAgent(cap, Kit:Call(cap.id, clean, opts))
 	end, Doc(cap))
 end
 
@@ -56,6 +84,7 @@ local dropped, droppedAt = {}, 0                        -- topic -> how many of 
 
 function ns.Forward(topic, data)
 	if not WB then return end
+	if topic == "kit.proposal" then data = Plainly(data) end
 	if topic:sub(1, 4) == "kit." then
 		if #again == 0 and WB:Emit(topic, data) then return end
 		if #again >= KEPT then table.remove(again, 1) end
@@ -91,7 +120,7 @@ if WB then
 		for i, s in ipairs(type(a.steps) == "table" and a.steps or {}) do
 			steps[i] = type(s) == "table" and { s.cap or s[1], s.args or s[2] } or s
 		end
-		return Kit:Propose(steps, { source = "agent", title = a.title, ttl = a.ttl, after = a.after })
+		return Plainly(Kit:Propose(steps, { source = "agent", title = a.title, ttl = a.ttl, after = a.after }))
 	end, "Several say / do steps in one proposal the player confirms once: {title, steps: [{cap, args}], ttl (10-600 s),"
 		.. " after (time())}. Answers with the proposal; its end is the event kit.proposal.")
 	for _, cap in pairs(ns.caps) do Expose(cap) end      -- what went live before this file loaded

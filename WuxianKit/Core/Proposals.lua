@@ -94,6 +94,23 @@ local function Brief(args)
 	return out
 end
 
+ns.Brief = Brief
+
+-- a preview as the agent reads it (Bridge.lua): plain text, no color, texture or link codes, an escaped "||" back to "|".
+-- Callers and the bus keep the lines as the window shows them, escaped, so that an addon may show them as they are.
+local function Plain(lines)
+	local out = {}
+	for i, line in ipairs(type(lines) == "table" and lines or {}) do
+		if type(line) == "string" then
+			line = line:gsub("||", "\1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+				:gsub("|H.-|h(.-)|h", "%1"):gsub("\1", "|")
+		end
+		out[i] = line
+	end
+	return out
+end
+ns.Plain = Plain
+
 -- a proposal as callers and the agent see it
 local function Summary(p)
 	local steps = {}

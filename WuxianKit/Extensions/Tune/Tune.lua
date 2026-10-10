@@ -51,7 +51,8 @@ local function Info(name)
 end
 
 tune:Setting("cvar", { title = L"CVAR",
-	doc = "a setting (CVar) of the client; a value is a string, number or boolean (true / false as 1 / 0); scope "
+	doc = "a setting (CVar) of the client",
+	change = "a value is a string, number or boolean (true / false as 1 / 0); its pre-approval category is "
 		.. "settings.<category> (graphics, sound, game, combat, net, other); secure, read-only and locked ones are refused",
 	key = { name = "string" }, value = "string|number|boolean",
 	scope = function(_, k)

@@ -36,9 +36,18 @@ kit:See("proposal", { title = L"ONE_PROPOSAL", args = { id = "number" },
 	end })
 
 kit:See("history", { title = L"HISTORY",
-	doc = "what ran on this character, newest last (of the last 50 proposals): id, title, source, ran (time()), steps, "
-		.. "undoable, undone",
-	run = function() return ns.History() end })
+	doc = "what ran on this character, newest last (of the last 50 proposals): id, title, source, ran (time()), steps "
+		.. "{cap, args (a long text shortened), preview}, undoable, undone",
+	run = function()                                     -- as the proposals read: no snapshots, no layout strings in full
+		local out = {}
+		for i, e in ipairs(ns.History()) do
+			local steps = {}
+			for j, s in ipairs(e.steps or {}) do steps[j] = { cap = s.cap, args = ns.Brief(s.args), preview = s.preview } end
+			out[i] = { id = e.id, title = e.title, source = e.source, ran = e.ran, steps = steps, undoable = e.undoable,
+				undone = e.undone }
+		end
+		return out
+	end })
 
 kit:Setting("extension", { title = L"SWITCH", doc = "whether an extension is on",
 	key = { extension = "string" }, value = "boolean", scope = "extensions",

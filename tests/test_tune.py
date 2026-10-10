@@ -343,6 +343,39 @@ class Tune(unittest.TestCase):
             self.assertTrue(caps[f"tune.{name}.set"]["doc"].endswith("so it can be undone"), name)
         self.assertTrue(caps["tune.profile.apply"].get("proposes"))
         self.assertEqual([c for c, v in caps.items() if v.get("proposes")], ["tune.profile.apply"])
+        self.assertNotIn("refused", caps["tune.cvar.get"]["doc"])                   # reading a read-only one works
+        self.assertIn("read-only and locked ones are refused", caps["tune.cvar.set"]["doc"])
+
+    def test_what_the_agent_gets_back(self):
+        """no value is {none = true}, not an empty table (a list to the agent); a value that is already so previews as
+        unchanged and its step leaves the game alone; kit.history leaves out the snapshots and shortens a long argument
+        as kit.proposals does (the previews' plain text for the agent: test_agent)"""
+        s = self.start()
+        self.assertEqual(self.call(s, "tune.macro.get", "{ name = 'nonexistent' }"), {"none": True})
+        s.lua.execute(b"__sets = 0 local set = C_CVar.SetCVar C_CVar.SetCVar = function(...) __sets = __sets + 1 "
+                      b"return set(...) end")
+        same = self.call(s, "tune.cvar.set", "{ name = 'nameplateShowAll', value = 0 }")
+        self.assertEqual(same["steps"][0]["preview"][0], "nameplateShowAll: 0 (unchanged)")
+        self.run_it(s)
+        s.run(0.3)
+        self.assertTrue(self.done(s, same["id"]))
+        self.assertEqual(s.lua.eval(b"__sets"), 0)
+        p = self.call(s, "tune.cvar.set", "{ name = 'nameplateShowAll', value = 1 }")
+        self.assertEqual(p["steps"][0]["preview"],
+                         ["nameplateShowAll: 0 → 1", "|cff9c9ea6If true, nameplates are shown all the time.|r"])
+        self.run_it(s)
+        s.run(0.3)
+        self.assertEqual(s.lua.eval(b"__sets"), 1)
+        text = "EM1:{ systems = {}, pad = \"" + "x" * 300 + "\" }"                     # a share string as the mock makes them
+        s.lua.execute(b"__long = WuxianKit:Propose({ { 'tune.layout.import', { name = 'Long', text = '"
+                      + text.encode() + b"' } } }, { source = 'agent' })")
+        history = self.call(s, "kit.history")
+        self.assertEqual([h["id"] for h in history], [same["id"], p["id"]])
+        for h in history:
+            self.assertEqual(set(h["steps"][0]), {"cap", "args", "preview"})
+        self.assertEqual(history[1]["steps"][0]["args"], {"name": "nameplateShowAll", "value": 1})
+        brief = self.call(s, "kit.proposals")
+        self.assertIn(f"...({len(text)} bytes)", [x for x in brief if x["id"] == py(s.g("__long"))["id"]][0]["steps"][0]["args"]["text"])
 
 
 if __name__ == "__main__":

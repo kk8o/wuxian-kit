@@ -82,6 +82,9 @@ class Agent(unittest.TestCase):
         s.slash("set hotLoad off")                                        # only data calls from here on
         res = self.call("tune.cvar.set", {"name": "nameplateShowAll", "value": 1, "_title": "show all nameplates"})
         self.assertEqual((res["state"], res["source"], res["title"]), ("pending", "agent", "show all nameplates"))
+        plain = lambda p: [line for st in p["steps"] for line in st["preview"]]          # the agent reads no color codes
+        self.assertTrue(plain(res) and not any("|c" in line or "|r" in line for line in plain(res)), plain(res))
+        self.assertIn("If true, nameplates are shown all the time.", plain(res))      # the help line, its color gone
         s.run(4)
         self.assertEqual([e["data"]["state"] for e in self.events("kit.proposal")], ["pending"])
         run = s.lua.globals()[b"WuxianKitProposal"][b"run"]
@@ -89,7 +92,10 @@ class Agent(unittest.TestCase):
         s.run(4)
         done = self.events("kit.proposal")[-1]["data"]
         self.assertEqual((done["id"], done["state"]), (res["id"], "done"))
+        self.assertEqual(plain(done), plain(res))                                  # the event as plain as the answer
         self.assertEqual(s.lua.globals()[b"__cvars"][b"nameplateShowAll"][b"value"], b"1")
+        ran = self.call("kit.history")[-1]
+        self.assertEqual((ran["id"], set(ran["steps"][0]), plain(ran)), (res["id"], {"cap", "args", "preview"}, plain(res)))
         both = self.call("kit.propose", {"title": "quieter", "steps": [
             {"cap": "tune.cvar.set", "args": {"name": "Sound_MasterVolume", "value": 0.3}},
             {"cap": "chat.send", "args": {"channel": "guild", "text": "brb"}}]})
