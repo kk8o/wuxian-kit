@@ -115,7 +115,7 @@ end
 -- the window
 
 local f
-local W = 470
+local W = 560
 local off = {}                        -- the keys ticked off in this window (all ticked when it opens)
 
 local function Link()
