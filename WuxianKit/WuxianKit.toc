@@ -3,7 +3,7 @@
 ## Title-zhCN: 无限工坊 · 扩展框架 (WuxianKit)
 ## Notes: Connects addons to an AI agent. Addons declare capabilities, which the agent uses through Wuxian Workshop; changes to the game run only when the player confirms, and can be undone. Works on its own too: addons call each other through it. /wk opens the window.
 ## Notes-zhCN: 插件的 Agent 接入框架。插件把功能声明为能力，供 AI Agent 经无限工坊调用；更改游戏的操作由玩家确认，可以撤销。不装无限工坊也能单独使用。/wk 打开窗口。
-## Version: 0.4.2
+## Version: 0.4.3
 ## X-Website: https://wuxianwow.com/workshop/extensions
 ## X-Wuxian-ID: wuxiankit
 ## IconTexture: Interface\AddOns\WuxianKit\Media\logo-small
