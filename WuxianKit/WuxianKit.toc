@@ -38,3 +38,4 @@ Extensions\Gate\Gate.lua
 Extensions\Data\Data.lua
 Extensions\Guide\Guide.lua
 Extensions\Sense\Sense.lua
+Extensions\Codex\Codex.lua

@@ -77,7 +77,7 @@ end
 for _, m in ipairs({ "SetFrameStrata", "SetFrameLevel", "SetToplevel", "SetClampedToScreen", "EnableMouse", "SetMovable",
 	"RegisterForDrag", "RegisterForClicks", "ClearAllPoints", "SetAllPoints", "SetJustifyH", "SetJustifyV", "SetWordWrap",
 	"SetTexture", "SetTexCoord", "SetPushedTextOffset", "SetHighlightTexture", "SetIgnoreParentScale", "SetClipsChildren",
-	"EnableMouseWheel", "SetAutoFocus", "SetFontObject", "SetTextInsets", "SetMaxLetters", "Raise" }) do
+	"EnableMouseWheel", "SetAutoFocus", "SetFontObject", "SetTextInsets", "SetMaxLetters", "Raise", "HighlightText" }) do
 	Region[m] = function() end
 end
 function Region:SetSize(w, h) self.w, self.h = w, h end
@@ -606,7 +606,7 @@ C_EncodingUtil = {
 }
 
 -- the character and what Sense reads of it: where it is, its quests, professions, reputations, currencies, group
-__player = { level = 8, class = { "Priest", "PRIEST" }, race = "Night Elf", faction = "Alliance", xp = 190, xpMax = 5400,
+__player = { level = 8, class = { "Priest", "PRIEST", 5 }, race = "Night Elf", faction = "Alliance", xp = 190, xpMax = 5400,
 	money = 480, itemLevel = 9.46 }
 function UnitLevel(unit)
 	if unit == "player" then return __player.level end
@@ -618,7 +618,9 @@ function UnitClass(unit)
 	local m = Member(unit)
 	if m then return m.class, m.class end
 end
-function UnitRace(unit) if unit == "player" then return __player.race, "NightElf" end end
+function UnitRace(unit) if unit == "player" then return __player.race, "NightElf", 4 end end
+function GetClassInfo(id) if id == 5 then return "Priest", "PRIEST", 5 end end
+C_CreatureInfo = { GetRaceInfo = function(id) if id == 4 then return { raceName = "Night Elf", raceID = 4 } end end }
 function UnitFactionGroup(unit) if unit == "player" then return __player.faction, __player.faction end end
 function UnitXP() return __player.xp end
 function UnitXPMax() return __player.xpMax end

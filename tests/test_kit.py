@@ -67,7 +67,7 @@ class Core(unittest.TestCase):
         exts = {e["id"]: e for e in self.call(s, "kit.extensions")}
         self.assertEqual({k: (e["state"], e.get("builtin")) for k, e in exts.items()},
                          {"kit": ("on", True), "tune": ("on", True), "chat": ("on", True), "gate": ("on", True), "data": ("on", True),
-                          "guide": ("on", True), "sense": ("on", True),
+                          "guide": ("on", True), "sense": ("on", True), "codex": ("on", True),
                           "demo": ("on", None)})
         self.assertEqual((exts["demo"]["addon"], exts["demo"]["version"]), ("WxDemo", "1.2.3"))
         caps = {c["id"]: c for c in py(s.lua.eval(b"WuxianKit:Capabilities()"))}
@@ -276,7 +276,7 @@ class Core(unittest.TestCase):
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
-                         ["核心", "调校", "聊天", "远程", "数据", "指引", "角色信息"])
+                         ["核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "图鉴"])
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
                          ("执行", "拒绝"))
