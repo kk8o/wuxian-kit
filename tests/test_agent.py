@@ -76,7 +76,7 @@ class Agent(unittest.TestCase):
         self.assertTrue(doc.startswith("[Change: a proposal.] proposes to change a client setting (CVar)"), doc)
         self.assertIn("Options: _title, _ttl", doc)
         ready = self.events("kit.ready")[0]["data"]
-        self.assertEqual({e["id"] for e in ready["extensions"]}, {"kit", "chat", "tune", "gate", "data", "guide", "sense"})
+        self.assertEqual({e["id"] for e in ready["extensions"]}, {"kit", "chat", "tune", "gate", "data", "guide", "sense", "codex"})
         found = self.call("tune.cvar.find", {"text": "maxdistance", "limit": 1})
         self.assertEqual([c["name"] for c in found], ["nameplateMaxDistance"])
         s.slash("set hotLoad off")                                        # only data calls from here on
