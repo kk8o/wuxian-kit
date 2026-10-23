@@ -1,13 +1,18 @@
 -- 图鉴 (Codex): the player's characters for wuxianwow.com's 我的角色. Every character that logs in is kept in the
--- account's saved variables (its name, realm, class, race, level and professions); /wk codex (or the button on its page)
+-- account's saved variables (its name, realm, class, race, level and professions, and what it wears and its talents, for the
+-- site's 战斗模拟器: the items with their enchants, the talent nodes with points in them); /wk codex (or the button on its page)
 -- opens a small window: tick the characters, copy the link (Ctrl+C) and open it in a browser, or paste it into the site's
 -- 我的角色. The link's part after # never reaches the site's server, and the site keeps the characters in that browser only.
 -- Nothing is sent from the game.
 --
 -- The code (the site's app/src/mychar.ts reads it):
 --   <character>[,<character>...]!<check>
---   character = class.level.race[.profession-skill...][~name[@realm]]   ids: ChrClasses, ChrRaces, SkillLine; name and
---               realm percent-encoded UTF-8
+--   character = class.level.race[.profession-skill...][*g<gear>][*t<talents>][~name[@realm]]   ids: ChrClasses, ChrRaces,
+--               SkillLine; name and realm percent-encoded UTF-8
+--   gear      = slot-item[-enchant] joined by "_", by slot: the inventory slot in decimal, the item and its enchant
+--               (SpellItemEnchantment) in base 36; the shirt and the tabard left out
+--   talents   = the nodes of the class's talent tree with points in them, by node: the rank, then the node's distance from the
+--               one before (the first: from 0) in base 36, joined by "_" ("3a": rank 3, 10 on)
 --   check     = two base-36 digits of h, h = (h * 31 + byte) % 1296 over the bytes before "!", from 0
 local Kit = WuxianKit
 local S = Kit.Skin
@@ -20,19 +25,21 @@ local SHOWN = 12                      -- characters listed in the window, the la
 local L = Kit:Words {
 	zhCN = { TITLE = "图鉴", WINDOW = "导出到无限图鉴", OPEN = "导出角色",
 		HELP = "导出角色到无限图鉴（wuxianwow.com）的「我的角色」",
-		HINT = "勾选要导出的角色，按 Ctrl+C 复制下面的链接，在浏览器里打开；也可以粘到图鉴「我的角色」的「导入角色码」。",
+		HINT = "勾选要导出的角色，按 Ctrl+C 复制下面的链接，在浏览器里打开；也可以粘到图鉴「我的角色」的「导入角色码」。带上的装备、附魔与天赋可在图鉴的战斗模拟器里「用这个角色」。",
 		PRIVATE = "链接里 # 后面的内容不会发给网站服务器，角色只保存在你的浏览器里。",
 		WITH_NAME = "带上角色名和服务器", NONE = "还没有记录到角色：登录一次角色就会记下。", NONE_PICKED = "至少勾选一个角色。",
 		MORE = "另有 %d 个角色没有列出（只列最近登录的 %d 个）。", FORGET = "移除", CLOSE = "关闭",
-		STATUS = "已记录 %d 个角色。登录过的角色会自动记下（名字、服务器、职业、种族、等级、专业），只存在本机。",
+		STATUS = "已记录 %d 个角色。登录过的角色会自动记下（名字、服务器、职业、种族、等级、专业、装备与附魔、天赋），只存在本机。",
+		GEAR = "装备 %d 件", TALENTS = "天赋 %d 点",
 		LEVEL = "%d 级" },
 	enUS = { TITLE = "Codex", WINDOW = "Export to Wuxian Codex", OPEN = "Export characters",
 		HELP = "export characters to Wuxian Codex (wuxianwow.com), its 我的角色",
-		HINT = "Tick the characters, press Ctrl+C to copy the link below and open it in a browser; or paste it into the site's My characters, Import code.",
+		HINT = "Tick the characters, press Ctrl+C to copy the link below and open it in a browser; or paste it into the site's My characters, Import code. The gear, enchants and talents go along, for the site's combat simulator.",
 		PRIVATE = "What follows # in the link never reaches the site's server; the characters stay in your browser only.",
 		WITH_NAME = "Include name and realm", NONE = "No character kept yet: log one in once.", NONE_PICKED = "Tick one character at least.",
 		MORE = "%d more not listed (only the %d logged in last).", FORGET = "Remove", CLOSE = "Close",
-		STATUS = "%d characters kept. Characters that log in are kept (name, realm, class, race, level, professions), on this computer only.",
+		STATUS = "%d characters kept. Characters that log in are kept (name, realm, class, race, level, professions, gear and enchants, talents), on this computer only.",
+		GEAR = "%d items", TALENTS = "%d talent points",
 		LEVEL = "level %d" },
 }
 
@@ -44,6 +51,37 @@ local function V(v)
 end
 
 -- the character logged in now, or nil while the client does not tell (a loading screen)
+-- what the character wears: { slot, item, enchant } by slot (the shirt and the tabard left out)
+local function Gear()
+	local out = {}
+	for slot = 1, 18 do
+		local link = slot ~= 4 and V(GetInventoryItemLink("player", slot))
+		local id, ench
+		if type(link) == "string" then id, ench = link:match("item:(%d+):(%-?%d*)") end
+		if id and tonumber(id) > 0 then out[#out + 1] = { slot, tonumber(id), math.max(tonumber(ench) or 0, 0) } end
+	end
+	return out
+end
+
+-- the talent tree's nodes with points in them: { node, rank } by node; {} when the client has no talent tree to read
+local function Talents()
+	local out = {}
+	local ok = pcall(function()
+		local cfg = C_ClassTalents.GetActiveConfigID()
+		local info = cfg and C_Traits.GetConfigInfo(cfg)
+		local tree = info and info.treeIDs and info.treeIDs[1]
+		if not tree then return end
+		for _, node in ipairs(C_Traits.GetTreeNodes(tree) or {}) do
+			local n = C_Traits.GetNodeInfo(cfg, node)
+			local rank = n and V(n.ranksPurchased)
+			if rank and rank > 0 then out[#out + 1] = { node, math.min(rank, 9) } end
+		end
+	end)
+	if not ok then return {} end
+	table.sort(out, function(a, b) return a[1] < b[1] end)
+	return out
+end
+
 local function Current()
 	local name = GetUnitName and V(GetUnitName("player", true)) or V((UnitName("player")))
 	local realm = V(GetRealmName())
@@ -60,7 +98,7 @@ local function Current()
 			if V(line) and V(level) then profs[#profs + 1] = { line, level } end
 		end
 	end
-	return { name = name, realm = realm, cls = cls, race = race or 0, lv = lv, profs = profs, seen = time() }
+	return { name = name, realm = realm, cls = cls, race = race or 0, lv = lv, profs = profs, gear = Gear(), talents = Talents(), seen = time() }
 end
 
 local function Remember()
@@ -82,6 +120,34 @@ local function Pct(s)
 	return (tostring(s):gsub("[^%w%-_]", function(ch) return ("%%%02X"):format(ch:byte()) end))
 end
 
+local function B36(n)
+	local DIGITS, out = "0123456789abcdefghijklmnopqrstuvwxyz", ""
+	n = math.floor(n)
+	repeat
+		local d = n % 36
+		out = DIGITS:sub(d + 1, d + 1) .. out
+		n = math.floor(n / 36)
+	until n == 0
+	return out
+end
+
+-- the *g and *t parts of a character's code ("" when it has none)
+local function GearCode(gear)
+	local parts = {}
+	for _, g in ipairs(gear or {}) do
+		parts[#parts + 1] = g[1] .. "-" .. B36(g[2]) .. ((g[3] or 0) > 0 and ("-" .. B36(g[3])) or "")
+	end
+	return #parts > 0 and ("*g" .. table.concat(parts, "_")) or ""
+end
+local function TalentCode(talents)
+	local parts, last = {}, 0
+	for _, t in ipairs(talents or {}) do
+		parts[#parts + 1] = t[2] .. B36(t[1] - last)
+		last = t[1]
+	end
+	return #parts > 0 and ("*t" .. table.concat(parts, "_")) or ""
+end
+
 local function Check(s)
 	local h = 0
 	for i = 1, #s do h = (h * 31 + s:byte(i)) % 1296 end
@@ -96,7 +162,7 @@ function codex.Code(chars, withName)
 	for _, c in ipairs(chars) do
 		local p = { c.cls, c.lv, c.race or 0 }
 		for _, pr in ipairs(c.profs or {}) do p[#p + 1] = pr[1] .. "-" .. pr[2] end
-		local s = table.concat(p, ".")
+		local s = table.concat(p, ".") .. GearCode(c.gear) .. TalentCode(c.talents)
 		if withName and c.name then s = s .. "~" .. Pct(c.name) .. (c.realm and ("@" .. Pct(c.realm)) or "") end
 		parts[#parts + 1] = s
 	end
@@ -107,8 +173,12 @@ end
 local function Who(c)
 	local cls = GetClassInfo and GetClassInfo(c.cls)
 	local race = C_CreatureInfo and C_CreatureInfo.GetRaceInfo and C_CreatureInfo.GetRaceInfo(c.race or 0)
-	return ("%s · %s · %s %s%s"):format(c.name or "?", c.realm or "?", L.LEVEL:format(c.lv), race and race.raceName or "",
-		cls or "")
+	local s = ("%s · %s · %s %s%s"):format(c.name or "?", c.realm or "?", L.LEVEL:format(c.lv), race and race.raceName or "", cls or "")
+	if c.gear and #c.gear > 0 then s = s .. " · " .. L.GEAR:format(#c.gear) end
+	local pts = 0
+	for _, t in ipairs(c.talents or {}) do pts = pts + t[2] end
+	if pts > 0 then s = s .. " · " .. L.TALENTS:format(pts) end
+	return s
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -263,6 +333,18 @@ codex.Open = Open
 codex:On("PLAYER_ENTERING_WORLD", function() Remember() end)
 codex:On("PLAYER_LEVEL_UP", function() C_Timer.After(1, Remember) end)
 codex:On("SKILL_LINES_CHANGED", function() Remember() end)
+-- gear and talents: after the change has settled (a set swaps several items, a talent change comes in steps)
+local pending
+local function Later()
+	if pending then return end
+	pending = true
+	C_Timer.After(1, function()
+		pending = nil
+		Remember()
+	end)
+end
+codex:On("PLAYER_EQUIPMENT_CHANGED", Later)
+codex:On("TRAIT_CONFIG_UPDATED", Later)
 codex:Status(function(self) return L.STATUS:format(#Kept()) end)
 codex:Button(L"OPEN", function() Open() end)
 codex:Command("codex", function() Open() end, L"HELP")
