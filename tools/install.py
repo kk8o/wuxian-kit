@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-DEFAULT_GAME = Path(r"C:\Program Files (x86)\World of Warcraft\_cn_beta_")
+DEFAULT_GAME = Path(r"C:\Program Files (x86)\World of Warcraft\_forever_")
 
 
 def main():
