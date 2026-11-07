@@ -582,6 +582,26 @@ class Core(unittest.TestCase):
         self.assertIn("a feed's spec has read", self.fails(s, "WuxianKit:Extension('xdemo'):Feed('bad', {})"))
         self.sessions = [s]
 
+    def test_a_feed_pushes_items_of_its_own(self):
+        """feed:Push sends an item that comes from no game event while the feed runs and accept lets it through;
+        feed:Running gives the options then, nil before and after"""
+        s = self.start()
+        s.lua.execute(b"local x = WuxianKit:Extension('xdemo', { title = 'X' }) "
+                      b"__f = x:Feed('moments', { title = 'M', event = 'moment', options = { min = 'number?' }, "
+                      b"events = { 'CHAT_MSG_SAY' }, read = function(self, ev, text) return { n = 0, text = text } end, "
+                      b"accept = function(self, o, d) return d.n >= (o.min or 0) end })")
+        s.run(0.1)
+        self.assertEqual((s.lua.eval(b"__f:Push({ n = 1 })"), s.lua.eval(b"__f:Running()")), (False, None))
+        self.call(s, "xdemo.moments", "{ min = 1 }")
+        self.assertEqual(s.lua.eval(b"__f:Running().min"), 1)
+        self.assertEqual([s.lua.eval(b"__f:Push({ n = 2 })"), s.lua.eval(b"__f:Push({ n = 0 })"),
+                          s.lua.eval(b"__f:Push(nil)")], [True, False, False])
+        s.fire("CHAT_MSG_SAY", "hello")                                        # read gives n = 0: accept says no
+        self.call(s, "xdemo.moments.stop")
+        self.assertFalse(s.lua.eval(b"__f:Push({ n = 3 })"))
+        self.assertEqual(self.events(s, "xdemo.moment"), [{"n": 2}])
+        self.sessions = [s]
+
     def test_feeds_end_and_belong_to_their_character(self):
         """a feed whose time is up stops by itself (the player and the bus hear it); a feed is the character's that
         started it: another character neither hears through it nor stops it, and it is back when that one logs in"""

@@ -150,6 +150,8 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 
 生成 `<名称>`（开始，带 `minutes`）、`<名称>.stop`、`<名称>.status`，并自动声明事件 `<扩展>.<event>`（不写 `event` 时用 Feed 的名称）。开始后记在存储里，重载后接着听；到点自动停止，玩家和 Agent 都会收到通知（`kit.feed`）。监听属于启动它的角色：换角色登录不会接着转发，也不会停掉它。窗口里显示正在运行，并有「停止」按钮。可选字段：`accept`、`prepare`、`describe`、`minutes`（默认 60）、`most`（最长，默认 720）、`eventDoc`、`data`。
 
+`ext:Feed` 返回 Feed 本身。不是由单个游戏事件产生的条目（定时器、别的插件的回调、跨几个事件的统计）用 `feed:Push(data)` 发出：Feed 在运行、`accept` 放行时才发，返回是否发出。`feed:Running()` 在运行时返回它的选项，否则返回 nil，没人听时可以跳过统计。
+
 ## 6. 提案
 
 | 状态 | 含义 |

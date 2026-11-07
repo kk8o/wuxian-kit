@@ -263,20 +263,38 @@ local function Status(feed)
 	return out
 end
 
+-- what ext:Feed returns. feed:Push(data): an item that comes from no game event (a timer, another addon's callback, a
+-- window over several events) goes out as one of the feed's, while it runs and accept lets it through; answers whether
+-- it went. feed:Running(): its options while it runs (for this character, the extension on), else nil: a detector
+-- skips its work while nobody listens
+local Feed = {}
+Feed.__index = Feed
+
+function Feed:Running()
+	local s = self.ext.active and FeedState(self)
+	return s and (s.options or {}) or nil
+end
+
+function Feed:Push(data)
+	local options = data ~= nil and self:Running()
+	if not options or (self.spec.accept and not self.spec.accept(self.ext, options, data)) then return false end
+	self.ext:Emit(self.topic, data)
+	return true
+end
+
 function Extension:Feed(name, spec)
 	if type(spec) ~= "table" or type(spec.read) ~= "function" then
 		error(("%s.%s: a feed's spec has read(self, event, ...)"):format(self.id, ns.Text(name)), 2)
 	end
-	local feed = { ext = self, name = name, spec = spec, id = self.id .. "." .. name }
+	local topic = spec.event or name
+	local feed = setmetatable({ ext = self, name = name, spec = spec, id = self.id .. "." .. name, topic = topic }, Feed)
 	if not self.feeds[name] then self.feedOrder[#self.feedOrder + 1] = name end
 	self.feeds[name] = feed
-	local topic = spec.event or name
 	for _, event in ipairs(spec.events or {}) do
 		self:On(event, function(self, ev, ...)
-			local s = FeedState(feed)
-			if not s then return end
+			if not FeedState(feed) then return end
 			local data = spec.read(self, ev, ...)
-			if data ~= nil and (not spec.accept or spec.accept(self, s.options, data)) then self:Emit(topic, data) end
+			if data ~= nil then feed:Push(data) end
 		end)
 	end
 	local args = { minutes = "number?" }
