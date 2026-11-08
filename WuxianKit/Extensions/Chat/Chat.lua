@@ -246,6 +246,7 @@ end
 Chat.Read = Public(Read)
 Chat.Mentions = Public(Mentions)
 Chat.Message = Public(function(id) return byId[tonumber(id)] end)
+Chat.NewId = Public(NextId)            -- an id from the same counter, for an item heard alongside chat lines
 Chat.Names = Public(function()
 	local copy = {}
 	for i, n in ipairs(Names()) do copy[i] = n end

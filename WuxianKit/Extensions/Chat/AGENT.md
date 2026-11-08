@@ -65,5 +65,6 @@ Other addons can read chat the same way, with or without the listen feed running
   handler and the feed) gives the same message. Treat it as read-only.
 - `WuxianKit.Chat.Mentions(text)`: whether a text names the player (links and colors are ignored).
 - `WuxianKit.Chat.Message(id)`: one of the last 200 messages read in this session, or nil.
+- `WuxianKit.Chat.NewId()`: a new id from the same counter, for items an addon feeds alongside chat lines (so ids in one feed never repeat).
 - `WuxianKit.Chat.Names()`: the player's names as `mention` uses them (a copy).
 - Calling them with `:` works too. They exist from WuxianKit 0.5 (`WuxianKit:Requires("0.5.0")`).
