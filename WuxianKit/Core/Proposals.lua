@@ -17,7 +17,14 @@
 -- The player may let a scope go without asking (pre-approval, in the window); a proposal whose every step falls under
 -- such a scope runs without the click, unless it came from another player (source "remote:...") or from a profile
 -- someone shared ("import:..."), and the grants are asked again right before it runs: one the player took back meanwhile
--- turns it into one that asks. Only the window sets grants (ns.Act, private to the core's files; nothing in the public
+-- turns it into one that asks. Scopes are layered by their dots: the grant that covers a step is the nearest granted
+-- scope from the step's own up ("chat.guild.reply", then "chat.guild"; never the bare extension id), so a parent covers
+-- its children and a child does not cover its parent. A grant is unlimited (true: what old saves hold) or has a budget
+-- { per = seconds, most = n }: a proposal runs without the click only when, for each budgeted grant covering its steps,
+-- the steps that ran without the click under it in the last `per` seconds plus its own steps under it are at most
+-- `most` (the player's clicks do not count); else it asks, its preview saying the limit is reached. The budget is
+-- asked again right before it runs, with the grants, and the steps are counted when it runs (kept in memory only: a
+-- reload starts the count again). Only the window sets grants (ns.Act, private to the core's files; nothing in the public
 -- WuxianKit table does), and the grants that count live in this file, written to the saved variables at logout over
 -- whatever else wrote there. Code running in the game could still click the window's buttons (measured on
 -- 1.60.1.70245: a click handler cannot tell a :Click() from code from the player's), as it could change the game
@@ -35,7 +42,10 @@ local OPEN = { pending = true, waiting = true, queued = true }   -- not run yet:
 
 local proposals = {}                      -- id -> proposal: the open ones and the last FINISHED_KEPT finished
 local waiting = {}                        -- ids of the open ones, oldest first
-local grants = {}                         -- scope -> true: the player's "without asking"; the only copy that counts
+local grants = {}                         -- scope -> true or { per, most }: the player's "without asking"; the only copy
+                                          -- that counts
+local uses = {}                           -- scope -> time()s of the steps that ran without the click under its budget
+local PER_MIN, PER_MAX, MOST_MAX = 60, 86400, 100
 local undoQueue = {}                      -- history ids the player undid in combat
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -157,6 +167,104 @@ local function SetState(p, state)
 	end
 	if ns.UI then ns.UI.Refresh() end
 	Kit:Emit("kit.proposal", Summary(p))
+end
+
+------------------------------------------------------------------------------------------------------------------------
+-- grants and their budgets
+
+-- a budget as the core keeps it ({ per, most }, whole numbers in range), or nil for anything else
+local function Budget(b)
+	if type(b) ~= "table" then return nil end
+	local per, most = tonumber(b.per), tonumber(b.most)
+	if not (ns.Finite(per) and ns.Finite(most)) then return nil end
+	per, most = math.floor(per), math.floor(most)
+	if per < PER_MIN or per > PER_MAX or most < 1 or most > MOST_MAX then return nil end
+	return { per = per, most = most }
+end
+
+-- the granted scope that covers `scope`: itself, else the nearest granted one above it (a scope id has a dot: the bare
+-- extension id never covers), or nil
+local function Cover(scope)
+	while type(scope) == "string" and scope:find(".", 1, true) do
+		if grants[scope] then return scope end
+		scope = scope:match("^(.*)%.[^.]*$")
+	end
+end
+
+-- the steps that ran without the click under budgeted grant g in its last `per` seconds (older ones dropped)
+local function Used(g)
+	local b, list = grants[g], uses[g]
+	if type(b) ~= "table" or not list then return 0 end
+	local since = time() - b.per
+	while list[1] and list[1] <= since do table.remove(list, 1) end
+	return #list
+end
+
+-- the steps of p that ran without the click counted under their budgeted grants
+local function Spend(p)
+	local now = time()
+	for _, s in ipairs(p.steps) do
+		local g = Cover(s.scope)
+		if g and type(grants[g]) == "table" then
+			Used(g)
+			uses[g] = uses[g] or {}
+			table.insert(uses[g], now)
+		end
+	end
+end
+
+-- a period for the player: the window's words when it has them, else whole hours, minutes or seconds
+local function Period(seconds)
+	local S = ns.UI and ns.UI.Skin
+	if S and type(S.Duration) == "function" then
+		local ok, v = pcall(S.Duration, seconds)
+		if ok and type(v) == "string" then return v end
+	end
+	if seconds % 3600 == 0 then return L.HOURS:format(seconds / 3600) end
+	if seconds % 60 == 0 then return L.MINUTES:format(seconds / 60) end
+	return L.SECONDS:format(seconds)
+end
+
+-- "the limit is reached" for budgeted grant g
+local function FullText(g)
+	return L.BUDGET_FULL:format(Period(grants[g].per), grants[g].most)
+end
+
+-- whether it runs without the click: every step under a granted scope (layered), within the budgets of the grants, and
+-- not another player's proposal nor a shared profile's. The second value: the budgeted grants it would go over (a list,
+-- sorted), when that alone keeps it from running without the click
+local function Granted(p)
+	if p.source:match("^remote") or p.source:match("^import") then return false end
+	local need = {}
+	for _, s in ipairs(p.steps) do
+		local g = Cover(s.scope)
+		if not g then return false end
+		need[g] = (need[g] or 0) + 1
+	end
+	local full = {}
+	for g, n in pairs(need) do
+		local b = grants[g]
+		if type(b) == "table" and Used(g) + n > b.most then full[#full + 1] = g end
+	end
+	if #full == 0 then return true end
+	table.sort(full)
+	return false, full
+end
+
+-- the preview says which limits are reached: a line under the first step of each full grant (once)
+local function NoteFull(p, full)
+	p.noted = p.noted or {}
+	for _, g in ipairs(full) do
+		if not p.noted[g] then
+			p.noted[g] = true
+			for _, s in ipairs(p.steps) do
+				if Cover(s.scope) == g then
+					s.preview[#s.preview + 1] = "|cff9c9ea6" .. FullText(g) .. "|r"
+					break
+				end
+			end
+		end
+	end
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -344,28 +452,27 @@ end
 
 local function Run(p)
 	p.state, p.done = "running", {}
+	if p.auto then Spend(p) end
 	Continue(p, 1)
 end
 
--- whether it runs without the click: every step under a scope the player pre-approved, and not another player's
--- proposal nor a shared profile's
-local function Granted(p)
-	if p.source:match("^remote") or p.source:match("^import") then return false end
-	for _, s in ipairs(p.steps) do
-		if not grants[s.scope] then return false end
-	end
-	return true
-end
-
 -- run it now, or queue it for the end of combat; false + reason when it cannot run yet. One that was to run without the
--- click asks for it when the player took back a scope it falls under meanwhile
+-- click asks for it when the player took back a scope it falls under meanwhile, or when it would go over a budget now
 local function Go(p)
-	if p.auto and not Granted(p) then
-		p.auto = nil
-		ns.Say(L.ASKS_NOW:format(p.id))
-		SetState(p, "pending")
-		if ns.UI then ns.UI.Show(p.id) end
-		return true
+	if p.auto then
+		local ok, full = Granted(p)
+		if not ok then
+			p.auto = nil
+			if full then
+				NoteFull(p, full)
+				ns.Say(L.KIND_LINE:format(L.PROPOSAL:format(p.id), FullText(full[1])))
+			else
+				ns.Say(L.ASKS_NOW:format(p.id))
+			end
+			SetState(p, "pending")
+			if ns.UI then ns.UI.Show(p.id) end
+			return true
+		end
 	end
 	local why = Blocked(p)
 	if why then return false, why end
@@ -423,7 +530,9 @@ function ns.Propose(list, opts)
 	if db then db.nextId = p.id + 1 end
 	proposals[p.id] = p
 	waiting[#waiting + 1] = p.id
-	if Granted(p) then
+	local granted, full = Granted(p)
+	if full then NoteFull(p, full) end
+	if granted then
 		p.auto = true
 		p.state = "waiting"
 		Kit:Emit("kit.proposal", Summary(p))
@@ -464,9 +573,22 @@ local function Approve(id)
 	return ok
 end
 
-local function Grant(scope, on)
+-- the player ticks a scope (on) or takes it back. A budget { per, most } (per 60..86400 s, most 1..100) limits it,
+-- false lets it go without a limit, none takes the scope's suggested budget (its extension's Scope), else no limit; a
+-- budget out of range changes nothing (false)
+local function Grant(scope, on, budget)
 	if type(scope) ~= "string" then return false end
-	grants[scope] = on and true or nil
+	if not on then
+		grants[scope], uses[scope] = nil, nil
+	elseif budget == false then
+		grants[scope] = true
+	elseif budget == nil then
+		grants[scope] = Budget(ns.ScopeBudget and ns.ScopeBudget(scope)) or true
+	else
+		local b = Budget(budget)
+		if not b then return false end
+		grants[scope] = b
+	end
 	if ns.UI then ns.UI.Refresh() end
 	return true
 end
@@ -544,9 +666,15 @@ function Kit:Proposal(id)
 	return p and Summary(p) or nil
 end
 
--- whether the player lets scope go without asking
+-- whether a step under scope would run without the click now (by the grant that covers it, layered), and how many
+-- more steps its budget lets go in the current window (nil: no limit)
 function Kit:Granted(scope)
-	return grants[scope] == true
+	local g = Cover(scope)
+	if not g then return false end
+	local b = grants[g]
+	if type(b) ~= "table" then return true end
+	local left = math.max(0, b.most - Used(g))
+	return left > 0, left
 end
 
 -- the ids waiting for the player's click, oldest first
@@ -579,9 +707,13 @@ function ns.History()
 	end
 	return out
 end
+
+-- every granted scope: {} for one without a limit, { per, most, used } for one with a budget (used: in its window now)
 function ns.Grants()
 	local copy = {}
-	for k in pairs(grants) do copy[k] = true end
+	for k, b in pairs(grants) do
+		copy[k] = type(b) == "table" and { per = b.per, most = b.most, used = Used(k) } or {}
+	end
 	return copy
 end
 
@@ -657,7 +789,7 @@ ns.When("load", function(db)
 	db.nextId = tonumber(db.nextId) or 1
 	db.history = type(db.history) == "table" and db.history or {}
 	for scope, on in pairs(type(db.grants) == "table" and db.grants or {}) do
-		if on == true and type(scope) == "string" then grants[scope] = true end
+		if type(scope) == "string" then grants[scope] = on == true or Budget(on) or nil end
 	end
 end)
 
@@ -666,7 +798,7 @@ end)
 ns.When("logout", function(db)
 	if not db then return end
 	local copy = {}
-	for k in pairs(grants) do copy[k] = true end
+	for k, b in pairs(grants) do copy[k] = type(b) == "table" and { per = b.per, most = b.most } or true end
 	db.grants = copy
 	WuxianKitDB = db
 end)
