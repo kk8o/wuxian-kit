@@ -221,8 +221,8 @@ local function GuildRoster()
 end
 
 sense:See("guild", { title = L"GUILD", args = { members = "boolean?", limit = "number?" },
-	doc = "the player's guild: name, rank (the player's), motd, total and online members, classes {[classFile] = n online}, "
-		.. "levels {avg, median, atMax} of those online; with members (default true) the online members {name (whole, as "
+	doc = "the player's guild: name, rank (the player's), motd, total and online members, classes {[classFile] = n}, "
+		.. "levels {avg, median, atMax} of all members; with members (default true) the online members {name (whole, as "
 		.. "for a whisper), level, class (classFile), zone, rank, online}, highest level first, at most `limit` (100, up "
 		.. "to 300). Not in a guild: {guild = false}. Notes are never read",
 	run = function(_, a)
@@ -241,14 +241,15 @@ sense:See("guild", { title = L"GUILD", args = { members = "boolean?", limit = "n
 			-- name, rankName, rankIndex, level, classDisplayName, zone, publicNote, officerNote, isOnline, status,
 			-- classFile: the notes are skipped
 			local who, rankName, _, level, _, zone, _, _, isOnline, _, classFile = GetGuildRosterInfo(i)
-			who, isOnline = V(who), V(isOnline)
-			if type(who) == "string" and isOnline then
-				level, classFile = V(level), V(classFile)
-				if type(level) == "number" then
+			who, isOnline, level, classFile = V(who), V(isOnline), V(level), V(classFile)
+			if type(who) == "string" then
+				if type(level) == "number" and level > 0 then
 					levels[#levels + 1], sum = level, sum + level
 					if level >= max then atMax = atMax + 1 end
 				end
 				if type(classFile) == "string" then out.classes[classFile] = (out.classes[classFile] or 0) + 1 end
+			end
+			if type(who) == "string" and isOnline then
 				zone = V(zone)
 				online[#online + 1] = { name = Ambiguate(who, "none"), level = type(level) == "number" and level or nil,
 					class = classFile, zone = zone ~= "" and zone or nil, rank = V(rankName), online = true }

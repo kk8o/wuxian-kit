@@ -280,11 +280,12 @@ end
 local function Blocked(p)
 	if p.after and time() < p.after then return "after" end
 	for _, s in ipairs(p.steps) do
-		local ready = s.cap.spec.ready or KINDS[s.cap.kind].ready
-		if type(ready) == "function" then
-			local ok, why = pcall(ready, s.cap.ext, s.args)
-			if not ok then return ns.Text(why) end
-			if why then return why end
+		for _, ready in ipairs({ KINDS[s.cap.kind].ready or false, s.cap.spec.ready or false }) do   -- the kind's, then its own
+			if type(ready) == "function" then
+				local ok, why = pcall(ready, s.cap.ext, s.args)
+				if not ok then return ns.Text(why) end
+				if why then return why end
+			end
 		end
 	end
 end
