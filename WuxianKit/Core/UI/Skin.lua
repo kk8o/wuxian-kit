@@ -1,6 +1,8 @@
 -- The core's look, 无限工坊's (a dark panel with a gold hairline; plain textures, none of the client's templates), and the
--- pieces both windows are made of: text, a movable panel that keeps its place, flat buttons, check boxes.
+-- pieces the windows are made of: text, a movable panel that keeps its place, flat buttons, check boxes, text boxes;
+-- S.Clock and S.Duration for times shown.
 local _, ns = ...
+local L = ns.L
 
 local UI = {}
 ns.UI = UI
@@ -198,4 +200,12 @@ end
 function S.Clock(seconds)
 	seconds = math.max(0, math.floor(seconds))
 	return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
+end
+
+-- seconds as the player reads a length of time: "45 秒", "10 分钟", "2 小时" (rounded down to the unit)
+function S.Duration(seconds)
+	seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+	if seconds < 60 then return L.SECONDS:format(seconds) end
+	if seconds < 3600 then return L.MINUTES:format(math.floor(seconds / 60)) end
+	return L.HOURS:format(math.floor(seconds / 3600))
 end

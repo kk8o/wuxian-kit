@@ -6,17 +6,25 @@
 -- longer handed to it, its timers and feeds stop, its capabilities refuse calls, its proposals not run yet go; what its
 -- proposals changed stays (the history undoes it), what it made of the UI stays until a reload. Its storage is
 -- WuxianKitDB.ext[id], info.defaults filled in.
---   info: { title, version, notes, addon, docs, defaults = {...}, setup(self) when it goes on, teardown(self) when it
---           goes off }; docs: the folder (in its addon's) of its AGENT.md and skills/ for the agent (Agent access spec)
+--   info: { title, version, notes, addon, docs, prompt, defaults = {...}, setup(self) when it goes on, teardown(self)
+--           when it goes off }; docs: the folder (in its addon's) of its AGENT.md and skills/ for the agent (Agent access
+--           spec); prompt: the name of one of its skills, its page's "connect an agent" button (ext.prompt)
 --   ext:On(event, fn(self, event, ...))   a game event, handed over while it is on
 --   ext:Every(seconds, fn(self))           a timer, running while it is on
 --   ext:Emit(topic, data)                  the bus event "<id>.<topic>" (and so an agent event)
 --   ext:Event(topic, { doc, data })        declares one it emits, for the agent's manifest (data: field -> spec text)
 --   ext:Tell(text)                         a chat line for the player, under its title
 --   ext:Status(fn(self)), ext:Button(label, fn(self))   a line and buttons on its page in the window
---   ext:Option(name, { title, kind = "boolean" | "text", default, hint, changed(self, value) })   a choice the player
---                                          makes on its page, and only there: no capability reads or changes it;
---                                          ext:Get(name) is its value (a who-may-send list, an opt-in)
+--   ext:Scope(name, title | { title, budget = { per, most } })   a category the player may let go without asking;
+--                                          name may have dots (guild.reply); budget: the limit suggested when it is
+--                                          ticked (ns.ScopeBudget)
+--   ext:Option(name, { title, kind, default, hint, changed(self, value), ... })   a choice the player makes on its page
+--                                          (or an OptionsPanel), and only there: kit.options reads them, nothing else
+--                                          changes them; ext:Get(name) is its value (a list: a copy). kind: boolean (the
+--                                          default), text, number { min, max, step = 1, unit }, choice { choices =
+--                                          { { value, label } ... } }, list (strings: split at , ， 、, trimmed, none
+--                                          empty or twice, at most 20 of at most 32 bytes); a change calls changed and
+--                                          emits kit.option { extension, name, value }
 --   ext:Command(word, fn(self, rest), help)  "/wk <word> ..." runs fn while it is on; /wk help lists it
 local addonName, ns = ...
 local Kit, L = ns.Kit, ns.L
@@ -118,13 +126,15 @@ function Kit:Extension(id, info)
 	info = info or {}
 	if not ext then
 		ext = setmetatable({ id = id, caps = {}, capOrder = {}, scopes = {}, scopeOrder = {}, timers = {}, feeds = {},
-			feedOrder = {}, options = {}, optionOrder = {}, emits = {}, emitOrder = {}, builtin = not started }, Extension)
+			feedOrder = {}, options = {}, optionOrder = {}, emits = {}, emitOrder = {}, budgets = {}, builtin = not started },
+			Extension)
 		extensions[id] = ext
 		order[#order + 1] = id
 	end
 	ext.title, ext.version, ext.notes = info.title or id, info.version, info.notes
 	ext.addon = info.addon or (ext.builtin and addonName) or nil
 	ext.defaults, ext.setup, ext.teardown, ext.docs = info.defaults, info.setup, info.teardown, info.docs
+	ext.prompt = type(info.prompt) == "string" and info.prompt ~= "" and info.prompt or nil
 	ns.Changed("extension", ext)
 	if started and not ext.active then                  -- another addon's: on once its files have run
 		C_Timer.After(0, function()
@@ -134,12 +144,31 @@ function Kit:Extension(id, info)
 	return ext
 end
 
+-- a budget as given: { per = seconds, most = times }, both positive, else nil
+local function Budget(b)
+	if type(b) ~= "table" then return nil end
+	local per, most = tonumber(b.per), tonumber(b.most)
+	if not (ns.Finite(per) and ns.Finite(most) and per > 0 and most >= 1) then return nil end
+	return { per = per, most = math.floor(most) }
+end
+
 function Extension:Scope(name, label)
 	local id = self.id .. "." .. name
+	local budget
+	if type(label) == "table" then label, budget = label.title, Budget(label.budget) end
 	if not self.scopes[id] then self.scopeOrder[#self.scopeOrder + 1] = id end
 	self.scopes[id] = label or name
+	self.budgets = self.budgets or {}
+	self.budgets[id] = budget
 	ns.Changed("scope", id)
 	return id
+end
+
+-- the budget a scope's extension suggests for it ({ per, most }, a copy), or nil
+function ns.ScopeBudget(scope)
+	local ext = type(scope) == "string" and extensions[scope:match("^([^.]+)%.") or ""]
+	local b = ext and ext.budgets and ext.budgets[scope]
+	return b and { per = b.per, most = b.most } or nil
 end
 
 function Extension:On(event, fn)
@@ -186,31 +215,156 @@ function Extension:Button(label, fn)
 	self.buttons[#self.buttons + 1] = { label = label, fn = fn }
 end
 
+------------------------------------------------------------------------------------------------------------------------
+-- options
+
+local KINDS = { boolean = true, text = true, number = true, choice = true, list = true }
+local LIST_MOST, ITEM_MOST = 20, 32
+
+-- s cut to at most n bytes, never inside a character (UTF-8)
+local function Clip(s, n)
+	if #s <= n then return s end
+	s = s:sub(1, n)
+	local i = #s
+	while i > 1 and s:byte(i) >= 128 and s:byte(i) < 192 do i = i - 1 end   -- the last character's first byte
+	local lead = s:byte(i)
+	local need = lead >= 240 and 4 or lead >= 224 and 3 or lead >= 192 and 2 or 1
+	if #s - i + 1 < need then s = s:sub(1, i - 1) end
+	return s
+end
+
+-- a list from a text (split at , ， 、) or a table of strings: trimmed, none empty or twice, at most LIST_MOST of at
+-- most ITEM_MOST bytes
+local function List(v)
+	local parts = {}
+	if type(v) == "string" then
+		v = v:gsub("\239\188\140", ","):gsub("\227\128\129", ",")
+		for part in (v .. ","):gmatch("([^,]*),") do parts[#parts + 1] = part end
+	elseif type(v) == "table" then
+		for _, x in ipairs(v) do
+			if type(x) == "string" or type(x) == "number" then parts[#parts + 1] = tostring(x) end
+		end
+	end
+	local out, seen = {}, {}
+	for _, part in ipairs(parts) do
+		local item = Clip(part:match("^%s*(.-)%s*$"), ITEM_MOST):match("^(.-)%s*$")
+		if item ~= "" and not seen[item] and #out < LIST_MOST then
+			seen[item] = true
+			out[#out + 1] = item
+		end
+	end
+	return out
+end
+
+-- value as option o keeps it: a number in its range on its step, one of its choices, a list (a new table); what does
+-- not fit is the default
+local function Normalize(o, value)
+	local kind = o.kind
+	if kind == "text" then return tostring(value == nil and "" or value) end
+	if kind == "number" then
+		local v = tonumber(value)
+		if not ns.Finite(v) then return o.default end
+		local base = o.min or 0
+		v = base + math.floor((v - base) / o.step + 0.5) * o.step
+		if o.max and v > o.max then v = o.max end
+		if o.min and v < o.min then v = o.min end
+		return tonumber(("%.10g"):format(v))               -- steps of 0.1 without the float's tail
+	end
+	if kind == "choice" then
+		for _, c in ipairs(o.choices) do
+			if c.value == value or (value ~= nil and tostring(c.value) == tostring(value)) then return c.value end
+		end
+		return o.default
+	end
+	if kind == "list" then return List(value) end
+	return value and true or false
+end
+
+local function Same(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+	if #a ~= #b then return false end
+	for i = 1, #a do
+		if a[i] ~= b[i] then return false end
+	end
+	return true
+end
+
 function Extension:Option(name, spec)
 	spec = spec or {}
+	local kind = KINDS[spec.kind] and spec.kind or "boolean"
+	local o = { name = name, title = spec.title or name, kind = kind, hint = spec.hint, changed = spec.changed }
+	if kind == "number" then
+		o.min, o.max, o.unit = tonumber(spec.min), tonumber(spec.max), spec.unit
+		if o.min and o.max and o.max < o.min then o.min, o.max = o.max, o.min end
+		local step = tonumber(spec.step)
+		o.step = ns.Finite(step) and step > 0 and step or 1
+		o.default = o.min or 0
+		o.default = Normalize(o, spec.default)
+	elseif kind == "choice" then
+		o.choices = {}
+		for _, c in ipairs(type(spec.choices) == "table" and spec.choices or {}) do
+			if type(c) == "table" then
+				local value = c.value
+				if value == nil then value = c[1] end
+				if value ~= nil then o.choices[#o.choices + 1] = { value = value, label = c.label or c[2] or tostring(value) } end
+			end
+		end
+		o.default = o.choices[1] and o.choices[1].value
+		o.default = Normalize(o, spec.default)
+	elseif kind == "list" then
+		o.default = List(spec.default)
+	else
+		o.default = spec.default
+	end
 	if not self.options[name] then self.optionOrder[#self.optionOrder + 1] = name end
-	self.options[name] = { name = name, title = spec.title or name, kind = spec.kind == "text" and "text" or "boolean",
-		default = spec.default, hint = spec.hint, changed = spec.changed }
+	self.options[name] = o
 	ns.Changed("option", self)
 end
 
 function Extension:Get(name)
-	local saved = type(self.db) == "table" and self.db.options
-	if type(saved) == "table" and saved[name] ~= nil then return saved[name] end
 	local o = self.options[name]
-	return o and o.default
+	local saved
+	if type(self.db) == "table" and type(self.db.options) == "table" then saved = self.db.options[name] end
+	if saved == nil then saved = o and o.default end
+	if o and (o.kind == "number" or o.kind == "choice" or o.kind == "list") then return Normalize(o, saved) end
+	return saved
 end
 
--- the player set an option in the window (the only way one changes)
+-- the player set an option in the window or an OptionsPanel (the only ways one changes): kept as its kind keeps it;
+-- a change calls its changed and emits kit.option. true and the value kept, or false (no such option)
 function ns.SetOption(ext, name, value)
 	local o = ext.options[name]
 	if not o then return false end
 	ext.db = ext.db or Storage(ext)
 	ext.db.options = type(ext.db.options) == "table" and ext.db.options or {}
-	if o.kind == "text" then value = tostring(value or "") else value = value and true or false end
+	local before = ext:Get(name)
+	if o.kind == "number" and not ns.Finite(tonumber(value)) then value = before end   -- not a number: as it was
+	value = Normalize(o, value)
 	ext.db.options[name] = value
-	if o.changed then ns.Safe(o.changed, ext, value) end
-	return true
+	if not Same(before, value) then
+		if o.changed then ns.Safe(o.changed, ext, Copy(value)) end
+		Kit:Emit("kit.option", { extension = ext.id, name = name, value = Copy(value) })
+	end
+	return true, Copy(value)
+end
+
+-- an extension's options as kit.options answers: name -> { title (in the language in force), kind, value, default,
+-- choices ({ value, label }), min, max, unit }
+function ns.OptionList(ext)
+	local out = {}
+	for _, name in ipairs(ext.optionOrder) do
+		local o = ext.options[name]
+		local e = { title = ns.T(o.title), kind = o.kind, value = ext:Get(name), default = Copy(o.default) }
+		if o.kind == "number" then
+			e.min, e.max = o.min, o.max
+			if o.unit ~= nil then e.unit = ns.T(o.unit) end
+		elseif o.kind == "choice" then
+			e.choices = {}
+			for i, c in ipairs(o.choices) do e.choices[i] = { value = c.value, label = ns.T(c.label) } end
+		end
+		out[name] = e
+	end
+	return out
 end
 
 local commands = {}                       -- word -> { ext, fn, help }

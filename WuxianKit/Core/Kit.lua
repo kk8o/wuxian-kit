@@ -11,7 +11,7 @@
 --   Proposals.lua  the proposal pipeline: preview, the player's Run, combat, undo, what goes without asking
 --   Comm.lua       addon messages between players' clients (WuxianKit.Comm)
 --   Bridge.lua     the AI agent, through 无限工坊's WoWBridge when it is there
---   UI/            the proposal window and the core's window (/wk)
+--   UI/            the proposal window, the core's window (/wk) and OptionsPanel, the copy box (WuxianKit:Copy)
 --   Builtins.lua   the core's own extension, "kit"
 -- Extensions/<Name>/<Name>.lua are the built-in extensions (on unless the player turned one off). Another addon becomes
 -- an extension with the same calls; its .toc says ## Dependencies: WuxianKit, ## X-WuxianKit-Extension: <id> and
@@ -21,6 +21,24 @@ local addonName, ns = ...
 local Kit = { VERSION = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version") or "?" }
 WuxianKit = Kit
 ns.Kit = Kit
+
+-- "a.b.c" (or "a.b", "a"; anything after the numbers ignored) -> { a, b, c }, else nil
+local function Semver(v)
+	local a, b, c = tostring(v or ""):match("^%s*(%d+)%.?(%d*)%.?(%d*)")
+	if not a then return nil end
+	return { tonumber(a), tonumber(b) or 0, tonumber(c) or 0 }
+end
+
+-- WuxianKit:Requires(version): whether this WuxianKit is version ("0.5.0") or newer; false when it cannot tell. For
+-- addons that use it when it is there and a newer call only when it has it
+function Kit:Requires(version)
+	local have, want = Semver(Kit.VERSION), Semver(version)
+	if not (have and want) then return false end
+	for i = 1, 3 do
+		if have[i] ~= want[i] then return have[i] > want[i] end
+	end
+	return true
+end
 
 -- the language of the words: the player's choice (WuxianKitDB.lang: "zhCN" or "enUS"; none = the client's: Chinese on a
 -- Chinese client, else English)

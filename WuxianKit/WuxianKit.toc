@@ -22,6 +22,7 @@ Core\Bridge.lua
 Core\UI\Skin.lua
 Core\UI\Proposal.lua
 Core\UI\Window.lua
+Core\UI\Copy.lua
 Core\Builtins.lua
 Extensions\Tune\Tune.lua
 Extensions\Tune\Options.lua

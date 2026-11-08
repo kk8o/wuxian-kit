@@ -124,6 +124,7 @@ ns.WORDS = {
 		ONE_PROPOSAL = "提案详情",
 		MANIFEST = "能力清单",
 		REVISION = "清单修订号",
+		LIST_OPTIONS = "扩展选项",
 	},
 	enUS = {
 		TITLE = "Wuxian Workshop · WuxianKit",
@@ -244,6 +245,7 @@ ns.WORDS = {
 		ONE_PROPOSAL = "Proposal details",
 		MANIFEST = "Manifest",
 		REVISION = "Manifest revision",
+		LIST_OPTIONS = "Extension options",
 	},
 }
 

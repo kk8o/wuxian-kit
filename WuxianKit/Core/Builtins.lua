@@ -4,6 +4,7 @@
 --   kit.proposals         (See)  the proposals still open and the last finished ones; kit.proposal one of them
 --   kit.history           (See)  what ran on this character (the last `limit`, 20, of the 50 kept), to undo
 --   kit.extension.get/set        a Setting: whether an extension is on; turning one on or off is a proposal, undoable
+--   kit.options           (See)  an extension's options as the player set them (read only: only the player changes them)
 --   kit.undo              (Do)   undo a proposal that ran
 local _, ns = ...
 local Kit, L = ns.Kit, ns.L
@@ -50,6 +51,16 @@ kit:See("history", { title = L"HISTORY", args = { limit = "number?" },
 		return out
 	end })
 
+kit:See("options", { title = L"LIST_OPTIONS", args = { extension = "string" },
+	doc = "an extension's options, as the player set them on its page: name -> {title, kind (boolean, text, number, "
+		.. "choice, list), value, default, choices [{value, label}] (choice), min, max, unit (number)}. Read only: only "
+		.. "the player changes them; kit.option says when one changed",
+	run = function(_, a)
+		local ext = ns.extensions[a.extension]
+		if not ext then error(("no extension %s (kit.extensions lists them)"):format(a.extension), 0) end
+		return ns.OptionList(ext)
+	end })
+
 kit:Setting("extension", { title = L"SWITCH", doc = "whether an extension is on",
 	key = { extension = "string" }, value = "boolean", scope = "extensions",
 	check = function(_, k)
@@ -91,6 +102,8 @@ kit:Event("ready", { doc = "WuxianKit is up, after a login or a reload", data = 
 	revision = "string" } })
 kit:Event("feed", { doc = "a feed started or stopped", data = { extension = "string", feed = "string", on = "boolean",
 	ends = "number?", options = "table?" } })
+kit:Event("option", { doc = "the player changed an option of an extension (kit.options reads them all)",
+	data = { extension = "string", name = "string", value = "any" } })
 
 kit:Do("undo", { title = L"UNDO", args = { id = "number" }, scope = "undo", notes = false,
 	doc = "proposes to undo a proposal that ran (its id from kit.history): what its steps changed is put back, last step "
