@@ -182,6 +182,7 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 - 其余条目：攒下的第一个到了之后 `every` 秒唤醒（默认 60；`false` 只在紧急或攒满时唤醒）；
 - 攒满 `most` 个（默认 30）立即唤醒；
 - `idle` 秒（默认 `false`：不唤醒）里既没有条目也没有唤醒，就唤醒一次，`items` 为空（冷场，供 Agent 开个话题）。
+- 汇总的 Feed 给事件起一个和 Feed 不同的名字（`event = "wake"`）：事件主题和能力 id 同名时，App 会把说明里的主题当成工具名改写。
 - 一次唤醒就是一个总线事件 `<扩展>.<event>`：`{ reason, items, skipped }`。`reason` 是 `urgent`、`full`、`batch` 或 `idle`；`items` 从旧到新；单个事件太大时去掉最旧的几个，`skipped` 是去掉的个数（它们仍在回看里）。
 - 运行时的参数以选项里的 `digest` 表为准（`prepare` 可以按玩家的设置填它，运行中也可以经 `feed:Running().digest` 就地改），没有的字段用 spec 的。
 
