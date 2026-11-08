@@ -46,6 +46,10 @@ Extension id `chat`. Listens to chat channels and sends messages for the player.
   without pre-approving the whole channel; pre-approving `chat.guild` also covers `chat.guild.reply`. Any other message,
   with or without `reply`, falls under `chat.<channel>`.
 - A `reply` that is no message heard in this session is refused at once. The preview shows whom it answers.
+- `stale` (with `reply`, a whole number): refuse the reply when that many messages of others came after the one it
+  answers in the same conversation (the same channel; the same whisperer or numbered channel). The refusal names how
+  many and quotes the latest few with their ids, so you can answer what is being said now, or drop it. Use a low bar
+  (2–3) for banter, a higher one (8–10) for a factual answer someone still wants.
 - Pre-approved categories have a budget (suggested: 4 messages in 10 minutes for a channel, 3 for its replies). Past it
   a message asks the player again; that is not an error, wait for it.
 

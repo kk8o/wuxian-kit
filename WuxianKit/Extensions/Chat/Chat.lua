@@ -157,7 +157,8 @@ end
 
 local function Plain(text)
 	text = text:gsub("|H.-|h(.-)|h", "%1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:]*:", ""):gsub("|r", "")
-	return text
+		:gsub("|T.-|t", ""):gsub("|A.-|a", "")                  -- textures and atlases (raid target icons ...)
+	return text:match("^%s*(.-)%s*$")
 end
 
 -- whether text (a plain one, or one with links and colours) holds one of the player's names
@@ -333,6 +334,38 @@ local function ValidReply(a)
 	return true
 end
 
+-- s cut to at most n bytes on a character boundary (UTF-8), "…" where it was cut
+local function Cut(s, n)
+	if #s <= n then return s end
+	return (s:sub(1, n):gsub("[\192-\255][\128-\191]*$", "")) .. "…"
+end
+
+-- the messages of others heard after msg in the same conversation (channel, and target: the same whisperer, the same
+-- numbered channel), oldest first: what a reply to msg would come after
+local function Since(msg)
+	local out = {}
+	for _, m in pairs(byId) do
+		if m.id > msg.id and m.channel == msg.channel and m.target == msg.target and not m.self then out[#out + 1] = m end
+	end
+	table.sort(out, function(x, y) return x.id < y.id end)
+	return out
+end
+
+-- stale: a reply with stale = n when n or more messages of others came after the one it answers (the talk moved on):
+-- why, with the last few of them, so that the agent can answer what is said now instead
+local function Stale(a)
+	local m = a.stale and a.reply and byId[a.reply]
+	if not m then return nil end
+	local after = Since(m)
+	if #after < a.stale then return nil end
+	local lines = {}
+	for i = math.max(1, #after - 3), #after do
+		local x = after[i]
+		lines[#lines + 1] = ("#%d %s: %s"):format(x.id, x.sender or "?", Cut(x.plain or "", 60))
+	end
+	return ("stale: %d messages came after #%d; the latest: %s"):format(#after, m.id, table.concat(lines, " / "))
+end
+
 -- whether the player is typing in a chat box (read only, nothing touched)
 local function Typing()
 	local ok, on = pcall(function()
@@ -347,7 +380,7 @@ end
 
 chat:Say("send", { title = L"SEND",
 	args = { channel = "guild|officer|party|raid|instance|whisper|say|yell|channel", text = "string", target = "string?",
-		reply = "number?" },
+		reply = "number?", stale = "number?" },
 	doc = "proposes a chat message in `channel`. It is sent when the player clicks Run, or at once if they "
 		.. "pre-approved that channel (guild, officer, party, raid, instance or whisper; never say, yell or channel). "
 		.. "text: one line without |, at most 255 bytes once links are in; {item:<id>:<name>} and {spell:<id>:<name>} "
@@ -356,7 +389,8 @@ chat:Say("send", { title = L"SEND",
 		.. "Name-Realm from another realm), for channel the channel number. reply: the id of the chat.message this "
 		.. "answers; one in the same channel, at most 180 s old, that named the player (mention), not theirs (a whisper: "
 		.. "back to its sender) falls under the scope <channel>.reply instead of <channel>. say, yell and channel must "
-		.. "each be a proposal of their own. While the player types or has spoken in that channel in the last 8 s, it "
+		.. "each be a proposal of their own. stale (with reply): refuse it when that many messages of others came after the "
+		.. "one it answers (the talk moved on); the refusal quotes the latest ones. While the player types or has spoken in that channel in the last 8 s, it "
 		.. "waits (the player's option yield)",
 	scope = function(_, a)
 		if not CAN_GRANT[a.channel] then return nil end
@@ -373,6 +407,10 @@ chat:Say("send", { title = L"SEND",
 		end
 		if a.target and a.target:find("[|\r\n]") then return "target has a | or a line break" end
 		if a.reply and not byId[a.reply] then return "reply: no such message heard (use the id of a chat.message)" end
+		if a.stale and not a.reply then return "stale goes with reply" end
+		if a.stale and (a.stale < 1 or a.stale ~= math.floor(a.stale)) then return "stale is a whole number, 1 or more" end
+		local why = Stale(a)
+		if why then return why end
 	end,
 	preview = function(_, a)
 		Resolve(a.text)                                       -- asks the client for the items it does not know yet

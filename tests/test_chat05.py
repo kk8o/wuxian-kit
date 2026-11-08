@@ -157,6 +157,33 @@ class Chat05(unittest.TestCase):
         s.run(181)                                                         # too old to be a reply
         self.assertEqual(scope(f"{{ channel = 'guild', text = 'late', reply = {named} }}")[0], "chat.guild")
 
+    def test_a_stale_reply_is_refused_with_the_latest(self):
+        s = self.start()
+        q = self.say(s, "CHAT_MSG_GUILD", "Wuxian, where is the bank?", "Asker-Realm", ASKER)["id"]
+        self.say(s, "CHAT_MSG_GUILD", "Wuxian Forever here", "Wuxian-Realm", "Player-1-00000001")   # the player's: not counted
+        self.say(s, "CHAT_MSG_PARTY", "pull now", "Tank-Realm", FRIEND)                            # another channel
+        self.say(s, "CHAT_MSG_WHISPER", "hey", "Friend-Realm", FRIEND)
+        self.say(s, "CHAT_MSG_GUILD", "|TInterface/TargetingFrame/UI-RaidTargetingIcon_1:0|t found it|A:raidicon:0:0|a", "Asker-Realm", ASKER)
+        p = self.call(s, "chat.send", f"{{ channel = 'guild', text = 'by the inn', reply = {q}, stale = 2 }}")
+        self.assertEqual(p["steps"][0]["scope"], "chat.guild.reply")      # one line after it: still fresh
+        click(s.g("WuxianKitProposal")[b"decline"])
+        last = self.say(s, "CHAT_MSG_GUILD", "anyone for a dungeon?", "Other-Realm", FRIEND)["id"]
+        why = s.lua.eval(f"WuxianKit:Check('chat.send', {{ channel = 'guild', text = 'x', reply = {q}, stale = 2 }})".encode())
+        self.assertEqual(why.decode(), f"stale: 2 messages came after #{q}; the latest: #{last - 1} Asker: found it / "
+                                       f"#{last} Other: anyone for a dungeon?")
+        self.assertIn("stale: 2 messages", self.fails(
+            s, f"WuxianKit:Call('chat.send', {{ channel = 'guild', text = 'x', reply = {q}, stale = 2 }})"))
+        self.assertEqual(self.call(s, "chat.send", f"{{ channel = 'guild', text = 'x', reply = {q}, stale = 3 }}")
+                         ["steps"][0]["scope"], "chat.guild.reply")       # a higher bar: still goes
+        click(s.g("WuxianKitProposal")[b"decline"])
+        self.assertEqual(self.call(s, "chat.send", f"{{ channel = 'guild', text = 'x', reply = {q} }}")
+                         ["steps"][0]["scope"], "chat.guild.reply")       # no stale: no bar
+        click(s.g("WuxianKitProposal")[b"decline"])
+        self.assertEqual(s.lua.eval(b"WuxianKit:Check('chat.send', { channel = 'guild', text = 'x', stale = 2 })"),
+                         b"stale goes with reply")
+        self.assertEqual(s.lua.eval(f"WuxianKit:Check('chat.send', {{ channel = 'guild', text = 'x', reply = {q}, stale = 0.5 }})"
+                                    .encode()), b"stale is a whole number, 1 or more")
+
     def test_waits_while_the_player_types_or_just_spoke(self):
         s = self.start(saved={"WuxianKitDB": b"{ grants = { ['chat.guild'] = true } }"})
         s.lua.execute(b"__box = CreateFrame('EditBox') __box.focus = true "
