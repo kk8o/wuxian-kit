@@ -17,7 +17,8 @@
 -- (source, title, ttl, after).
 --   ext:Setting(name, spec)  a value the game keeps: <name>.get (See) and <name>.set (Do) from get / set
 --   ext:Feed(name, spec)     game events heard for a while: <name> (start), <name>.stop, <name>.status (See), and the
---                            bus event <ext>.<spec.event> for each event it reads
+--                            bus event <ext>.<spec.event> for each item it reads (with keep: <name>.recent; with digest:
+--                            items gathered into wakes)
 -- WuxianKit:Call(id, args, opts) does one; WuxianKit:Propose(steps, opts) bundles Say / Do steps into one proposal.
 local _, ns = ...
 local Kit, L, Schema, Extension = ns.Kit, ns.L, ns.Schema, ns.Extension
@@ -217,16 +218,35 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- Feed(name, spec): game events heard for a while. The core makes
 --   <name>          (See)  start, with the spec's options and `minutes` (spec.minutes, 60; at most spec.most, 720);
---                          starting again replaces what was heard
+--                          starting again replaces what was heard (the run's counters and digest buffer; the ring stays)
 --   <name>.stop     (See)  stop
---   <name>.status   (See)  { on, ends, ...options }
+--   <name>.status   (See)  { on, ends, ...options, and while it runs heard, wakes, lastWake, seen }
+--   <name>.recent   (See)  with spec.keep: { items (id > since, the last `limit`, oldest first), next }
 -- and while it runs (kept in the extension's storage, so through a /reload, until it ends) each of spec.events that
 -- read(self, event, ...) turns into data, and accept(self, options, data) lets through, is the bus event
 -- <ext>.<spec.event> (the feed's name when the spec gives no event). More of the spec: title, doc, options ({ name =
 -- spec }), prepare(self, options) -> the options to keep (or an error), describe(self, options) -> what the window and
--- the chat line say it hears. The window shows a running feed with a stop button; the player hears when it starts and
--- stops (by itself too, when its time is up); the bus says so ("kit.feed"). A feed is the character's that started it:
--- another character logging in neither hears through it nor stops it.
+-- the chat line say it hears, eventDoc / data (the event's doc and fields). The window shows a running feed with a stop
+-- button; the player hears when it starts and stops (by itself too, when its time is up); the bus says so ("kit.feed").
+-- A feed is the character's that started it: another character logging in neither hears through it nor stops it.
+-- Every item (a table) goes out with id (its own when it has a number there, else the feed's counter, kept in storage)
+-- and time (its own, else time()). keep = n (at most KEEP_MAX): the last n items in a ring in the extension's storage
+-- (db.recent[name] = { who, n, items }: through stops and reloads; another character starts it afresh), each a copy cut
+-- to what saved variables should hold (strings ITEM_TEXT bytes, ITEM_DEPTH tables deep).
+-- digest = { gather, every, idle, most, urgent(self, options, item) }: items are gathered, not sent one by one, and go as
+-- one wake { reason = "urgent" | "full" | "batch" | "idle", items (oldest first), skipped }: gather s (5) after an urgent
+-- item, every s (60; false: only urgent or full) after the first one gathered, at once at most (30) of them, and after
+-- idle s (false: never) without an item or a wake (an idle wake carries what is gathered: nothing, unless every is
+-- false). The fields of the running options' digest table (prepare may fill it; feed:Running().digest may be changed in
+-- place) win over the spec's, read each time. A wake is kept under WAKE_MAX bytes: the oldest items go (skipped counts
+-- them; the ring still has them). One ticker a second runs while some digest feed runs.
+
+local KEEP_MAX, ITEM_TEXT, ITEM_DEPTH = 200, 500, 4
+-- a wake's size as Comm.Serialize writes it: WoWBridge sends an event's data as JSON of at most 8000 bytes (more goes as
+-- {cut = true}) and queues at most 6000 bytes of waiting events; JSON's keys and quotes take more than Serialize's
+-- lengths, so a wake keeps well under both
+local WAKE_MAX = 5500
+local DIGEST = { gather = 5, every = 60, idle = false, most = 30 }
 
 local function Me()
 	return UnitGUID and UnitGUID("player") or nil
@@ -246,6 +266,47 @@ local function FeedText(feed, s)
 end
 ns.FeedText = FeedText
 
+-- a digest feed's parameters now: the running options' digest table, then the spec's, then the defaults
+local function Params(feed, s)
+	local mine = type(s.options) == "table" and type(s.options.digest) == "table" and s.options.digest or {}
+	local spec = type(feed.spec.digest) == "table" and feed.spec.digest or {}
+	local function Get(k)
+		if mine[k] ~= nil then return mine[k] end
+		if spec[k] ~= nil then return spec[k] end
+		return DIGEST[k]
+	end
+	local function Seconds(k, min)                        -- a number of seconds, or false
+		local v = Get(k)
+		if not ns.Finite(v) then return v == false and false or DIGEST[k] end
+		return math.max(min, v)
+	end
+	local most = Get("most")
+	most = ns.Finite(most) and math.max(1, math.min(KEEP_MAX, math.floor(most))) or DIGEST.most
+	local urgent = Get("urgent")
+	return { gather = Seconds("gather", 0) or 0, every = Seconds("every", 1), idle = Seconds("idle", 1), most = most,
+		urgent = type(urgent) == "function" and urgent or nil }
+end
+
+local digesting                                         -- the ticker of the digest feeds, while some runs
+
+local function DigestRunning()
+	for _, eid in ipairs(ns.order) do
+		local ext = ns.extensions[eid]
+		for _, name in ipairs(ext.active and ext.feedOrder or {}) do
+			local feed = ext.feeds[name]
+			if feed.spec.digest and FeedState(feed) then return true end
+		end
+	end
+	return false
+end
+
+local function Settle()                                 -- no digest feed runs: the ticker goes
+	if digesting and not DigestRunning() then
+		digesting:Cancel()
+		digesting = nil
+	end
+end
+
 -- stops a feed of this character's; quiet: no chat line; any: whoever started it (its extension is going off)
 function ns.FeedStop(feed, quiet, any)
 	local db = feed.ext.db
@@ -254,19 +315,168 @@ function ns.FeedStop(feed, quiet, any)
 	db.feeds[feed.name] = nil
 	if not quiet then feed.ext:Tell(L.FEED_STOPPED:format(ns.T(feed.spec.title) or feed.name)) end
 	Kit:Emit("kit.feed", { extension = feed.ext.id, feed = feed.name, on = false })
+	Settle()
+end
+
+-- what the window and status show of a running feed: { heard, wakes, lastWake, seen }, nil when it does not run
+function ns.FeedInfo(feed)
+	local s = feed.ext.active and FeedState(feed)
+	if not s then return nil end
+	return { heard = s.heard or 0, wakes = s.wakes or 0, lastWake = s.lastWake, seen = feed.ext.seen }
+end
+
+local function Plain(t)                                 -- options as they go out: no functions (a digest's urgent)
+	local out = {}
+	for k, v in pairs(type(t) == "table" and t or {}) do
+		if type(v) == "table" then v = Plain(v) end
+		if type(v) ~= "function" then out[k] = v end
+	end
+	return out
 end
 
 local function Status(feed)
 	local s = FeedState(feed)
 	local out = { on = s ~= nil, ends = s and s.ends or nil }
-	for k, v in pairs(s and s.options or {}) do out[k] = v end
+	for k, v in pairs(s and Plain(s.options) or {}) do out[k] = v end
+	for k, v in pairs(ns.FeedInfo(feed) or {}) do out[k] = v end
 	return out
 end
 
+------------------------------------------------------------------------------------------------------------------------
+-- ids and the ring
+
+local function Ring(feed)                               -- this character's record of the feed, or nil (no storage)
+	local db = feed.ext.db
+	if type(db) ~= "table" then return nil end
+	db.recent = type(db.recent) == "table" and db.recent or {}
+	local r, me = db.recent[feed.name], Me()
+	if type(r) ~= "table" or r.who ~= me or type(r.items) ~= "table" then
+		r = { who = me, n = 0, items = {} }
+		db.recent[feed.name] = r
+	end
+	return r
+end
+
+local function Small(v, depth)                          -- a copy for saved variables
+	local t = type(v)
+	if t == "string" then return ns.Cut(v, ITEM_TEXT) end
+	if t == "number" then return ns.Finite(v) and v or nil end
+	if t == "boolean" then return v end
+	if t ~= "table" or depth > ITEM_DEPTH then return nil end
+	local out = {}
+	for k, x in pairs(v) do
+		if type(k) == "string" or type(k) == "number" then out[k] = Small(x, depth + 1) end
+	end
+	return out
+end
+
+local function Keep(feed)
+	local n = math.floor(tonumber(feed.spec.keep) or 0)
+	return math.max(0, math.min(KEEP_MAX, n))
+end
+
+-- an item gets its id and time, and a copy goes into the ring
+local function Stamp(feed, item)
+	local r = Ring(feed)
+	if not r then return end
+	r.n = tonumber(r.n) or 0
+	if ns.Finite(item.id) then
+		r.n = math.max(r.n, item.id)
+	else
+		r.n = r.n + 1
+		item.id = r.n
+	end
+	if item.time == nil then item.time = time() end
+	local keep = Keep(feed)
+	if keep == 0 then return end
+	local items = r.items
+	items[#items + 1] = Small(item, 1)
+	while #items > keep do table.remove(items, 1) end
+end
+
+------------------------------------------------------------------------------------------------------------------------
+-- the digest
+
+local function Size(v)
+	local ok, text = pcall(ns.Comm.Serialize, v)
+	return ok and #text or math.huge
+end
+
+local function Wake(feed, s, reason)
+	local items = s.buffer or {}
+	if s.urgentAt then reason = "urgent" end
+	s.buffer, s.first, s.urgentAt = {}, nil, nil
+	local now = time()
+	s.wakes, s.lastWake = (s.wakes or 0) + 1, now
+	local sizes, total = {}, Size({ reason = reason, items = {}, skipped = 1000 })
+	for i, item in ipairs(items) do
+		sizes[i] = Size(item) + 24                        -- (its key, and room)
+		total = total + sizes[i]
+	end
+	local skipped = 0
+	while total > WAKE_MAX and skipped < #items do
+		skipped = skipped + 1
+		total = total - sizes[skipped]
+	end
+	local out = {}
+	for i = skipped + 1, #items do out[#out + 1] = items[i] end
+	feed.ext:Emit(feed.topic, { reason = reason, items = out, skipped = skipped })
+end
+
+-- wakes a running digest feed whose time has come
+local function Due(feed, s)
+	local d, now = Params(feed, s), time()
+	local n = #(s.buffer or {})
+	if n >= d.most then
+		Wake(feed, s, "full")
+	elseif s.urgentAt and now >= s.urgentAt + d.gather then
+		Wake(feed, s, "urgent")
+	elseif n > 0 and d.every and now >= (s.first or now) + d.every then
+		Wake(feed, s, "batch")
+	elseif d.idle and now >= math.max(s.started or 0, s.last or 0, s.lastWake or 0) + d.idle then
+		Wake(feed, s, "idle")
+	end
+end
+
+local function Tick()
+	local any = false
+	for _, eid in ipairs(ns.order) do
+		local ext = ns.extensions[eid]
+		for _, name in ipairs(ext.active and ext.feedOrder or {}) do
+			local feed = ext.feeds[name]
+			local s = feed.spec.digest and FeedState(feed)
+			if s then
+				any = true
+				ns.Safe(Due, feed, s)
+			end
+		end
+	end
+	if not any then Settle() end
+end
+
+local function Digesting()
+	if not digesting then digesting = C_Timer.NewTicker(1, Tick) end
+end
+
+local function Gather(feed, s, item)
+	local d, now = Params(feed, s), time()
+	s.buffer = type(s.buffer) == "table" and s.buffer or {}
+	s.buffer[#s.buffer + 1] = item
+	s.first, s.last = s.first or now, now
+	if d.urgent and not s.urgentAt then
+		local ok, yes = pcall(d.urgent, feed.ext, s.options, item)
+		if not ok then geterrorhandler()(yes) elseif yes then s.urgentAt = now end
+	end
+	Due(feed, s)
+	Digesting()
+end
+
+------------------------------------------------------------------------------------------------------------------------
 -- what ext:Feed returns. feed:Push(data): an item that comes from no game event (a timer, another addon's callback, a
--- window over several events) goes out as one of the feed's, while it runs and accept lets it through; answers whether
--- it went. feed:Running(): its options while it runs (for this character, the extension on), else nil: a detector
--- skips its work while nobody listens
+-- window over several events) goes out as one of the feed's (gathered, for a digest feed), while it runs and accept
+-- lets it through; answers whether it was taken. feed:Running(): its options while it runs (for this character, the
+-- extension on), else nil: a detector skips its work while nobody listens. feed:Recent(since, limit): as <name>.recent
+-- answers; feed:Item(id): the ring's item of that id, or nil (the kept tables themselves: read them, change nothing)
 local Feed = {}
 Feed.__index = Feed
 
@@ -278,8 +488,32 @@ end
 function Feed:Push(data)
 	local options = data ~= nil and self:Running()
 	if not options or (self.spec.accept and not self.spec.accept(self.ext, options, data)) then return false end
-	self.ext:Emit(self.topic, data)
+	local s = FeedState(self)
+	if type(data) == "table" then Stamp(self, data) end
+	s.heard = (s.heard or 0) + 1
+	if self.spec.digest then Gather(self, s, data) else self.ext:Emit(self.topic, data) end
 	return true
+end
+
+function Feed:Recent(since, limit)
+	since = ns.Finite(since) and since or 0
+	limit = ns.Finite(limit) and math.max(1, math.min(KEEP_MAX, math.floor(limit))) or 50
+	local items = (Ring(self) or { items = {} }).items
+	local out = {}
+	for i = #items, 1, -1 do
+		local item = items[i]
+		if #out >= limit or not (tonumber(item.id) and item.id > since) then break end
+		table.insert(out, 1, item)
+	end
+	local last = items[#items]
+	return { items = out, next = last and last.id or since }
+end
+
+function Feed:Item(id)
+	local items = (Ring(self) or { items = {} }).items
+	for i = #items, 1, -1 do
+		if items[i].id == id then return items[i] end
+	end
 end
 
 function Extension:Feed(name, spec)
@@ -300,22 +534,41 @@ function Extension:Feed(name, spec)
 	local args = { minutes = "number?" }
 	for k, v in pairs(spec.options or {}) do args[k] = v end
 	local title = spec.title or name
-	self:Event(topic, { doc = spec.eventDoc or spec.doc, data = spec.data })
+	local itemDoc = spec.eventDoc or spec.doc or name
+	local heard
+	if spec.digest then
+		self:Event(topic, { doc = ("a batch of the items of %s.%s, gathered: {reason (urgent, full, batch or idle), items "
+			.. "(oldest first, each with id and time), skipped (the oldest left out to keep it small; %s.recent has them)}. "
+			.. "An item: %s"):format(self.id, name, name, itemDoc),
+			data = { reason = "urgent|full|batch|idle", items = "table", skipped = "number" } })
+		heard = ("Items are gathered and come as the event %s.%s, one wake {reason, items, skipped} at a time (an urgent "
+			.. "item, a batch every so often, a full buffer, or a quiet spell): read it with the events tool (addon "
+			.. "\"WuxianKit\", topic \"%s.%s\")"):format(self.id, topic, self.id, topic)
+	else
+		self:Event(topic, { doc = spec.eventDoc or spec.doc, data = spec.data })
+		heard = ("Each item is the event %s.%s: read it with the events tool (addon \"WuxianKit\", topic \"%s.%s\")"):format(
+			self.id, topic, self.id, topic)
+	end
 	self:See(name, { title = title, args = args,
 		doc = ("starts a feed that %s, for `minutes` (default %d, at most %d); calling it again replaces the running "
-			.. "one. Each item is the event %s.%s: read it with the events tool (addon \"WuxianKit\", topic \"%s.%s\")"):format(
-			spec.doc or name, spec.minutes or 60, spec.most or 720, self.id, topic, self.id, topic),
+			.. "one. %s"):format(spec.doc or name, spec.minutes or 60, spec.most or 720, heard),
 		run = function(self, a)
 			local o = {}
 			for k in pairs(spec.options or {}) do o[k] = a[k] end
 			if spec.prepare then o = spec.prepare(self, o) end
+			if spec.digest then
+				o = type(o) == "table" and o or {}
+				o.digest = type(o.digest) == "table" and o.digest or {}    -- (changed in place while it runs)
+			end
 			local minutes = tonumber(a.minutes)
 			minutes = math.max(1, math.min(ns.Finite(minutes) and minutes or spec.minutes or 60, spec.most or 720))
 			self.db.feeds = type(self.db.feeds) == "table" and self.db.feeds or {}
-			local s = { options = o, ends = time() + math.floor(minutes * 60), who = Me() }
+			local now = time()
+			local s = { options = o, ends = now + math.floor(minutes * 60), who = Me(), started = now, heard = 0, wakes = 0 }
 			self.db.feeds[name] = s
 			self:Tell(L.FEED_STARTED:format(ns.T(title), FeedText(feed, s), date("%H:%M", s.ends)))
-			Kit:Emit("kit.feed", { extension = self.id, feed = name, on = true, ends = s.ends, options = o })
+			Kit:Emit("kit.feed", { extension = self.id, feed = name, on = true, ends = s.ends, options = Plain(o) })
+			if spec.digest then Digesting() end
 			return Status(feed)
 		end })
 	self:See(name .. ".stop", { title = function() return L.STOP .. " · " .. ns.T(title) end,
@@ -324,13 +577,22 @@ function Extension:Feed(name, spec)
 			ns.FeedStop(feed)
 			return Status(feed)
 		end })
-	self:See(name .. ".status", { title = title, doc = "answers whether the feed runs: {on, ends (Unix time), and its options}",
+	self:See(name .. ".status", { title = title,
+		doc = "answers whether the feed runs: {on, ends (Unix time), its options, and while it runs heard (items this "
+			.. "run), wakes, lastWake, seen (when the agent last called this extension)}",
 		run = function() return Status(feed) end })
+	if Keep(feed) > 0 then
+		self:See(name .. ".recent", { title = title, args = { since = "number?", limit = "number?" },
+			doc = ("answers the feed's last items (it keeps %d, through stops and reloads): {items (each id > since, the "
+				.. "last `limit`, default 50, at most %d, oldest first), next (the newest id: pass it as since next "
+				.. "time)}"):format(Keep(feed), KEEP_MAX),
+			run = function(_, a) return feed:Recent(a.since, a.limit) end })
+	end
 	return feed
 end
 
 -- every few seconds: a feed of this character's whose time is up stops (the player and the bus hear it); one kept from
--- before feeds were a character's goes quietly
+-- before feeds were a character's goes quietly; a digest feed running from before a reload gets its ticker
 C_Timer.NewTicker(5, function()
 	local now, me = time(), Me()
 	if not me then return end
@@ -346,6 +608,7 @@ C_Timer.NewTicker(5, function()
 			end
 		end
 	end
+	if not digesting and DigestRunning() then Digesting() end
 end)
 
 ------------------------------------------------------------------------------------------------------------------------

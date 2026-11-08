@@ -578,7 +578,7 @@ class Core(unittest.TestCase):
         self.assertEqual((s.lua.eval(b"__x:Get('flag')"), s.lua.eval(b"__x:Get('who')")), (True, b"Ann"))
         self.call(s, "xdemo.hear")
         s.fire("CHAT_MSG_SAY", "hello")
-        self.assertEqual(self.events(s, "xdemo.hear"), [{"text": "hello"}])
+        self.assertEqual(self.events(s, "xdemo.hear"), [{"text": "hello", "id": 1, "time": 1001}])   # 0.5 B: id, time
         self.assertIn("a feed's spec has read", self.fails(s, "WuxianKit:Extension('xdemo'):Feed('bad', {})"))
         self.sessions = [s]
 
@@ -599,7 +599,7 @@ class Core(unittest.TestCase):
         s.fire("CHAT_MSG_SAY", "hello")                                        # read gives n = 0: accept says no
         self.call(s, "xdemo.moments.stop")
         self.assertFalse(s.lua.eval(b"__f:Push({ n = 3 })"))
-        self.assertEqual(self.events(s, "xdemo.moment"), [{"n": 2}])
+        self.assertEqual(self.events(s, "xdemo.moment"), [{"n": 2, "id": 1, "time": 1001}])          # 0.5 B: id, time
         self.sessions = [s]
 
     def test_feeds_end_and_belong_to_their_character(self):
