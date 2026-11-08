@@ -167,7 +167,7 @@ local function Options(ext)
 				cv.y = y + 28
 			else                                                   -- text, list
 				PutEdit(0, ValueText(o, value), Set)
-				if o.kind == "list" then Put(0, C.muted, L.OPTION_LIST_HINT) end
+				if o.kind == "list" and not o.hint then Put(0, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
 			end
 		end
 		if o.hint then Put(0, C.muted, ns.T(o.hint)) end
