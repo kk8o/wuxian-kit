@@ -79,6 +79,11 @@ Prefer it to several single proposals. Example:
   chat lockdown (boss encounters, Mythic+, PvP) Send proposals wait.
 - An undo works only on the character the proposal ran on.
 - Proposals from other players and from imported (shared) profiles always need the player's click.
+- Pre-approval may carry a limit the player set (at most N runs without a click per period). Past it, the proposal
+  waits for the click like any other: do not try to get around it, and slow down.
+- Categories are layered: pre-approving `chat.guild` also covers `chat.guild.reply`.
+- `wk_kit_options` with `{"extension": "<id>"}` reads the player's options for an extension (read only: only the
+  player changes them, in the /wk window or the addon's own window).
 - Turning an extension off declines its proposals that have not run.
 - Titles and texts you send show as plain text in the game: color, link and texture codes do not work.
 
@@ -92,5 +97,18 @@ Read them with the workshop's `events` tool, for example
 - `kit.ready`: WuxianKit started (a login or a UI reload; proposals that had not run are gone).
 - `kit.feed`: a feed such as `wk_chat_listen` started or stopped (also when its time ran out).
 - `kit.extension`: an extension went on or off.
+- `kit.option`: the player changed an extension's option (`{extension, name, value}`).
 - `kit.dropped`: extension events lost because they came too fast (how many, by topic). WuxianKit's own events wait
   and are sent again when there is room (the last 50); while 无限工坊 is not linked, only the last few are kept.
+
+## Batched feeds
+
+Some feeds batch what they hear: instead of one event per item, one event per wake, `{reason, items, skipped}`.
+`reason` is `urgent` (something addressed the player; it came a few seconds ago), `full`, `batch` (the period passed)
+or `idle` (nothing for a while; `items` is empty). Items carry an `id`; `<feed>_recent` with `{"since": <id>}` reads
+what was heard before (also after a UI reload). `<feed>_status` gives `seen`, the last time you called the extension:
+the window shows the player whether you are still answering.
+
+To wait for wakes outside a conversation turn, run the workshop's command in the background:
+`wuxian events --addon WuxianKit --topic <ext>.<event> --since <next> --once --max 1500`; it prints the events and
+`NEXT <id>` and exits on the first one (or after --max seconds), which wakes you.

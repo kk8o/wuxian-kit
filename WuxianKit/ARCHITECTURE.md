@@ -52,7 +52,7 @@ demo:Scope("settings", L"SCOPE")
 ```
 
 - `id`：小写字母、数字和下划线。能力的 id 是 `<扩展>.<名称>`，事件主题是 `<扩展>.<主题>`。
-- `info` 的字段：`title`、`version`、`notes`、`addon`（所属插件的文件夹名，别的插件的扩展写它）、`defaults`（存储的默认值）、`setup(self)`（启用时）、`teardown(self)`（停用时）、`docs`（`AGENT.md` 与 `skills/` 所在的子文件夹，相对于插件文件夹；不写就是插件文件夹本身）。
+- `info` 的字段：`title`、`version`、`notes`、`addon`（所属插件的文件夹名，别的插件的扩展写它）、`defaults`（存储的默认值）、`setup(self)`（启用时）、`teardown(self)`（停用时）、`docs`（`AGENT.md` 与 `skills/` 所在的子文件夹，相对于插件文件夹；不写就是插件文件夹本身）、`prompt`（`skills/` 里一个技能的 `name`：这一页出现「接入 Agent」按钮，见下）。
 - 多个文件组成的扩展，其他文件用 `Kit:Extension("demo")`（不带 `info`）取回同一个对象。
 
 ### 生命周期
@@ -70,12 +70,32 @@ demo:Scope("settings", L"SCOPE")
 | `ext:Every(seconds, fn)` | 定时器，启用期间运行 |
 | `ext:Emit(topic, data)` | 总线事件 `<id>.<topic>`，同时交给 Agent |
 | `ext:Event(topic, { doc, data })` | 声明会发出的事件，写进清单（`data`：字段 → 类型） |
-| `ext:Scope(name, title)` | 免确认的类别，玩家在窗口里勾选 |
-| `ext:Option(name, { title, kind, default, hint, changed })` | 玩家在窗口里设置的选项（勾选框或文本框）；只能由玩家修改，没有任何能力能读写 |
-| `ext:Get(name)` | 读选项的值 |
+| `ext:Scope(name, title)` 或 `ext:Scope(name, { title, budget })` | 免确认的类别，玩家在窗口里勾选。名称可以带点分层（`guild.reply`），授权上一层也覆盖下一层；`budget = { per = 秒, most = 次数 }` 是建议的限额，玩家勾选时预先选上（第 6 节） |
+| `ext:Option(name, { title, kind, default, hint, changed, ... })` | 玩家在窗口里设置的选项，见下；只能由玩家修改，Agent 经 `kit.options` 只读 |
+| `ext:Get(name)` | 读选项的值（列表返回副本） |
 | `ext:Command(word, fn, help)` | 斜杠命令 `/wk <word>` |
 | `ext:Status(fn)`、`ext:Button(label, fn)` | 窗口里这一页的一行状态和几个按钮 |
 | `ext:Tell(text)` | 以扩展名义在聊天框给玩家一行提示 |
+
+选项的 `kind`：
+
+| kind | 控件 | 值 | 另外的字段 |
+|---|---|---|---|
+| `boolean`（默认） | 勾选框 | `true` / `false` | |
+| `text` | 文本框 | 字符串 | |
+| `number` | 数字框 | 数字，夹在 `min`–`max` 之间、按 `step` 取整 | `min`、`max`、`step`（默认 1）、`unit`（单位文字，`L"KEY"` 或字符串） |
+| `choice` | 一排按钮，选一个 | 某个 `value` | `choices = { { value, label }, ... }`，`label` 可以是 `L"KEY"`；存的值不在其中时按 `default` |
+| `list` | 文本框，用逗号（`,`、`，`、`、`）分开 | 字符串的表：去掉首尾空白、去空、去重，最多 20 项，每项最多 32 字节 | |
+
+- 玩家改了选项，核心调 `changed(self, value)`，并发出总线事件 `kit.option`（`{ extension, name, value }`）。
+- `WuxianKit:OptionsPanel(id, parent, width)`：在插件自己的窗口里画扩展 `id` 的全部选项，样式与 `/wk` 一致，两处改的是同一份；返回一个框体（高度已按内容设好），`:Refresh()` 重画。扩展不存在或没有选项时返回 nil。
+- `kit.options { extension }`（读取）：`{ [name] = { title, kind, value, default, choices?, min?, max?, unit? } }`，标题按当前语言。Agent 用它了解玩家的设置，不能修改。
+
+复制框与接入：
+
+- `WuxianKit:Copy(text, { title, hint, done })`：一个只读的复制框，文字已选中、输入焦点在框里；玩家按 Ctrl+C 后显示「已复制」并在片刻后收起，调 `done()`；Esc 关闭。无限的客户端不允许插件写剪贴板（`CopyToClipboard` 受限），要复制给玩家的文字都用它。同一时间只有一个复制框，新的替换旧的。
+- `info.prompt`：扩展页显示「接入 Agent」按钮，点开复制框，内容是 `/mcp__wuxian__<prompt>`（Claude Code 里调用无限工坊这个提示词的命令），提示里写上给其他客户端的说法。
+- `WuxianKit:Requires(version)`：扩展框架的版本不低于 `version`（`"0.5.0"`）时为真。可选依赖扩展框架的插件用它判断新接口在不在。
 
 声明会发出的事件：
 
@@ -150,7 +170,22 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 
 生成 `<名称>`（开始，带 `minutes`）、`<名称>.stop`、`<名称>.status`，并自动声明事件 `<扩展>.<event>`（不写 `event` 时用 Feed 的名称）。开始后记在存储里，重载后接着听；到点自动停止，玩家和 Agent 都会收到通知（`kit.feed`）。监听属于启动它的角色：换角色登录不会接着转发，也不会停掉它。窗口里显示正在运行，并有「停止」按钮。可选字段：`accept`、`prepare`、`describe`、`minutes`（默认 60）、`most`（最长，默认 720）、`eventDoc`、`data`。
 
-`ext:Feed` 返回 Feed 本身。不是由单个游戏事件产生的条目（定时器、别的插件的回调、跨几个事件的统计）用 `feed:Push(data)` 发出：Feed 在运行、`accept` 放行时才发，返回是否发出。`feed:Running()` 在运行时返回它的选项，否则返回 nil，没人听时可以跳过统计。
+`ext:Feed` 返回 Feed 本身。不是由单个游戏事件产生的条目（定时器、别的插件的回调、跨几个事件的统计）用 `feed:Push(data)` 发出：Feed 在运行、`accept` 放行时才发，返回是否发出。`feed:Running()` 在运行时返回它的选项（就是存着的那张表，扩展可以就地改它的 `digest`），否则返回 nil，没人听时可以跳过统计。
+
+条目编号：每个发出的条目（表）都带 `id` 和 `time`。条目自己带 `id`（数字）时沿用（例如聊天消息用聊天扩展的编号），否则按 Feed 自己的计数递增（存在存储里，重载后接着数）；没有 `time` 时填 `time()`。
+
+回看（`keep = n`，最多 200）：Feed 记住最近 `n` 个条目（存在存储里，重载、停止后仍在；换角色登录时从空开始），另生成 `<名称>.recent`（读取，参数 `since`、`limit`，默认 50）：答 `{ items, next }`，`items` 是编号大于 `since` 的最近 `limit` 个（从旧到新），`next` 是最新的编号。Lua 里用 `feed:Recent(since, limit)` 和 `feed:Item(id)`。
+
+汇总（`digest = { gather, every, idle, most, urgent }`）：条目不再一个一个发出，先攒着，到时候合成一次「唤醒」：
+
+- `urgent(self, options, item)` 为真的条目到了，再等 `gather` 秒（默认 5，让人把话说完）就唤醒；
+- 其余条目：攒下的第一个到了之后 `every` 秒唤醒（默认 60；`false` 只在紧急或攒满时唤醒）；
+- 攒满 `most` 个（默认 30）立即唤醒；
+- `idle` 秒（默认 `false`：不唤醒）里既没有条目也没有唤醒，就唤醒一次，`items` 为空（冷场，供 Agent 开个话题）。
+- 一次唤醒就是一个总线事件 `<扩展>.<event>`：`{ reason, items, skipped }`。`reason` 是 `urgent`、`full`、`batch` 或 `idle`；`items` 从旧到新；单个事件太大时去掉最旧的几个，`skipped` 是去掉的个数（它们仍在回看里）。
+- 运行时的参数以选项里的 `digest` 表为准（`prepare` 可以按玩家的设置填它，运行中也可以经 `feed:Running().digest` 就地改），没有的字段用 spec 的。
+
+`<名称>.status` 还答 `heard`（这次运行收到的条目数）、`wakes`（唤醒次数）、`lastWake`、`seen`（Agent 最近一次调用这个扩展任何能力的时间，由核心记录；没有调用过为 nil）。窗口里正在运行的 Feed 一行下面显示「Agent 最近应答」或「Agent 尚未应答」。
 
 ## 6. 提案
 
@@ -170,6 +205,9 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 - `pending`、`waiting` 默认 300 秒内没有处理就过期（`ttl`，10–600 秒）；`queued`、`running` 不会过期。`after` 指定不早于某个时刻执行，必须早于过期时间。
 - 战斗中确认的提案，脱战后重新检查一遍（免确认、时间、聊天锁定、就绪）再执行；步骤之间进入战斗时，其余步骤等脱战后接着执行。
 - 免确认：一个提案的每一步都属于玩家勾选的类别时，不弹窗直接执行；执行前会再确认一次，玩家已取消勾选的改为待确认。别的玩家发来的提案和别人分享的配置档始终需要确认。免确认只能由玩家在窗口里设置。
+- 分层：类别按点分层，一步属于 `chat.guild.reply` 时，从它往上找（`chat.guild.reply` → `chat.guild`）最近一个玩家勾选的类别，按那个类别算。勾选上一层就覆盖下一层。
+- 限额：勾选时可以带限额 `{ per = 秒, most = 次数 }`（默认用类别建议的 `budget`，玩家可以改成别的或不限）。一个类别在 `per` 秒里免确认执行过的步骤（只数免确认执行的，玩家点执行的不算）加上这个提案里属于它的步骤超过 `most` 时，这个提案改为待确认，预览里注明「已到免确认上限」。限额只能由玩家设置；旧存档里的勾选（`true`）视为不限。
+- `Kit:Granted(scope)` 答两个值：这一步现在会不会免确认（按分层），以及限额里还剩几次（不限时为 nil）。
 - 提案标题经转义，最长 120 字节。弹窗里显示的提案被换成另一个时，「执行」按钮和 `/wk yes` 等 1 秒，防止误点。
 - 执行过的提案保留最近 50 条，按角色区分：只能在执行它的角色上撤销。玩家可以在窗口里撤销，Agent 用 `kit.undo` 发起撤销提案。
 - 每次状态变化都发出总线事件 `kit.proposal`。
@@ -222,9 +260,22 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 
 ## 9. 公共接口与约定
 
-公共表 `WuxianKit`：`Extension`、`Words`、`Call`、`Propose`、`Proposal`、`Proposals`、`Capabilities`、`Capability`、`Manifest`、`Granted`、`On`、`Off`、`Emit`、`Escape`（转义外来文字）、`AgentOnline`、`Window`（打开扩展框架窗口，可指定扩展）、`Comm`（插件消息）、`Skin`（窗口样式）、`VERSION`。
+公共表 `WuxianKit`：`Extension`、`Words`、`Call`、`Propose`、`Proposal`、`Proposals`、`Capabilities`、`Capability`、`Manifest`、`Granted`、`On`、`Off`、`Emit`、`Escape`（转义外来文字）、`AgentOnline`、`Window`（打开扩展框架窗口，可指定扩展）、`Comm`（插件消息）、`Skin`（窗口样式）、`Copy`（复制框）、`OptionsPanel`（在别的窗口里画选项）、`Requires`（版本判断）、`Chat`（聊天扩展给别的插件用的解析：`Read`、`Mentions`、`Message`、`Names`，见 `Extensions/Chat/AGENT.md`）、`VERSION`。
 
 - 不模拟输入、不读内存、不注入代码。施法、使用物品、选择目标、摆动作条这类受保护操作，插件做不到，用指引类指给玩家。
 - 机密值不读：读到的值是机密值时跳过。
 - 硬边界：玩家关掉无限工坊的热加载后，Agent 只能调用插件公开的能力（不带代码的调用，需要无限工坊 0.9.7 或更高版本）。热加载开着时，Agent 可以执行任意代码，权限只是约定。
 - 代码注释用英文；给玩家看的文字中英两份。
+
+## 10. 版本 0.5 的由来
+
+0.5 的新接口都来自「无限公会助手」这个实际场景（本机 Agent 参与公会聊天），判断标准是：第二个扩展也会用到的进核心，只和公会有关的留在公会助手，Agent 自己管得好的（记忆、资讯）放在 Agent 那边。
+
+| 新接口 | 公会助手用它做什么 | 别的用处 |
+|---|---|---|
+| 选项的 `number`、`choice`、`list`，`kit.options`，`OptionsPanel` | 活跃度、话题、免打扰；同一份设置画在自己的窗口里 | 陪玩的称呼、调校 |
+| Feed 的编号、回看、汇总 | 公会聊天攒一批叫醒 Agent，有人点名立即叫醒，冷场时叫醒 | 陪玩的时刻、答疑；忙的频道不再被限速丢事件 |
+| 类别分层与限额 | 「回复点名我的人」与「公会频道」分开授权，免确认也有上限 | 密语回复、队伍频道 |
+| `Copy`、`info.prompt`、`Requires` | 邀请命令、接入提示词 | 任何带技能的扩展都有「接入 Agent」 |
+| 聊天扩展的点名、回复、让玩家先说、`WuxianKit.Chat` | 认出有人叫我，回复可以单独免确认 | 答疑、陪玩、队伍助手 |
+| `sense.guild` | 公会概况与在线成员 | 答疑、Agent 了解公会 |
