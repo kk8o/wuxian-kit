@@ -1,15 +1,16 @@
 -- 感知 (Sense): what the game shows of the player, read at once: sense.character, sense.position, sense.bags,
--- sense.quests, sense.professions, sense.reputation, sense.currency, sense.group. Nothing here reads what the client
--- keeps secret on purpose (health and power are secret to addons on this client); a value that comes back secret (in
--- combat, an encounter, a PvP match) is left out.
+-- sense.quests, sense.professions, sense.reputation, sense.currency, sense.group, sense.guild. Nothing here reads what
+-- the client keeps secret on purpose (health and power are secret to addons on this client); a value that comes back
+-- secret (in combat, an encounter, a PvP match) is left out. sense.guild never reads public or officer notes.
 local Kit = WuxianKit
 local issecret = issecretvalue or function() return false end
 
 local L = Kit:Words {
 	zhCN = { TITLE = "角色信息", CHARACTER = "角色", POSITION = "位置", BAGS = "背包", QUESTS = "任务日志",
-		PROFESSIONS = "专业技能", REPUTATION = "声望", CURRENCY = "货币", GROUP = "队伍" },
+		PROFESSIONS = "专业技能", REPUTATION = "声望", CURRENCY = "货币", GROUP = "队伍", GUILD = "公会" },
 	enUS = { TITLE = "Character info", CHARACTER = "Character", POSITION = "Location", BAGS = "Bags", QUESTS = "Quest log",
-		PROFESSIONS = "Professions", REPUTATION = "Reputation", CURRENCY = "Currencies", GROUP = "Group" },
+		PROFESSIONS = "Professions", REPUTATION = "Reputation", CURRENCY = "Currencies", GROUP = "Group",
+		GUILD = "Guild" },
 }
 
 local sense = Kit:Extension("sense", { title = L"TITLE", version = Kit.VERSION, docs = "Extensions/Sense" })
@@ -212,4 +213,63 @@ sense:See("group", { title = L"GROUP",
 			end
 		end
 		return { kind = raid and "raid" or "party", members = members }
+	end })
+
+-- the guild's roster as the guild window has it (asking the server for a fresh one: it answers a moment later)
+local function GuildRoster()
+	if C_GuildInfo and C_GuildInfo.GuildRoster then pcall(C_GuildInfo.GuildRoster) end
+end
+
+sense:See("guild", { title = L"GUILD", args = { members = "boolean?", limit = "number?" },
+	doc = "the player's guild: name, rank (the player's), motd, total and online members, classes {[classFile] = n online}, "
+		.. "levels {avg, median, atMax} of those online; with members (default true) the online members {name (whole, as "
+		.. "for a whisper), level, class (classFile), zone, rank, online}, highest level first, at most `limit` (100, up "
+		.. "to 300). Not in a guild: {guild = false}. Notes are never read",
+	run = function(_, a)
+		local name, rank = GetGuildInfo("player")
+		name, rank = V(name), V(rank)
+		if type(name) ~= "string" or name == "" then return { guild = false } end
+		GuildRoster()
+		local motd = GetGuildRosterMOTD and V(GetGuildRosterMOTD()) or nil
+		local out = { name = name, rank = rank, motd = motd ~= "" and motd or nil, classes = {} }
+		local total = GetNumGuildMembers and V((GetNumGuildMembers())) or 0
+		total = type(total) == "number" and total or 0
+		local max = GetMaxLevelForPlayerExpansion and V(GetMaxLevelForPlayerExpansion()) or nil
+		max = type(max) == "number" and max > 0 and max or 60
+		local online, levels, sum, atMax = {}, {}, 0, 0
+		for i = 1, total do
+			-- name, rankName, rankIndex, level, classDisplayName, zone, publicNote, officerNote, isOnline, status,
+			-- classFile: the notes are skipped
+			local who, rankName, _, level, _, zone, _, _, isOnline, _, classFile = GetGuildRosterInfo(i)
+			who, isOnline = V(who), V(isOnline)
+			if type(who) == "string" and isOnline then
+				level, classFile = V(level), V(classFile)
+				if type(level) == "number" then
+					levels[#levels + 1], sum = level, sum + level
+					if level >= max then atMax = atMax + 1 end
+				end
+				if type(classFile) == "string" then out.classes[classFile] = (out.classes[classFile] or 0) + 1 end
+				zone = V(zone)
+				online[#online + 1] = { name = Ambiguate(who, "none"), level = type(level) == "number" and level or nil,
+					class = classFile, zone = zone ~= "" and zone or nil, rank = V(rankName), online = true }
+			end
+		end
+		out.total, out.online = total, #online
+		table.sort(levels)
+		local n = #levels
+		out.levels = { atMax = atMax }
+		if n > 0 then
+			out.levels.avg = Round(sum / n, 1)
+			out.levels.median = n % 2 == 1 and levels[(n + 1) / 2] or (levels[n / 2] + levels[n / 2 + 1]) / 2
+		end
+		if a.members ~= false then
+			table.sort(online, function(x, y)
+				if (x.level or 0) ~= (y.level or 0) then return (x.level or 0) > (y.level or 0) end
+				return x.name < y.name
+			end)
+			local members = {}
+			for i = 1, math.min(Count(a.limit, 100, 300), #online) do members[i] = online[i] end
+			out.members = members
+		end
+		return out
 	end })
