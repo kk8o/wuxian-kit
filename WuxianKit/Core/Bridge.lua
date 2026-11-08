@@ -12,6 +12,8 @@
 -- a proposal's end above all) wait here (the last KEPT) and are sent again when there is room, and the extensions' (a
 -- busy chat feed) take at most FEED_RATE a second of it, so the core's find room; what was dropped is told every
 -- DROPPED_EVERY seconds (kit.dropped). While 无限工坊 is not linked, WoWBridge itself keeps only its last few events.
+-- An agent's call that reaches a capability (kit.propose: each step's) marks its extension seen (ext.seen = time(), in
+-- memory): a feed's status and the window tell when the agent last answered (ns.FeedInfo).
 local addonName, ns = ...
 local Kit = ns.Kit
 
@@ -95,6 +97,7 @@ end
 local function Expose(cap)
 	if not WB or exposed[cap.id] == cap then return end
 	local ok = pcall(WB.Expose, WB, cap.id, function(args)
+		cap.ext.seen = time()
 		local clean, opts = Split(args)
 		return ForAgent(cap, Called(Kit.Call, Kit, cap.id, clean, opts))
 	end, Doc(cap))
@@ -150,6 +153,8 @@ if WB then
 		local steps = {}
 		for i, s in ipairs(type(a.steps) == "table" and a.steps or {}) do
 			steps[i] = type(s) == "table" and { s.cap or s[1], s.args or s[2] } or s
+			local cap = type(s) == "table" and ns.caps[steps[i][1]]
+			if cap then cap.ext.seen = time() end
 		end
 		return Plainly(Called(Kit.Propose, Kit, steps, { source = "agent", title = a.title, ttl = a.ttl, after = a.after }))
 	end, "Several say / do steps in one proposal the player confirms once: {title, steps: [{cap, args}], ttl (10-600 s),"
