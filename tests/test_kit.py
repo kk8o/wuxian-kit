@@ -372,7 +372,7 @@ class Core(unittest.TestCase):
         tools = {"wk_" + c.replace(".", "_") for c in caps} | {"wk_docs", "wk_wait", "wk_propose"}
         root = Path(__file__).resolve().parents[1] / "WuxianKit"
         skills = sorted(root.glob("skills/*.md")) + sorted(root.glob("Extensions/*/skills/*.md"))
-        self.assertEqual([p.stem for p in skills], ["kit-extension", "guide-tour", "tune-setup"])
+        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guide-tour", "tune-setup"])
         for p in skills:
             text = p.read_text(encoding="utf-8")
             head = dict(re.findall(r"^([a-z-]+): (.+)$", text.split("---")[1], re.M))
