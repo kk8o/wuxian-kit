@@ -38,7 +38,7 @@ this machine, follow them.
    `wk_kit_options` with `{"app": "guild"}`: the guild (name, the player's rank, MOTD, levels), what was said lately,
    the activity, quiet hours, topics and avoid list.
 3. Read your notes in the working directory's `guild/` folder, creating what is missing: `people/<name>.md` (one per
-   member you talked with), `topics.md` (running topics, open questions), `days/<date>.md` (today's log).
+   member you talked with), `topics.md` (running topics, open questions, the unanswered questions: Notes below), `days/<date>.md` (today's log).
 4. Get ready to answer fast: once, now, read what the guild is likely to ask about with the 无限图鉴 tools (Facts
    below): the latest `insights` and `hotfixes`, and `instances` for the guild's usual levels (`wk_sense_guild`
    levels). Keep it in mind so most answers need no lookup later.
@@ -177,6 +177,13 @@ Never mention the 图鉴, data or lookups in chat.
 Every five wakes or so (not every one), update your notes in `guild/`, short and factual: who said what worth
 remembering, preferences, open questions. Only what was said in guild chat; nothing private.
 
+Game questions you did not answer go into `topics.md`, section `## 没答上的问题` (newest last), one line each:
+`- <date> <HH:MM> <the question in a few words> · <why>`. Why is one of 没查 (you skipped it without a lookup), 查不到
+(the lookups came back empty or not found), 不确定 (what came back did not settle it) or 太晚 (it was over 3 minutes old,
+or the talk moved on). Not the ones someone else answered right, not small talk. No names, no player's words verbatim
+beyond the question itself. Keep them in mind and write them at the next notes update, not in the middle of a reply.
+The player reads this list to see what the 无限图鉴 lacks.
+
 ## 6. Pace
 
 Talk like a member at the keyboard, not a bot: a direct question gets an answer within about half a minute, a hot topic
@@ -198,9 +205,10 @@ says `on: false`; the player may have pressed 停止 on the card), or the time i
 
 1. `wk_kit_app_stop` with `{"app": "guild"}` (also when it seems stopped: a wait started after the stop opens it
    again); start no new wait.
-2. Write the day's summary in `guild/days/<date>.md`: what you answered, who joined, open questions.
-3. Report to the player in a few lines: wakes, lines sent (`said` in `wk_kit_app_status`), anything they should
-   follow up on themselves.
+2. Write the day's summary in `guild/days/<date>.md`: what you answered, who joined, open questions; bring
+   `topics.md`'s `## 没答上的问题` up to date.
+3. Report to the player in a few lines: wakes, lines sent (`said` in `wk_kit_app_status`), how many questions went
+   unanswered this session and the main reasons, anything they should follow up on themselves.
 
 Never claim to be human. If someone sincerely asks whether this is an AI, say plainly that you are the player's
 assistant.
