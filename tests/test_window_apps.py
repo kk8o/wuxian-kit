@@ -110,6 +110,11 @@ class WindowApps(unittest.TestCase):
         self.assertEqual(w[b"pill"][b"text"][b"text"], b"App")
         self.assertEqual(labels(w), ["Remove"])
         self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"], b"Off")
+        s.lua.execute(b"__add('pal', { by = 'agent', decl = { title = 'Pal' }, ['local'] = { id = 'voice', title = 'Voice' } })")
+        w = self.window(s, "pal")
+        self.assertEqual(texts(w[b"body"])[1], "From the local extension Voice: turn it off or remove it on the "
+                                               "Extensions page of the 无限工坊 app")
+        self.assertNotIn("Remove", labels(w))
         click(self.item(w, "Peek"))
         self.assertEqual(texts(w[b"body"])[:2], ["Peek", "Declared by an agent"])
         self.assertEqual(w[b"pill"][b"text"][b"text"], b"Temporary")

@@ -108,6 +108,19 @@ class Declared(unittest.TestCase):
         st = self.agent(s, "kit.app.declare", "{ app = 'guild', title = 'Mine', hear = { 'bus:x' } }")
         self.assertEqual((st["title"], st["by"], st["ignored"]), ("Guild chat", "addon", ["hear", "title"]))
 
+    def test_a_local_extensions_app(self):
+        """local {id, title}: listed with it; the player cannot remove it (it goes with the extension)"""
+        s = self.start()
+        self.agent(s, "kit.app.declare", "{ app = 'buddy', title = 'Buddy', hear = { 'bus:x' }, "
+                                         "['local'] = { id = 'voice', title = 'Voice' } }")
+        self.assertEqual(self.listed(s, "buddy")["local"], {"id": "voice", "title": "Voice"})
+        self.assertIs(s.ns.ForgetApp(b"buddy"), False)
+        self.assertIsNotNone(self.listed(s, "buddy"))
+        self.assertIn("local is {id, title}", self.fails(s, "kit.app.declare",
+                                                         "{ app = 'b2', title = 'B', ['local'] = { id = 'Bad Id' } }"))
+        self.agent(s, "kit.app.declare", "{ app = 'b3', title = 'B3', hear = { 'bus:x' } }")
+        self.assertIs(s.ns.ForgetApp(b"b3"), True)                     # an agent's own: removed
+
     def test_temporary_apps(self):
         s = self.start()
         for i in range(8):

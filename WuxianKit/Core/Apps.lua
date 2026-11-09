@@ -39,7 +39,7 @@
 --   ns.AppOptionList(id)          its options as kit.options answers ({ [name] = { title, kind, value, ... } })
 --   ns.SetAppOption(id, name, v)  the player set one: true and the value kept, or false
 --   ns.AppControls(id)            { { cmd, label } } in its declared order (label: the core's word, or the app's own)
---   ns.ForgetApp(id)              the player removes an app an agent declared
+--   ns.ForgetApp(id)              the player removes an app an agent declared (not one a local extension brings)
 --   ns.CONTROL_WORDS              word (English and Chinese) -> cmd, for /wk <app> <word>
 -- ns.Changed("app", id) tells it when an app is declared or removed.
 --
@@ -417,7 +417,7 @@ local function Options(t, agent, paced)
 end
 
 local DECL_FIELDS = { title = true, hear = true, see = true, digest = true, pace = true, urgent = true, controls = true,
-	hidden = true,
+	hidden = true, ["local"] = true,
 	say = true, lease = true, minutes = true, options = true, prompt = true }
 
 local function CheckId(id)
@@ -503,6 +503,15 @@ local function Normalize(id, d, agent, kept)
 	end
 	n.say = Bool(d.say, "say") or false
 	n.hidden = Bool(d.hidden, "hidden") or nil              -- plumbing: not in the window's list, no chat lines
+	local from = d["local"]                               -- the local extension it comes with: no remove button
+	if from ~= nil then
+		if type(from) ~= "table" or type(from.id) ~= "string" or #from.id > ID_MAX
+			or not from.id:match("^[a-z][a-z0-9_]*$") then
+			Fail("local is {id, title}: the local extension of 无限工坊 the app comes with (id: lowercase letters, "
+				.. "digits, _, at most %d bytes)", ID_MAX)
+		end
+		n["local"] = { id = from.id, title = Text(from.title, "local.title", TITLE_MAX, true) or from.id }
+	end
 	local lease = LeaseOf(d.lease, "lease")
 	if lease == nil then lease = LEASE end
 	n.lease = lease or nil
@@ -1161,7 +1170,8 @@ function ns.AppList()
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
 			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt, start = StartLine(app),
 			extension = app.decl.extension, blocked = not s and Blocked(app) or nil, temp = app.temp == true,
-			see = #app.decl.see > 0 and Copy(app.decl.see) or nil, hidden = app.decl.hidden }
+			see = #app.decl.see > 0 and Copy(app.decl.see) or nil, hidden = app.decl.hidden,
+			["local"] = Copy(app.decl["local"]) }
 	end
 	return out
 end
@@ -1240,7 +1250,7 @@ end
 
 function ns.ForgetApp(id)
 	local app = apps[id]
-	if not app or app.by ~= "agent" then return false end
+	if not app or app.by ~= "agent" or app.decl["local"] then return false end   -- (a local extension's: 无限工坊's)
 	Stop(app, "player")                                  -- (a temporary one goes with its run)
 	if not app.temp then
 		local store = Store()
@@ -1257,10 +1267,11 @@ local kit = Kit:Extension("kit")
 
 local OPEN_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
 	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	see = "table?", options = "table?", prompt = "string?", temp = "boolean?", hidden = "boolean?" }
+	see = "table?", options = "table?", prompt = "string?", temp = "boolean?", hidden = "boolean?",
+	["local"] = "table?" }
 local DECLARE_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
 	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	see = "table?", options = "table?", prompt = "string?", hidden = "boolean?" }
+	see = "table?", options = "table?", prompt = "string?", hidden = "boolean?", ["local"] = "table?" }
 
 -- the hear entries the sources take, from the sources registered now
 local function HearDoc()
@@ -1347,7 +1358,9 @@ local function DeclareOpen()
 			.. "reads them at once: " .. SeeDoc() .. "), lease (seconds without a kit.app.* call before it stops, "
 			.. "default 600, 0 none, at least 60), "
 			.. "minutes (default 120, at most 720), hidden (true: plumbing of a program, such as 无限工坊's reactions: "
-			.. "not in the /wk window's list and no chat line when it starts or stops; kit.apps still lists it), options (at most 8 the player sets: name -> {kind "
+			.. "not in the /wk window's list and no chat line when it starts or stops; kit.apps still lists it), local "
+			.. "({id, title}: the local extension of 无限工坊 the app comes with; its card has no remove button: it goes "
+			.. "with the extension), options (at most 8 the player sets: name -> {kind "
 			.. "boolean|text|number|choice|list, title, default, hint, choices [{value, label}], min, max, step, unit}), "
 			.. "prompt (the name of the skill an AI client follows to drive it). temp = true with a "
 			.. "declaration: a temporary app, to listen for a while (as when debugging): not remembered, not one of the "

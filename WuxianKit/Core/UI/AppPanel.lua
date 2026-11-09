@@ -49,7 +49,8 @@ function UI.Apps()
 			if a.by == "agent" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
 			out[#out + 1] = { id = a.id, title = title ~= nil and title ~= "" and ns.Text(title) or a.id, by = a.by,
 				addon = a.addon, on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
-				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true }
+				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true,
+				from = type(a["local"]) == "table" and ns.Escape(ns.Text(a["local"].title or a["local"].id)) or nil }
 		end
 	end
 	return out

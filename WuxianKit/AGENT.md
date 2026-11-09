@@ -189,6 +189,8 @@ just renews its time and lease. An app an addon declared (`wk_kit_apps` lists it
   `/wk <app> <words>`.
 - `hidden: true`: plumbing of a program (such as 无限工坊's reactions), not an app for the player: left out of the
   /wk window's list and no chat line when it starts or stops; `wk_kit_apps` still lists it.
+- `local: {id, title}`: set by 无限工坊 for the apps a local extension brings (never by you): the card says where it
+  comes from and has no remove button; the app goes with the extension.
 - `lease`: seconds without a `wk_kit_app_*` call of yours before the app stops (default 600, at least 60, 0 none).
   `minutes`: how long it may run (default 120, at most 720).
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,

@@ -28,7 +28,7 @@ function ns.AppList()
 			out[#out + 1] = { id = id, title = t.decl.title, by = t.by or "addon", addon = t.addon, on = t.status.on or false,
 				ends = t.status.ends, present = t.status.present, prompt = t.decl.prompt,
 				start = t.decl.prompt and t.decl.prompt:match("^[%w_%-]+$") and ("Start " .. t.decl.prompt) or nil,
-				temp = t.temp or false, hidden = t.hidden }
+				temp = t.temp or false, hidden = t.hidden, ["local"] = t["local"] }
 		end
 	end
 	return out

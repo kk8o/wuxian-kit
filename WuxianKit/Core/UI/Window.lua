@@ -20,7 +20,7 @@ local S, C = UI.Skin, UI.Skin.C
 local A = Kit:Words {
 	zhCN = {
 		GROUP = "应用", PILL = "应用", TEMP = "临时", BY_ADDON = "插件 %s", BY_AGENT = "Agent 声明",
-		REMOVE = "移除",
+		REMOVE = "移除", BY_LOCAL = "来自本机扩展「%s」，在无限工坊 App 的扩展页停用或删除",
 		LIST_ON = "运行中", LIST_OFF = "未运行",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
 		EXT_OFF = "扩展「%s」未启用", EXT_OFF_HINT = "启用后才能接入", OPEN_EXT = "打开扩展页",
@@ -36,6 +36,7 @@ local A = Kit:Words {
 	},
 	enUS = {
 		GROUP = "Apps", PILL = "App", TEMP = "Temporary", BY_ADDON = "Addon %s", BY_AGENT = "Declared by an agent",
+		BY_LOCAL = "From the local extension %s: turn it off or remove it on the Extensions page of the 无限工坊 app",
 		REMOVE = "Remove",
 		LIST_ON = "On", LIST_OFF = "Off",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
@@ -414,16 +415,18 @@ local function Page(e)
 	end
 end
 
--- an app's page: its title (a temporary one's capsule says so) and where it came from (an agent's declaration, an
--- addon), then its card (with a remove button when an agent declared it)
+-- an app's page: its title (a temporary one's capsule says so) and where it came from (a local extension, an agent's
+-- declaration, an addon), then its card (with a remove button when an agent declared it)
 local function AppPage(e)
 	local title = Put(0, C.fg, e.title, W - LEFT - 160, true)
 	f.pill.Set(e.temp and A.TEMP or A.PILL, "custom")
 	f.pill:ClearAllPoints()
 	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
 	f.pill:Show()
-	local agent = e.by == "agent"
-	if agent then
+	local agent = e.by == "agent" and not e.from
+	if e.from then
+		Put(0, C.muted, A.BY_LOCAL:format(e.from))
+	elseif agent then
 		Put(0, C.muted, A.BY_AGENT)
 	elseif e.addon then
 		Put(0, C.muted, A.BY_ADDON:format(ns.Escape(e.addon)))
@@ -513,7 +516,7 @@ function UI.DrawWindow()
 	local groups = { { kind = "apps", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} } }
 	for _, a in ipairs(UI.Apps()) do                       -- the apps first
 		table.insert(groups[1].list, { id = "app:" .. a.id, app = a.id, title = a.title, by = a.by, addon = a.addon,
-			temp = a.temp, state = a.on and "on" or "off" })
+			temp = a.temp, from = a.from, state = a.on and "on" or "off" })
 	end
 	for _, e in ipairs(list) do table.insert(groups[e.builtin and 2 or 3].list, e) end   -- WuxianKit's own, other addons'
 	local current

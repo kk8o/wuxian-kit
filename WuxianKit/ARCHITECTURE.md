@@ -447,6 +447,7 @@ WuxianKit:App("officers", {
 | `urgent` | 不用 `pace` 时，哪些条目立即唤醒：`why` 或 `kind` 的列表；Lua 声明也可以是函数 `urgent(item)`。有 `pace` 时只看当前档的 `wake`（同样按 `why` 或 `kind`） |
 | `controls` | 玩家能下的指令（卡片上的按钮、`/wk <应用> <词>`）：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑，或应用自己的 `{ cmd, label }`（cmd 小写字母、数字、`_`；label 一个词、不超过 24 字节，按钮上显示它）；合计不超过 12 个；`stop` 由核心执行（停止应用），其余只转告应用 |
 | `hidden` | `true`：程序的内部管道（如无限工坊的反射），不是给玩家的应用：/wk 窗口的列表里不显示，开始、停止时不在聊天框提示；`kit.apps` 照样列出 |
+| `local` | `{ id, title }`：无限工坊替本机扩展声明应用时带上（Agent 不用填）。卡片写「来自本机扩展「title」」，没有「移除」：应用跟着扩展走，在工坊 App 的扩展页停用或删除扩展 |
 | `say` | `true`：玩家可以用 `/wk <id> <一句话>` 对应用说话 |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有 `kit.app.*` 调用就算离开，应用停止（`why = "left"`） |
 | `minutes` | 最长运行多久（默认 120，最多 720）；`kit.app.open` 的 `minutes` 优先 |
