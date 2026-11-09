@@ -222,8 +222,8 @@ class Options(unittest.TestCase):
         self.assertEqual(s.lua.eval(b"WuxianKit:OptionsPanel('opt', __host).w"), 300)                 # no width: 300
 
     def test_the_page(self):
-        """the page draws the new kinds (the list joined in the language in force, its hint), "connect an agent" opens
-        the copy box with the prompt's command, a running feed says when the agent last answered"""
+        """the page draws the new kinds (the list joined in the language in force, its hint), no "connect an agent" for
+        its prompt (an app's card hands the start line), a running feed says when the agent last answered"""
         s = self.start()
         w = self.window(s, "opt")
         body = texts(w[b"body"])
@@ -235,12 +235,8 @@ class Options(unittest.TestCase):
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
         self.assertEqual(self.shown(w[b"edits"])[3][b"text"].decode(), "Ann、Bob")
         s.lua.execute(b"__ns.SetLanguage('enUS')")
-        click(self.button(w, "Connect an agent"))
-        f = s.g("WuxianKitCopyWindow")
-        self.assertEqual((f[b"shown"], f[b"edit"][b"text"]), (True, b"/mcp__wuxian__opt-setup"))
-        self.assertEqual(texts(f)[0], "Connect an agent")
-        self.assertIn('"opt-setup"', texts(f)[1])
-        self.assertNotIn("Connect an agent", [b[b"label"][b"text"].decode() for b in self.shown(self.window(s, "bare")[b"buttons"])])
+        self.assertNotIn("Connect an agent", [b[b"label"][b"text"].decode() for b in self.shown(w[b"buttons"])])
+        self.assertIsNone(s.g("WuxianKitCopyWindow"))
         self.call(s, "opt.hear")
         w = self.window(s, "opt")
         self.assertIn("Agent has not answered yet", texts(w[b"body"]))

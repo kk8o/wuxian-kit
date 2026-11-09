@@ -8,7 +8,8 @@
 -- WuxianKitDB.ext[id], info.defaults filled in.
 --   info: { title, version, notes, addon, docs, prompt, defaults = {...}, setup(self) when it goes on, teardown(self)
 --           when it goes off }; docs: the folder (in its addon's) of its AGENT.md and skills/ for the agent (Agent access
---           spec); prompt: the name of one of its skills, its page's "connect an agent" button (ext.prompt)
+--           spec); prompt: the name of one of its skills (ext.prompt; kept for the workshop, no button: an app's
+--           card hands its start line to an AI)
 --   ext:On(event, fn(self, event, ...))   a game event, handed over while it is on
 --   ext:Every(seconds, fn(self))           a timer, running while it is on
 --   ext:Emit(topic, data)                  the bus event "<id>.<topic>" (and so an agent event)

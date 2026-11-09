@@ -1,8 +1,8 @@
 -- The app card (0.6): WuxianKit:AppPanel(id, parent, width) draws app `id` in another addon's window, the same card the
 -- window's 应用 page shows (UI.AppCard, on the canvas being drawn): its state, one line of the first that holds (no
 -- 无限工坊 link, its extension off, its check()'s reason, running: the agent here until, last heard from, said today;
--- else ready), 交给 AI (the copy box with its start line: any AI client with 无限工坊's MCP tools starts from it), the
--- connect button (the copy box with /mcp__wuxian__<prompt>), stop, its controls, and its options (the
+-- else ready), 交给 AI (the copy box with its start line: any AI client with 无限工坊's MCP tools starts from it, Claude
+-- Code too), stop, its controls, and its options (the
 -- core's 活跃度 / 免打扰时段 when it has pace) with the window's controls. Returns a frame (its height set by its
 -- content) with :Refresh(), or nil when there is no such app. Cards and the window's app page redraw on kit.app,
 -- kit.option, kit.changed and app.<id>, and every few seconds while they show. The zhCN font has no arrows, squares or
@@ -175,10 +175,6 @@ local function Escaped(e)
 	return o
 end
 
-local function Connect(prompt)
-	Kit:Copy("/mcp__wuxian__" .. prompt, { title = L.CONNECT, hint = A.CONNECT_HINT:format(prompt) })
-end
-
 -- the copy box with the start line, the app's title above it
 local function Hand(title, start)
 	Kit:Copy(start, { title = title, how = A.HAND_HOW })
@@ -197,8 +193,6 @@ function UI.AppCard(id, extra)
 	CV.Put(0, color, text)
 	if hint then CV.Put(0, C.muted, hint) end
 	local row = {}
-	local prompt = decl.prompt or entry.prompt or st.prompt
-	if type(prompt) ~= "string" or not prompt:match("^[%w_%-%.]+$") then prompt = nil end   -- a skill's name only
 	local start = st.start or entry.start
 	if type(start) ~= "string" or start == "" then start = nil end
 	if button then row[#row + 1] = button end
@@ -206,7 +200,6 @@ function UI.AppCard(id, extra)
 		local title = entry.title or ns.Escape(id)
 		row[#row + 1] = { A.HAND, ready, function() Hand(title, start) end, 70 }
 	end
-	if not st.on and prompt then row[#row + 1] = { L.CONNECT, ready and not start, function() Connect(prompt) end, 86 } end
 	if st.on then
 		row[#row + 1] = { L.STOP, false, function() ns.Act("app.stop", id) end, 70 }
 		for _, c in ipairs(UI.AppControlList(id)) do

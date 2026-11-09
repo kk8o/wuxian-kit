@@ -52,7 +52,7 @@ class WindowApps(unittest.TestCase):
         self.assertEqual(log(s), ["control voice mute"])
         click(bot)
         self.assertEqual(texts(w[b"body"])[:3], ["Bot", "Declared by an agent", "Ready to connect an agent"])
-        self.assertEqual(labels(w), ["Connect an agent", "Remove"])
+        self.assertEqual(labels(w), ["Hand to AI", "Remove"])
         click(button(w, "Remove"))
         self.assertEqual(log(s)[-1], "forget bot")
         self.assertEqual(texts(w[b"body"])[0], "Core")                          # gone: the core's page

@@ -62,12 +62,10 @@ ns.WORDS = {
 		FEED_STOPPED = "%s：已停止",
 		FEED_ON = "%s：%s（至 %s）",
 		STOP = "停止",
-		-- 0.5: options, copy box, agent access, budgets, digest feeds
+		-- 0.5: options, copy box, budgets, digest feeds
 		OPTION_LIST_HINT = "用逗号分开",
 		COPY_HINT = "Ctrl+C 复制",
 		COPIED = "已复制",
-		CONNECT = "接入 Agent",
-		CONNECT_HINT = "在 Claude Code 里粘贴这一行；其他客户端：请 Agent 使用无限工坊的提示词「%s」",
 		SECONDS = "%d 秒",
 		MINUTES = "%d 分钟",
 		HOURS = "%d 小时",
@@ -183,12 +181,10 @@ ns.WORDS = {
 		FEED_STOPPED = "%s: stopped",
 		FEED_ON = "%s: %s (until %s)",
 		STOP = "Stop",
-		-- 0.5: options, copy box, agent access, budgets, digest feeds
+		-- 0.5: options, copy box, budgets, digest feeds
 		OPTION_LIST_HINT = "Separate with commas",
 		COPY_HINT = "Ctrl+C to copy",
 		COPIED = "Copied",
-		CONNECT = "Connect an agent",
-		CONNECT_HINT = "Paste this line into Claude Code. Other clients: ask the agent to use Wuxian Workshop's prompt \"%s\"",
 		SECONDS = "%d s",
 		MINUTES = "%d min",
 		HOURS = "%d h",

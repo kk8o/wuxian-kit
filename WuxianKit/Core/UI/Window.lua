@@ -1,7 +1,7 @@
 -- The core's window (/wk, the addon compartment): the extensions on the left, the selected one's page on the right, made
 -- from what it declared (no extension writes window code): its state and the switch to turn it on or off, its running
--- feeds with a stop button and when the agent last answered, its own status line and buttons ("connect an agent" when
--- it names a prompt: the copy box, Copy.lua), its options (the player's choices, made only here or in an OptionsPanel),
+-- feeds with a stop button and when the agent last answered, its own status line and buttons, its options (the
+-- player's choices, made only here or in an OptionsPanel),
 -- its scopes to tick "without asking", each ticked one with its budget (a button that goes through the usual ones), and
 -- what it can do, a line of titles for each kind. The core's own page lists, instead of what it can do (that is the
 -- agent's), what has not run yet, to stop, and what ran, to undo. A page longer than the window scrolls with the mouse
@@ -25,7 +25,6 @@ local A = Kit:Words {
 		UNTIL = "Agent 在场至 %s", PRESENT = "Agent 在场", LEFT = "Agent 已离开",
 		SEEN = "最近应答 %d 分钟前", SEEN_NOW = "最近应答 刚刚", UNSEEN = "Agent 尚未应答", SAID = "今天发言 %d 条",
 		READY = "可以接入 Agent",
-		CONNECT_HINT = "在 Claude Code 的专用对话里粘贴；其他客户端：请 Agent 使用无限工坊的提示词「%s」",
 		HAND = "交给 AI", HAND_HOW = "按 Ctrl+C 复制，粘贴到 AI 对话里",
 		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
 			resume = "继续", stop = "停止" },
@@ -42,8 +41,6 @@ local A = Kit:Words {
 		SEEN = "Last answer %d min ago", SEEN_NOW = "Last answer just now", UNSEEN = "Agent has not answered yet",
 		SAID = "Said today: %d",
 		READY = "Ready to connect an agent",
-		CONNECT_HINT = "Paste it into a dedicated Claude Code conversation. Other clients: ask the agent to use Wuxian "
-			.. "Workshop's prompt \"%s\"",
 		HAND = "Hand to AI", HAND_HOW = "Press Ctrl+C to copy, then paste it into your AI chat",
 		CONTROL = { mute = "Mute", unmute = "Unmute", less = "Less", more = "More", test = "Test", pause = "Pause",
 			resume = "Resume", stop = "Stop" },
@@ -330,11 +327,6 @@ local function BudgetText(g)
 	return text
 end
 
--- the copy box with the command that starts the extension's prompt in Claude Code
-local function Connect(ext)
-	Kit:Copy(("/mcp__wuxian__%s"):format(ext.prompt), { title = L.CONNECT, hint = L.CONNECT_HINT:format(ns.Escape(ext.prompt)) })
-end
-
 local function Page(e)
 	local ext = ns.extensions[e.id]
 	local title = Put(0, C.fg, e.title or e.id, W - LEFT - 160, true)  -- the title, its kind as a capsule after it
@@ -375,15 +367,11 @@ local function Page(e)
 			local ok, line = pcall(ext.status, ext)
 			if ok and line then Put(0, C.sky, ns.Text(line)) end
 		end
-		if ext.buttons or ext.prompt then                     -- its buttons, then "connect an agent"
+		if ext.buttons then                                   -- its buttons
 			local y, x = cv.y, 0
-			for i, b in ipairs(ext.buttons or {}) do
+			for i, b in ipairs(ext.buttons) do
 				PutButton(x, y, ns.T(b.label), false, function() ns.Act("button", e.id, i) end)
 				x = x + 96
-			end
-			if ext.prompt then
-				local b = PutButton(x, y, L.CONNECT, false, function() Connect(ext) end)
-				b:SetWidth(Fit(b, 86))
 			end
 			cv.y = y + 30
 		end

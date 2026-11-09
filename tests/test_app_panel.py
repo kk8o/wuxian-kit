@@ -26,7 +26,8 @@ function ns.AppList()
 		local t = __apps[id]
 		if t then
 			out[#out + 1] = { id = id, title = t.decl.title, by = t.by or "addon", addon = t.addon, on = t.status.on or false,
-				ends = t.status.ends, present = t.status.present, prompt = t.decl.prompt }
+				ends = t.status.ends, present = t.status.present, prompt = t.decl.prompt,
+				start = t.decl.prompt and t.decl.prompt:match("^[%w_%-]+$") and ("Start " .. t.decl.prompt) or nil }
 		end
 	end
 	return out
@@ -140,8 +141,8 @@ class AppPanel(unittest.TestCase):
         self.assertEqual(texts(p)[:2], ["Wuxian Workshop not connected",
                                        "Open the Wuxian Workshop app; keep the game in front or windowed"])
         self.ink(s, self.first(p), "gold")
-        self.assertEqual(labels(p), ["Connect an agent"])
-        self.assertFalse(button(p, "Connect an agent")[b"primary"])
+        self.assertEqual(labels(p), ["Hand to AI"])
+        self.assertFalse(button(p, "Hand to AI")[b"primary"])
         s.lua.execute(b"__online = true __ns.Switch('guildx', false)")
         self.assertEqual(self.redraw(s)[:2], ["Extension Guild X is off", "Turn it on to connect"])
         click(button(p, "Open its page"))                                       # the extension's page in the window
@@ -158,18 +159,17 @@ class AppPanel(unittest.TestCase):
         s.lua.execute(b"__reason = nil")
         self.assertEqual(self.redraw(s), ["Ready to connect an agent"])
         self.ink(s, self.first(p), "sky")
-        self.assertTrue(button(p, "Connect an agent")[b"primary"])
-        click(button(p, "Connect an agent"))
+        self.assertEqual(labels(p), ["Hand to AI"])                              # no connect: the start line only
+        self.assertTrue(button(p, "Hand to AI")[b"primary"])
+        click(button(p, "Hand to AI"))
         f = s.g("WuxianKitCopyWindow")
-        self.assertEqual((f[b"shown"], f[b"edit"][b"text"]), (True, b"/mcp__wuxian__guild-chat"))
-        self.assertEqual(texts(f)[0], "Connect an agent")
-        self.assertIn('prompt "guild-chat"', texts(f)[1])
+        self.assertEqual((f[b"shown"], f[b"edit"][b"text"], texts(f)[0]), (True, b"Start guild-chat", "Guild chat"))
         now = int(s.lua.eval(b"time()"))
         st[b"on"], st[b"ends"], st[b"said"] = True, now + 3600, 2
         hhmm = s.lua.eval(f"date('%H:%M', {now + 3600})".encode()).decode()
         self.assertEqual(self.redraw(s)[0], f"Agent here until {hhmm} · Agent has not answered yet · Said today: 2")
         self.ink(s, self.first(p), "ok")
-        self.assertEqual(labels(p), ["Stop"])                                   # no connect, stop once
+        self.assertEqual(labels(p), ["Stop"])                                   # no hand, stop once
         st[b"seen"] = now - 30
         self.assertIn("Last answer just now", self.redraw(s)[0])
         st[b"seen"] = now - 600
@@ -184,10 +184,9 @@ class AppPanel(unittest.TestCase):
         click(button(p, "停止"))
         self.assertEqual(log(s), ["control guild stop", "stop guild player"])
         self.assertEqual(texts(p), ["可以接入 Agent"])                           # redrawn at once
-        self.assertEqual(labels(p), ["接入 Agent"])
-        click(button(p, "接入 Agent"))
-        self.assertIn("在 Claude Code 的专用对话里粘贴；其他客户端：请 Agent 使用无限工坊的提示词「guild-chat」",
-                      texts(s.g("WuxianKitCopyWindow")))
+        self.assertEqual(labels(p), ["交给 AI"])
+        click(button(p, "交给 AI"))
+        self.assertIn("按 Ctrl+C 复制，粘贴到 AI 对话里", texts(s.g("WuxianKitCopyWindow")))
         s.lua.execute(b"__online = false")
         self.assertEqual(self.redraw(s)[:2], ["无限工坊未连接", "打开无限工坊 App，游戏保持在前台或窗口模式"])
         s.lua.execute(b"__online = true __ns.Switch('guildx', false)")
@@ -250,7 +249,7 @@ class AppPanel(unittest.TestCase):
 
     def test_an_agents_texts_are_escaped(self):
         """an app an agent declared shows its title, check reason and options' texts as they are (no colour code takes
-        effect); a prompt that is not a skill's name has no connect button"""
+        effect); a prompt that is not a skill's name gives no start line, no 交给 AI"""
         s = start(self)
         s.lua.execute("""
 			__add('bot', { by = 'agent', decl = { title = '|cffff0000Bot|r', prompt = 'x y|r' },
@@ -262,11 +261,11 @@ class AppPanel(unittest.TestCase):
         shown_texts = texts(p)
         self.assertEqual(shown_texts[0], "not ||Hitem:1||h now")
         self.assertIn("Tone ||cff00ff00green||r", shown_texts)
-        self.assertEqual(labels(p), ["||cffA||r"])                              # the choice; no connect
+        self.assertEqual(labels(p), ["||cffA||r"])                              # the choice; no 交给 AI
         self.assertEqual(py(s.lua.eval(b"__ns.UI.Apps()[1].title")), "||cffff0000Bot||r")
 
     def test_hand_to_ai(self):
-        """an app with a start line has 交给 AI (primary when ready, connect then not): the copy box with the app's
+        """an app with a start line has 交给 AI (primary when ready; no connect button): the copy box with the app's
         title, the start line selected with the keyboard in it, how to copy it under it; what is typed goes back to
         the line, selected again; focus selects it; Esc, Enter, the close button and Ctrl+C close it; none while it
         runs, none without a start line; an agent's title escaped above it, the line as it is"""
@@ -275,9 +274,8 @@ class AppPanel(unittest.TestCase):
         s.lua.execute(("__add('guild', { decl = { title = 'Guild chat', prompt = 'guild-chat' }, "
                        "status = { app = 'guild', on = false, start = %s } })" % lua_str(line)).encode())
         p = self.panel(s, "guild")
-        self.assertEqual(labels(p), ["Hand to AI", "Connect an agent"])
+        self.assertEqual(labels(p), ["Hand to AI"])
         self.assertTrue(button(p, "Hand to AI")[b"primary"])
-        self.assertFalse(button(p, "Connect an agent")[b"primary"])
         f = s.g("WuxianKitCopyWindow")
         self.assertIsNone(f)
         click(button(p, "Hand to AI"))
@@ -310,19 +308,18 @@ class AppPanel(unittest.TestCase):
         s.run(0.5)
         self.assertFalse(f[b"shown"])
         s.lua.execute(b"__ctrl = false __ns.SetLanguage('zhCN') __p:Refresh()")
-        self.assertEqual(labels(p), ["交给 AI", "接入 Agent"])
+        self.assertEqual(labels(p), ["交给 AI"])
         click(button(p, "交给 AI"))
         self.assertEqual(texts(f)[:2], ["Guild chat", "按 Ctrl+C 复制，粘贴到 AI 对话里"])
         edit[b"scripts"][b"OnEscapePressed"](edit)
         s.lua.execute(b"__ns.SetLanguage('enUS')")
         st = s.g("__apps")[b"guild"][b"status"]
-        st[b"on"] = True                                                        # running: no hand, no connect
+        st[b"on"] = True                                                        # running: no hand
         self.redraw(s)
         self.assertEqual(labels(p), ["Stop"])
-        st[b"on"], st[b"start"] = False, None                                   # no start line: connect alone
-        self.redraw(s)
-        self.assertEqual(labels(p), ["Connect an agent"])
-        self.assertTrue(button(p, "Connect an agent")[b"primary"])
+        st[b"on"] = False
+        s.lua.execute(b"__add('plain', { decl = { title = 'Plain' } })")              # no prompt, no start line: none
+        self.assertEqual(labels(self.panel(s, "plain")), [])
         s.lua.execute(("__add('bot', { by = 'agent', decl = { title = '|cffff0000Bot|r', prompt = 'bot-run' }, "
                        "status = { app = 'bot', on = false, start = %s } })" % lua_str("Start |cffBot|r")).encode())
         p = self.panel(s, "bot")
