@@ -16,7 +16,7 @@
 -- Also here: ns.Lease (a lease as kept), ns.RingRecent (what a ring answers for since and limit).
 local _, ns = ...
 
-local KEEP_MAX, ITEM_TEXT, ITEM_DEPTH = 200, 500, 4
+local KEEP_MAX, ITEM_TEXT, ITEM_DEPTH = 200, 500, 6       -- 6: a route step goal's place and quest (item, data, goals, goal, place)
 local LEASE_MIN = 60
 -- a wake's size as Comm.Serialize writes it: WoWBridge sends an event's data as JSON of at most 8000 bytes (more goes as
 -- {cut = true}) and queues at most 6000 bytes of waiting events; JSON's keys and quotes take more than Serialize's

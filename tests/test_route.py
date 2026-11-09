@@ -112,6 +112,13 @@ class Native(RouteTest):
                          "goals": [{"op": "collect", "quest": {"name": "Healing Herbs"}, "need": 5, "have": 3,
                                     "done": False}]})
 
+    def test_the_recent_items_keep_a_goals_quest(self):
+        a = self.app()
+        a.lua_("__track(3001)")
+        a.listen()
+        recent = a.call("kit.app.recent", "{ app = 'probe' }")
+        self.assertEqual(recent["items"][-1]["data"], HERBS)    # saved whole: the goal's quest is 5 levels down
+
     def test_progress_then_done_and_the_turnin_step_then_turned_in(self):
         a = self.app()
         a.lua_("__track(3001)")

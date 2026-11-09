@@ -760,7 +760,7 @@ WuxianKit.Route:Providers() -> { { id, title, addon, active } }
 
 | kind | data | 什么时候 |
 |---|---|---|
-| `route.step` | `step` | 新的一步（`key` 变了） |
+| `route.step` | 这一步本身（`provider`、`guide`、`index`、`key`、`goals`、`text`） | 新的一步（`key` 变了） |
 | `route.progress` | `key`、`goal`（目标的序号）、`have`、`need`、`done` | 某个目标的进度变了 |
 | `route.arrive` | `key`、`place` | 到了路点 |
 | `route.done` | `key`、`why`（`complete`、`turnin`、`replaced`） | 这一步完成或作废 |

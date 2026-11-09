@@ -175,10 +175,10 @@ class Digest(unittest.TestCase):
         self.assertEqual(py(ns.Digest.Params(host, run)), {"gather": 0, "every": 45, "idle": False, "most": 200})
         self.assertEqual(py(ns.Digest.Params(s.lua.eval(b"{ spec = {} }"), s.lua.eval(b"{}"))),
                          {"gather": 5, "every": 60, "idle": False, "most": 30})
-        small = py(ns.Digest.Small(s.lua.eval(b"{ text = string.rep('x', 600), a = { b = { c = { d = { e = 1 } } } }, "
+        small = py(ns.Digest.Small(s.lua.eval(b"{ text = string.rep('x', 600), a = { b = { c = { d = { e = { f = { g = 1 } } } } } }, "
                                                b"f = print }")))
         self.assertLessEqual(len(small["text"].encode()), 503)
-        self.assertEqual((small["a"]["b"]["c"], "f" in small), ({}, False))    # four levels deep, data only
+        self.assertEqual((small["a"]["b"]["c"]["d"]["e"], "f" in small), ({}, False))    # six levels deep, data only
         items = s.lua.eval(b"{ { id = 3 }, { id = 4 }, { id = 7 } }")
         self.assertEqual(py(ns.RingRecent(items, 3, None, 100)), {"items": [{"id": 4}, {"id": 7}], "next": 7})
         self.assertEqual(py(ns.RingRecent(items, 0, 1, 100))["items"], [{"id": 7}])
