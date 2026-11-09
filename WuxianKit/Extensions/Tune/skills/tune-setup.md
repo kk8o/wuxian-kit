@@ -38,4 +38,4 @@ What the player wants: {{goal}}
    `wk_tune_profile_export` gives a `WK1:` string; `wk_tune_profile_import` takes one.
 
 Only change what the goal needs. In combat, the changes wait until combat ends. Placing spells on action bars and other
-protected actions are out of reach: show the player where to click with the Guide extension (skill `guide-tour`).
+protected actions are out of reach: show the player where to click with the UI guide extension (skill `guide-tour`).

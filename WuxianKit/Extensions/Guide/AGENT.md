@@ -1,7 +1,8 @@
-# Guide
+# UI guide
 
 Extension id `guide`. Shows the player where to look or what to click. Every tool acts at once; none is a proposal.
 Use it for what no addon may do (casting, using items, placing action bar buttons) and to show the player around the UI.
+It is not the quest guide: the quest step the player is on comes from the extension `route` (任务指引, Quest guide).
 
 - A frame is named by its global name (`CharacterMicroButton`, `PlayerFrame`, `Minimap`) or a path from one
   (`PlayerFrame.healthbar`). Do not guess names: an unknown one fails with "no frame ...".

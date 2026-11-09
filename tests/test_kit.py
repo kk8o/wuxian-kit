@@ -277,7 +277,7 @@ class Core(unittest.TestCase):
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
-                         ["公会聊天", "核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "游戏动态",
+                         ["公会聊天", "核心", "调校", "聊天", "远程", "数据", "界面指引", "角色信息", "游戏动态",
                           "图鉴"])                                      # the apps first, then the extensions
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
