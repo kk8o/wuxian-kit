@@ -126,16 +126,30 @@ class WindowApps(unittest.TestCase):
         self.assertEqual((s.g("__mine"), len(log(s))), (b"mute", before))      # the extension's own command
 
     def test_the_core_page_draws_the_cores_options(self):
-        """the core's page draws the options the core declares (称呼, 0.6), changed as any extension's"""
+        """the core's page draws the options the core declares (称呼, 0.6) as rows like its language row (the title on
+        the left, the box beside it, the hint under the box; no heading), changed as any extension's; with eight lines of
+        history the page still fits the window"""
         s = start(self)
-        s.lua.execute(b"WuxianKit:Extension('kit'):Option('nickname', { title = 'Nickname', kind = 'text', default = '' })")
+        s.lua.execute(b"WuxianKit:Extension('kit'):Option('nickname', { title = 'Nickname', kind = 'text', default = '', "
+                      b"hint = 'How AI apps call you' })")
+        for i in range(12):
+            s.lua.execute(f"WuxianKit:Call('tune.cvar.set', {{ name = 'graphicsQuality', value = {i % 5 + 1} }}, "
+                          f"{{ title = 'q' }})".encode())
+            click(s.g("WuxianKitProposal")[b"run"])
         w = self.window(s, "kit")
         body = texts(w[b"body"])
-        self.assertIn("Options", body)
-        self.assertIn("Nickname", body)
+        self.assertNotIn("Options", body)
+        self.assertEqual(body[2:5], ["Language", "Nickname", "How AI apps call you"])
         edit = shown(w[b"edits"])[0]
+        regions = {r[b"text"].decode(): r for r in w[b"body"][b"__regions"].values() if r[b"shown"] and r[b"text"]}
+        self.assertEqual((edit[b"point"][4], regions["How AI apps call you"][b"point"][4]), (76, 76))
+        self.assertEqual(sum(1 for t in body if t.startswith("#")), 8)
+        shown_regions = [r for r in w[b"body"][b"__regions"].values() if r[b"shown"]]
+        self.assertLessEqual(max(-r[b"point"][5] + 14 for r in shown_regions), 404)   # inside the page
         type_into(edit, "Tim")
         self.assertEqual(s.lua.eval(b"WuxianKit:Extension('kit'):Get('nickname')"), b"Tim")
+        s.lua.execute(b"__ns.SetLanguage('zhCN')")
+        self.assertEqual(texts(w[b"body"])[2], "语言")
 
 
 if __name__ == "__main__":

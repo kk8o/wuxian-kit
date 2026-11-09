@@ -170,14 +170,16 @@ local function ValueText(o, v)
 	return v == nil and "" or tostring(v)
 end
 
--- a row of buttons ({ label, primary, fn, least }), each as wide as its label (at least least), wrapped at the edge
-local function ButtonRow(list)
-	local y, x = cv.y, 0
+-- a row of buttons ({ label, primary, fn, least }) from x0 (0), each as wide as its label (at least least), wrapped at
+-- the edge
+local function ButtonRow(list, x0)
+	x0 = x0 or 0
+	local y, x = cv.y, x0
 	for _, it in ipairs(list) do
 		local b = PutButton(x, y, it[1], it[2], it[3])
 		local w = Fit(b, it[4] or 48)
-		if x > 0 and x + w > cv.width - 12 then              -- no room left on this row: the next
-			x, y = 0, y + 28
+		if x > x0 and x + w > cv.width - 12 then             -- no room left on this row: the next
+			x, y = x0, y + 28
 			b:ClearAllPoints()
 			b:SetPoint("TOPLEFT", cv.body, "TOPLEFT", x, -y)
 		end
@@ -189,8 +191,10 @@ end
 
 -- options from a source: the names in order; entry(name) -> the option ({ title, kind, choices, unit, hint }) and its
 -- value; set(name, value) when the player changes it. Each with its control: a check box, a text box, a number box and
--- its unit, a row of buttons (the chosen one gold), a text box of items
-local function Options(order, entry, set)
+-- its unit, a row of buttons (the chosen one gold), a text box of items. indent: each title on the left, its control
+-- from there on the same row (the core's page: as its language row), its hint under the control
+local function Options(order, entry, set, indent)
+	local x = indent or 0
 	for _, name in ipairs(order) do
 		local o, value = entry(name)
 		local function Set(v) set(name, v) end
@@ -198,14 +202,21 @@ local function Options(order, entry, set)
 		elseif o.kind == "boolean" or o.kind == nil then
 			PutCheck(0, ns.T(o.title), value, Set)
 		else
-			Put(0, C.fg, ns.T(o.title))
+			if indent then                                     -- the title beside the control
+				local y = cv.y + 4
+				cv.y = y
+				Put(0, C.fg, ns.T(o.title), indent - 6, true)
+				cv.y = o.kind == "choice" and y - 3 or y - 4
+			else
+				Put(0, C.fg, ns.T(o.title))
+			end
 			if o.kind == "number" then
 				local y = cv.y
-				PutEdit(0, ValueText(o, value), Set, NUMBER_W)
+				PutEdit(x, ValueText(o, value), Set, NUMBER_W)
 				if o.unit ~= nil then
 					local after = cv.y
 					cv.y = y + 4
-					Put(NUMBER_W + 8, C.muted, ns.T(o.unit), cv.width - 20 - NUMBER_W, true)
+					Put(x + NUMBER_W + 8, C.muted, ns.T(o.unit), cv.width - 20 - NUMBER_W - x, true)
 					cv.y = after
 				end
 			elseif o.kind == "choice" then
@@ -215,21 +226,21 @@ local function Options(order, entry, set)
 					if v == nil then v = c[1] end
 					row[#row + 1] = { ns.T(c.label or c[2] or v), v == value, function() Set(v) end }
 				end
-				ButtonRow(row)
+				ButtonRow(row, x)
 			else                                                   -- text, list
-				PutEdit(0, ValueText(o, value), Set)
-				if o.kind == "list" and not o.hint then Put(0, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
+				PutEdit(x, ValueText(o, value), Set)
+				if o.kind == "list" and not o.hint then Put(x, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
 			end
 		end
-		if type(o) == "table" and o.hint then Put(0, C.muted, ns.T(o.hint)) end
+		if type(o) == "table" and o.hint then Put(o.kind == "boolean" and 0 or x, C.muted, ns.T(o.hint)) end
 	end
 end
 
 -- an extension's options; a change is the "option" action, as the window's always were
-local function ExtOptions(ext)
+local function ExtOptions(ext, indent)
 	local id = ext.id
 	Options(ext.optionOrder, function(name) return ext.options[name], ext:Get(name) end,
-		function(name, v) ns.Act("option", id, name, v) end)
+		function(name, v) ns.Act("option", id, name, v) end, indent)
 end
 
 UI.Canvas = { Begin = Begin, Finish = Finish, Put = Put, PutButton = PutButton, ButtonRow = ButtonRow, Fit = Fit,
@@ -344,6 +355,7 @@ local function Page(e)
 				function() ns.Act("language", lang[1]) end, 78)
 		end
 		cv.y = y + 26
+		if ext and #ext.optionOrder > 0 then ExtOptions(ext, 76) end   -- its options (称呼) as rows like the language's
 	end
 	if ext and ext.active then
 		for _, name in ipairs(ext.feedOrder) do                -- a running feed: what it hears, until when, and a stop
@@ -374,7 +386,7 @@ local function Page(e)
 			cv.y = y + 30
 		end
 	end
-	if ext and #ext.optionOrder > 0 then                    -- the player's choices for it, made here and only here
+	if ext and not e.core and #ext.optionOrder > 0 then     -- the player's choices for it, made here and only here
 		Heading(L.OPTIONS)
 		ExtOptions(ext)
 	end
