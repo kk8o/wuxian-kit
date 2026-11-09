@@ -1,5 +1,5 @@
 """The built-in extensions (WuxianKit/Extensions) and the core's addon messages under Lua 5.1 in the mock client: chat
-heard through the Feed pattern (and kept through a reload), chat sent as a Say, settings looked up, WuxianKit.Comm."""
+heard through an app (the source chat; kept through a reload), chat sent as a Say, settings looked up, WuxianKit.Comm."""
 import unittest
 
 from kitmock import Session, click, lupa, py, texts
@@ -25,17 +25,24 @@ class Extensions(unittest.TestCase):
         self.assertFalse(ok, code)
         return err.decode()
 
+    def listen(self, s, channels, minutes=60):
+        """the app ear hears the channels (an agent's declaration, kept; no lease)"""
+        hear = ", ".join(repr("chat:" + c) for c in channels)
+        return self.call(s, "kit.app.open", f"{{ app = 'ear', title = 'Ear', hear = {{ {hear} }}, minutes = {minutes}, "
+                                            f"lease = 0 }}")
+
     def heard(self, s):
-        return [e["data"] for e in py(s.g("__events")) or [] if e["topic"] == "chat.message"]
+        """the items of the app ear's wakes (no digest: one each)"""
+        return [i for e in py(s.g("__events")) or [] if e["topic"] == "app.ear" for i in e["data"]["items"]]
 
     def say(self, s, event, text, sender, guid):
         s.fire(event, text, sender, "", "", "", "", 0, 0, "", 1, 77, guid)
 
     def test_chat_heard_for_a_while(self):
         s = self.start()
-        status = self.call(s, "chat.listen", "{ channels = { 'guild', 'whisper', 'guild' }, minutes = 10 }")
-        self.assertEqual((status["on"], status["channels"]), (True, ["guild", "whisper"]))
-        self.assertIn("Listen to channels: Guild, Whisper, until", s.chat())
+        status = self.listen(s, ["guild", "whisper", "guild"], minutes=10)
+        self.assertEqual((status["on"], status["hear"]), (True, ["chat:guild", "chat:whisper"]))
+        self.assertIn("Ear: started, until", s.chat())
         item = "|cffffffff|Hitem:7166::::::::1:::::::|h[Copper Dagger]|h|r"
         self.say(s, "CHAT_MSG_GUILD", f"how do I make {item}?", "Asker-Realm", "Player-1-00000002")
         self.say(s, "CHAT_MSG_PARTY", "not heard", "Other-Realm", "Player-1-00000003")
@@ -44,8 +51,8 @@ class Extensions(unittest.TestCase):
         self.say(s, "CHAT_MSG_WHISPER", "psst", "Friend-Realm", "Player-1-00000004")
         msgs = self.heard(s)
         self.assertEqual(len(msgs), 3)
-        self.assertEqual((msgs[0]["channel"], msgs[0]["sender"], msgs[0]["plain"], msgs[0].get("self")),
-                         ("guild", "Asker", "how do I make [Copper Dagger]?", None))
+        self.assertEqual((msgs[0]["source"], msgs[0]["channel"], msgs[0]["sender"], msgs[0]["plain"], msgs[0].get("self")),
+                         ("chat", "guild", "Asker", "how do I make [Copper Dagger]?", None))
         self.assertEqual(msgs[0]["links"], [{"kind": "item", "id": 7166, "name": "Copper Dagger"}])
         self.assertEqual((msgs[1]["self"], msgs[2]["target"]), (True, "Friend"))
         s2 = s.reload()                                                    # kept through a reload
@@ -57,11 +64,12 @@ class Extensions(unittest.TestCase):
         s2.run(601)                                                        # its ten minutes are over
         self.say(s2, "CHAT_MSG_GUILD", "too late", "Asker-Realm", "Player-1-00000002")
         self.assertEqual(len(self.heard(s2)), 1)
-        self.assertEqual(self.call(s2, "chat.listen.status"), {"on": False})
-        self.assertIn("channels: shout is not one of guild", self.fails(s2, "WuxianKit:Call('chat.listen', { channels = { 'shout' } })"))
-        self.call(s2, "chat.listen", "{ channels = { 'guild' } }")
-        self.call(s2, "chat.listen.stop")
-        self.assertIn("Listen to channels: stopped", "\n".join(s2.lines))
+        self.assertFalse(self.call(s2, "kit.app.status", "{ app = 'ear' }")["on"])
+        self.assertIn("chat:shout: a chat channel is guild, officer",
+                      self.fails(s2, "WuxianKit:Call('kit.app.open', { app = 'ear', hear = { 'chat:shout' } })"))
+        self.listen(s2, ["guild"])
+        self.call(s2, "kit.app.stop", "{ app = 'ear' }")
+        self.assertIn("Ear: stopped", "\n".join(s2.lines))
         self.addCleanup(lambda: self.assertEqual(s2.errors(), []))
 
     def test_chat_send(self):
@@ -98,7 +106,7 @@ class Extensions(unittest.TestCase):
                                                                    "'nameplateShowAll', value = 1 } } })"))
         self.assertIn("target has a | or a line break",
                       self.fails(s, "WuxianKit:Call('chat.send', { channel = 'whisper', target = 'A|cffB', text = 'hi' })"))
-        self.call(s, "chat.listen", "{ channels = { 'whisper' } }")
+        self.listen(s, ["whisper"])
         self.say(s, "CHAT_MSG_WHISPER_INFORM", "on my way", "Friend-Realm", "Player-1-00000004")
         m = self.heard(s)[-1]
         self.assertEqual((m["sender"], m["target"], m["self"], m["guid"]),

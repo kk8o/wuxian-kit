@@ -16,6 +16,7 @@ Core\Kit.lua
 Core\Schema.lua
 Core\Extension.lua
 Core\Kinds.lua
+Core\Digest.lua
 Core\Proposals.lua
 Core\Comm.lua
 Core\Bridge.lua
@@ -37,7 +38,6 @@ Extensions\Tune\Bags.lua
 Extensions\Tune\AddOns.lua
 Extensions\Tune\Profiles.lua
 Extensions\Chat\Chat.lua
-Extensions\Chat\GuildApp.lua
 Extensions\Gate\Gate.lua
 Extensions\Data\Data.lua
 Extensions\Guide\Guide.lua
@@ -50,3 +50,4 @@ Extensions\Game\Travel.lua
 Extensions\Game\Guild.lua
 Extensions\Game\Guide.lua
 Extensions\Codex\Codex.lua
+Apps\Guild\App.lua

@@ -7,12 +7,14 @@
 --   Kit.lua        the public table WuxianKit: words, the bus, the load / login / logout hooks, small helpers
 --   Schema.lua     argument specs
 --   Extension.lua  the extension object and its life (defined, on, off), storage, game events, timers
---   Kinds.lua      the five kinds of capability and the two patterns built on them, Setting and Feed; Call / Propose
+--   Kinds.lua      the five kinds of capability and the pattern built on them, Setting; Call / Propose; the manifest
+--   Digest.lua     the digest: items gathered into wakes, for apps
 --   Proposals.lua  the proposal pipeline: preview, the player's Run, combat, undo, what goes without asking
 --   Comm.lua       addon messages between players' clients (WuxianKit.Comm)
 --   Bridge.lua     the AI agent, through 无限工坊's WoWBridge when it is there
 --   UI/            the proposal window, the core's window (/wk) and OptionsPanel, the copy box (WuxianKit:Copy)
 --   Builtins.lua   the core's own extension, "kit"
+--   Apps.lua       the apps: declarations, runs, what they hear (through the extensions' sources), kit.app.*
 -- Extensions/<Name>/<Name>.lua are the built-in extensions (on unless the player turned one off). Another addon becomes
 -- an extension with the same calls; its .toc says ## Dependencies: WuxianKit, ## X-WuxianKit-Extension: <id> and
 -- ## LoadOnDemand: 1, and the core loads it at login unless it was turned off.
@@ -286,8 +288,8 @@ function Kit:Pattern(fmt)
 	return table.concat(parts)
 end
 
--- WuxianKit:NewId(): the next number of the core's one counter (WuxianKitDB.lastId), for chat messages, feed items and
--- app items alike, so that no two ever share an id, through reloads too. ns.BumpId(n): the counter goes on from at
+-- WuxianKit:NewId(): the next number of the core's one counter (WuxianKitDB.lastId), for chat messages and app
+-- items alike, so that no two ever share an id, through reloads too. ns.BumpId(n): the counter goes on from at
 -- least n (what an older counter reached)
 local lastId = 0
 function ns.BumpId(n)

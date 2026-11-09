@@ -1,7 +1,7 @@
 """聊天 (Chat) 0.6 under Lua 5.1 in the mock client (ARCHITECTURE section 12): a chat.message's why (mention, followup,
 question, burst; per conversation: whisper partner, numbered channel; none for the player's own; counted once for a
-line read twice), WuxianKit.Chat:On / Off without a running listen feed (the same table as the feed's), and ids from
-the core's one counter, going on from 0.5's chat.db.lastId."""
+line read twice), WuxianKit.Chat:On / Off without an app (an app that hears chat gets a copy of the same message), and
+ids from the core's one counter, going on from 0.5's chat.db.lastId (and 0.5's chat.listen state gone)."""
 import unittest
 
 from kitmock import Session, lupa, py
@@ -151,24 +151,26 @@ class Chat06(unittest.TestCase):
         self.assertEqual([m["plain"] for m in dot], ["pull"])
         self.assertEqual(every[1]["id"], every[0]["id"] + 1)
         self.assertTrue(s.lua.eval(b"rawequal(__g[1], __all[1]) and rawequal(__g[1], WuxianKit.Chat.Message(__g[1].id))"))
-        self.assertEqual(self.heard(s), [])                                  # no listen feed ran
+        self.assertEqual(self.heard(s), [])                                  # no app heard it
         s.lua.execute(b"WuxianKit.Chat:Off(__tok___g) WuxianKit.Chat.Off(__tok_dot) WuxianKit.Chat:Off(nil)")
         s.fire("CHAT_MSG_GUILD", *self.args("again", "A-Realm", ASKER))
         s.fire("CHAT_MSG_PARTY", *self.args("again", "B-Realm", OTHER))
         self.assertEqual((len(py(s.g("__g"))), len(py(s.g("__dot"))), len(py(s.g("__all")))), (1, 1, 4))
 
-    def test_once_and_the_same_table_as_the_feed(self):
+    def test_once_and_a_copy_for_an_app(self):
         s = self.start()
-        s.lua.execute(b"__answer = WuxianKit:Call('chat.listen', { channels = { 'guild' } })")
+        s.lua.execute(b"__answer = WuxianKit:Call('kit.app.open', { app = 'ear', hear = { 'chat:guild' }, lease = 0 })")
         self.subscribe(s, "guild", "__g")
         args = self.args("one", "A-Realm", ASKER)
         s.fire("CHAT_MSG_GUILD", *args)
         msg = self.read(s, "CHAT_MSG_GUILD", *args)                         # another addon reads it too
         g = py(s.g("__g"))
         self.assertEqual([m["id"] for m in g], [msg["id"]])                 # told once
-        self.assertEqual([m["id"] for m in self.heard(s)], [msg["id"]])
-        self.assertTrue(s.lua.eval(b"(function() for _, e in ipairs(__events) do if e.topic == 'chat.message' then "
-                                   b"return rawequal(e.data, __g[1]) end end end)()"))
+        [item] = self.heard(s)
+        self.assertEqual((item["id"], item["source"], item["plain"]), (msg["id"], "chat", "one"))
+        self.assertIsNone(s.lua.eval(b"__g[1].source"))                     # the shared message is left alone
+        self.assertTrue(s.lua.eval(b"(function() for _, e in ipairs(__events) do if e.topic == 'app.ear' then "
+                                   b"return not rawequal(e.data.items[1], __g[1]) end end end)()"))
 
     def test_off_while_the_extension_is_off_and_errors(self):
         s = self.start()
@@ -191,7 +193,8 @@ class Chat06(unittest.TestCase):
             self.assertIn(b"channel is", err)
 
     def heard(self, s):
-        return [e["data"] for e in py(s.g("__events")) or [] if e["topic"] == "chat.message"]
+        """the items of the app ear's wakes (kit.app.open { app = 'ear', hear = ... }: no digest, one each)"""
+        return [i for e in py(s.g("__events")) or [] if e["topic"] == "app.ear" for i in e["data"]["items"]]
 
     # -- ids --------------------------------------------------------------------------------------------------------------
 
@@ -206,9 +209,11 @@ class Chat06(unittest.TestCase):
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.ext.chat.lastId"))
 
     def test_the_counter_goes_on_from_an_old_chat_counter(self):
-        s = self.start(saved={"WuxianKitDB": b"{ ext = { chat = { lastId = 777 } } }"})
+        s = self.start(saved={"WuxianKitDB": b"{ ext = { chat = { lastId = 777, feeds = { listen = { ends = 1 } }, "
+                                             b"recent = { listen = { n = 700, items = {} } } } } }"})
         self.assertEqual(self.say(s, "CHAT_MSG_GUILD", "one", "A-Realm", ASKER)["id"], 778)
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.ext.chat.lastId"))       # once: then it is gone
+        self.assertIsNone(s.lua.eval(b"WuxianKitDB.ext.chat.feeds or WuxianKitDB.ext.chat.recent"))   # 0.5's listen
         s2 = s.reload()
         s2.login()
         self.addCleanup(lambda: self.assertEqual(s2.errors(), []))

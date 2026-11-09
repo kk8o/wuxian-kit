@@ -1,7 +1,6 @@
 -- The core's window (/wk, the addon compartment): the extensions on the left, the selected one's page on the right, made
--- from what it declared (no extension writes window code): its state and the switch to turn it on or off, its running
--- feeds with a stop button and when the agent last answered, its own status line and buttons, its options (the
--- player's choices, made only here or in an OptionsPanel),
+-- from what it declared (no extension writes window code): its state and the switch to turn it on or off, its own
+-- status line and buttons, its options (the player's choices, made only here or in an OptionsPanel),
 -- its scopes to tick "without asking", each ticked one with its budget (a button that goes through the usual ones), and
 -- what it can do, a line of titles for each kind. The core's own page lists, instead of what it can do (that is the
 -- agent's), what has not run yet, to stop, and what ran, to undo. A page longer than the window scrolls with the mouse
@@ -272,21 +271,6 @@ local function Capabilities(ext)
 	end
 end
 
--- under a running feed: when the agent last called the extension, how often the feed woke it (ns.FeedInfo, else what
--- the feed's state keeps)
-local function FeedLine(feed, s)
-	local info
-	if ns.FeedInfo then
-		local ok, got = pcall(ns.FeedInfo, feed)
-		info = ok and type(got) == "table" and got or nil
-	end
-	info = info or s
-	local seen, wakes = tonumber(info.seen), tonumber(info.wakes)
-	local text = seen and L.FEED_SEEN:format(S.Duration(time() - seen)) or L.FEED_UNSEEN
-	if wakes and wakes > 0 then text = text .. " · " .. L.FEED_WAKES:format(wakes) end
-	return text
-end
-
 -- budgets for a ticked scope: { per, most } (and used, how many ran without asking in the last per seconds), or none
 -- (true, or a table without them: no limit)
 local PRESETS = { { per = 600, most = 1 }, { per = 600, most = 3 }, { per = 600, most = 6 }, { per = 3600, most = 10 } }
@@ -352,17 +336,6 @@ local function Page(e)
 		if ext and #ext.optionOrder > 0 then ExtOptions(ext, 76) end   -- its options (称呼) as rows like the language's
 	end
 	if ext and ext.active then
-		for _, name in ipairs(ext.feedOrder) do                -- a running feed: what it hears, until when, and a stop
-			local feed = ext.feeds[name]
-			local s = ns.FeedState(feed)
-			if s then
-				local y = cv.y
-				Put(0, C.sky, L.FEED_ON:format(ns.T(feed.spec.title) or name, ns.FeedText(feed, s), date("%H:%M", s.ends)),
-					W - LEFT - 150)
-				PutButton(W - LEFT - 128, y - 2, L.STOP, false, function() ns.Act("feed.stop", e.id, name) end, 70)
-				Put(0, C.muted, FeedLine(feed, s), W - LEFT - 150)
-			end
-		end
 		if ext.status then
 			local ok, line = pcall(ext.status, ext)
 			if ok and line then Put(0, C.sky, ns.Text(line)) end
@@ -667,13 +640,6 @@ ns.AddAction("switch", function(id, on)
 	local ok, why = ns.Switch(id, on)
 	UI.Refresh()
 	return ok, why
-end)
-ns.AddAction("feed.stop", function(id, name)
-	local ext = ns.extensions[id]
-	local feed = ext and ext.feeds[name]
-	if feed then ns.FeedStop(feed) end
-	UI.Refresh()
-	return feed ~= nil
 end)
 ns.AddAction("option", function(id, name, value)
 	local ext = ns.extensions[id]

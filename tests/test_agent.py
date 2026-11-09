@@ -70,7 +70,7 @@ class Agent(unittest.TestCase):
         api = asyncio.run(svc.addon_api("WuxianKit"))
         names = [e["name"] for e in api["exposed"]]
         for want in ("kit.propose", "kit.extensions", "kit.extension.set", "kit.undo", "tune.cvar.set", "tune.cvar.find",
-                     "chat.send", "chat.listen", "chat.listen.stop"):
+                     "chat.send", "kit.app.open", "kit.app.declare", "kit.app.stop"):
             self.assertIn(want, names)
         doc = next(e["doc"] for e in api["exposed"] if e["name"] == "tune.cvar.set")
         self.assertTrue(doc.startswith("[Change: a proposal.] proposes to change a client setting (CVar)"), doc)
@@ -103,13 +103,14 @@ class Agent(unittest.TestCase):
         with self.assertRaises(ApiError) as cm:
             self.call("tune.cvar.set", {"name": "secureThing", "value": 0})
         self.assertIn("secureThing is secure", cm.exception.message)
-        self.call("chat.listen", {"channels": ["guild"], "minutes": 5})
+        self.call("kit.app.open", {"app": "ear", "temp": True, "hear": ["chat:guild"], "minutes": 5})
         s.lua.globals()[b"__fire"](b"CHAT_MSG_GUILD", b"anyone know the way?", b"Asker-Realm", b"", b"", b"", b"", 0, 0, b"", 1,
                                    90, b"Player-1-00000002")
         s.run(4)
-        heard = self.events("chat.message")[-1]["data"]
-        self.assertEqual((heard["plain"], heard["sender"], heard["channel"]), ("anyone know the way?", "Asker", "guild"))
-        self.assertEqual(self.events("kit.feed")[-1]["data"]["feed"], "listen")
+        heard = self.events("app.ear")[-1]["data"]["items"][-1]
+        self.assertEqual((heard["plain"], heard["sender"], heard["channel"], heard["source"]),
+                         ("anyone know the way?", "Asker", "guild", "chat"))
+        self.assertEqual(self.events("kit.app")[-1]["data"]["app"], "ear")
         self.assertEqual(py(s.lua.eval(b"__errors")) or [], [])
 
 

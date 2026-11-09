@@ -71,10 +71,11 @@ class Core(unittest.TestCase):
                           "demo": ("on", None)})
         self.assertEqual((exts["demo"]["addon"], exts["demo"]["version"]), ("WxDemo", "1.2.3"))
         caps = {c["id"]: c for c in py(s.lua.eval(b"WuxianKit:Capabilities()"))}
-        for cap, kind in (("tune.cvar.get", "see"), ("tune.cvar.set", "do"), ("chat.send", "say"), ("chat.listen", "see"),
-                          ("chat.listen.stop", "see"), ("chat.listen.status", "see"), ("kit.extension.set", "do"),
+        for cap, kind in (("tune.cvar.get", "see"), ("tune.cvar.set", "do"), ("chat.send", "say"),
+                          ("kit.app.open", "see"), ("kit.app.declare", "see"), ("kit.extension.set", "do"),
                           ("kit.undo", "do"), ("demo.volume.set", "do"), ("demo.note", "keep")):
             self.assertEqual(caps[cap]["kind"], kind, cap)
+        self.assertEqual([c for c in caps if c.startswith(("chat.listen", "game.listen"))], [])   # apps hear instead
         self.assertEqual(caps["tune.cvar.set"]["args"], {"name": "string", "value": "string|number|boolean"})
         self.assertTrue(caps["tune.cvar.set"]["undoable"])
         for code, why in (("WuxianKit:Call('tune.cvar.get', {})", "tune.cvar.get: name is missing (string)"),
@@ -314,11 +315,18 @@ class Core(unittest.TestCase):
         cvar = next(c for c in ext["tune"]["capabilities"] if c["id"] == "tune.cvar.set")
         self.assertEqual((cvar["kind"], cvar["title"], cvar["args"]["name"]), ("do", "Client settings", "string"))
         self.assertEqual([v["topic"] for v in ext["kit"]["events"]], ["kit.proposal", "kit.extension", "kit.dropped",
-                                                                     "kit.changed", "kit.ready", "kit.feed", "kit.option",
-                                                                     "kit.app"])
+                                                                     "kit.changed", "kit.ready", "kit.option", "kit.app",
+                                                                     "kit.app.launch"])
         self.assertEqual([v["topic"] for v in ext["gate"]["events"]], ["gate.result"])
-        message = ext["chat"]["events"][0]
-        self.assertEqual((message["topic"], message["data"]["sender"]), ("chat.message", "string"))
+        self.assertEqual((len(ext["chat"]["events"]), len(ext["game"]["events"])), (0, 0))   # what they tell, apps hear
+        sources = {e["id"]: [x["name"] for x in e.get("sources") or []] for e in m["extensions"]}
+        self.assertEqual({k: v for k, v in sources.items() if v}, {"kit": ["bus"], "chat": ["chat"], "game": ["game"]})
+        chat_source = ext["chat"]["sources"][0]
+        self.assertEqual((chat_source["title"], chat_source["values"][:3]), ("Chat", ["*", "guild", "officer"]))
+        self.assertIn("chat:<channel>", chat_source["doc"])
+        self.assertEqual(ext["game"]["sources"][0]["values"],
+                         ["combat", "aura", "growth", "quest", "travel", "guild", "guide"])
+        self.assertNotIn("values", ext["kit"]["sources"][0])
         self.assertEqual(ext["guide"]["events"][0]["topic"], "guide.tour")
         self.assertEqual(self.call(s, "kit.revision")["revision"], m["revision"])
         self.assertEqual(self.call(s, "kit.manifest")["revision"], m["revision"])
@@ -373,8 +381,9 @@ class Core(unittest.TestCase):
         caps = {c["id"] for e in m["extensions"] for c in e.get("capabilities") or []}
         tools = {"wk_" + c.replace(".", "_") for c in caps} | {"wk_docs", "wk_wait", "wk_propose"}
         root = Path(__file__).resolve().parents[1] / "WuxianKit"
-        skills = sorted(root.glob("skills/*.md")) + sorted(root.glob("Extensions/*/skills/*.md"))
-        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guild-chat", "guide-tour", "tune-setup"])
+        skills = (sorted(root.glob("skills/*.md")) + sorted(root.glob("Extensions/*/skills/*.md"))
+                  + sorted(root.glob("Apps/*/skills/*.md")))
+        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guide-tour", "tune-setup", "guild-chat"])
         for p in skills:
             text = p.read_text(encoding="utf-8")
             head = dict(re.findall(r"^([a-z-]+): (.+)$", text.split("---")[1], re.M))
@@ -429,17 +438,15 @@ class Core(unittest.TestCase):
         self.sessions = [s]
 
     def test_an_extension_off_and_on(self):
-        """off from the window: its capabilities refuse, its feed stops, it stays off after a reload; on again by a
-        proposal (kit.extension.set, a Setting), which can be undone"""
+        """off from the window: its capabilities refuse, the app it belongs to stops, it stays off after a reload; on
+        again by a proposal (kit.extension.set, a Setting), which can be undone"""
         s = self.start()
-        self.call(s, "chat.listen", "{ channels = { 'guild' } }")
+        self.assertTrue(self.call(s, "kit.app.open", "{ app = 'guild' }")["on"])   # the kit's own, of the chat extension
         w = self.window(s, "chat")
-        self.assertIn("Listen to channels: Guild (until", "\n".join(texts(w[b"body"])))
         click(self.checks(w)["Enabled"])
         self.assertIn('Disabled: Chat', s.chat())
         self.assertIn("no capability chat.send", self.fails(s, "WuxianKit:Call('chat.send', { channel = 'guild', text = 'x' })"))
-        self.assertEqual(self.events(s, "kit.feed")[-1], {"extension": "chat", "feed": "listen", "on": False,
-                                                          "why": "extension"})
+        self.assertEqual(self.events(s, "kit.app")[-1], {"app": "guild", "on": False, "why": "extension"})
         exts = {e["id"]: e["state"] for e in self.call(s, "kit.extensions")}
         self.assertEqual(exts["chat"], "off")
         s2 = s.reload()
@@ -451,7 +458,7 @@ class Core(unittest.TestCase):
         self.assertEqual(p["steps"][0]["preview"], ["Chat: Disabled → Enabled"])
         click(self.run_button(s2))
         self.assertTrue(s2.lua.eval(b"WuxianKit:Capability('chat.send')"))
-        self.assertEqual(self.call(s2, "chat.listen.status"), {"on": False})   # its feed did not come back on
+        self.assertFalse(self.call(s2, "kit.app.status", "{ app = 'guild' }")["on"])   # its app did not come back on
         self.call(s2, "kit.undo", f"{{ id = {p['id']} }}")
         click(self.run_button(s2))
         self.assertFalse(s2.lua.eval(b"WuxianKit:Capability('chat.send')"))
@@ -568,61 +575,15 @@ class Core(unittest.TestCase):
         self.assertEqual(self.cvar(s, "graphicsQuality"), "5")
         self.sessions = [s]
 
-    def test_option_defaults_and_a_feed_without_event(self):
-        """ext:Get gives an option's declared default before the player set any; a feed without `event` is heard under
-        its own name"""
+    def test_option_defaults(self):
+        """ext:Get gives an option's declared default before the player set any; there is no ext:Feed any more"""
         s = self.start()
         s.lua.execute(b"local x = WuxianKit:Extension('xdemo', { title = 'X' }) "
-                      b"x:Option('flag', { default = true }) x:Option('who', { kind = 'text', default = 'Ann' }) "
-                      b"x:Feed('hear', { title = 'Hear', events = { 'CHAT_MSG_SAY' }, "
-                      b"read = function(self, ev, text) return { text = text } end }) __x = x")
+                      b"x:Option('flag', { default = true }) x:Option('who', { kind = 'text', default = 'Ann' }) __x = x")
         s.run(0.1)                                                             # on once its file has run
         self.assertEqual((s.lua.eval(b"__x:Get('flag')"), s.lua.eval(b"__x:Get('who')")), (True, b"Ann"))
-        self.call(s, "xdemo.hear")
-        s.fire("CHAT_MSG_SAY", "hello")
-        self.assertEqual(self.events(s, "xdemo.hear"), [{"text": "hello", "id": 1, "time": 1001}])   # 0.5 B: id, time
-        self.assertIn("a feed's spec has read", self.fails(s, "WuxianKit:Extension('xdemo'):Feed('bad', {})"))
+        self.assertIsNone(s.lua.eval(b"__x.Feed"))
         self.sessions = [s]
-
-    def test_a_feed_pushes_items_of_its_own(self):
-        """feed:Push sends an item that comes from no game event while the feed runs and accept lets it through;
-        feed:Running gives the options then, nil before and after"""
-        s = self.start()
-        s.lua.execute(b"local x = WuxianKit:Extension('xdemo', { title = 'X' }) "
-                      b"__f = x:Feed('moments', { title = 'M', event = 'moment', options = { min = 'number?' }, "
-                      b"events = { 'CHAT_MSG_SAY' }, read = function(self, ev, text) return { n = 0, text = text } end, "
-                      b"accept = function(self, o, d) return d.n >= (o.min or 0) end })")
-        s.run(0.1)
-        self.assertEqual((s.lua.eval(b"__f:Push({ n = 1 })"), s.lua.eval(b"__f:Running()")), (False, None))
-        self.call(s, "xdemo.moments", "{ min = 1 }")
-        self.assertEqual(s.lua.eval(b"__f:Running().min"), 1)
-        self.assertEqual([s.lua.eval(b"__f:Push({ n = 2 })"), s.lua.eval(b"__f:Push({ n = 0 })"),
-                          s.lua.eval(b"__f:Push(nil)")], [True, False, False])
-        s.fire("CHAT_MSG_SAY", "hello")                                        # read gives n = 0: accept says no
-        self.call(s, "xdemo.moments.stop")
-        self.assertFalse(s.lua.eval(b"__f:Push({ n = 3 })"))
-        self.assertEqual(self.events(s, "xdemo.moment"), [{"n": 2, "id": 1, "time": 1001}])          # 0.5 B: id, time
-        self.sessions = [s]
-
-    def test_feeds_end_and_belong_to_their_character(self):
-        """a feed whose time is up stops by itself (the player and the bus hear it); a feed is the character's that
-        started it: another character neither hears through it nor stops it, and it is back when that one logs in"""
-        s = self.start()
-        self.call(s, "chat.listen", "{ channels = { 'guild' }, minutes = 1 }")
-        s.run(66)
-        self.assertEqual(self.events(s, "kit.feed")[-1], {"extension": "chat", "feed": "listen", "on": False,
-                                                          "why": "expired"})
-        self.assertIn("Listen to channels: stopped", s.chat())
-        self.call(s, "chat.listen", "{ channels = { 'guild' } }")
-        s2 = s.reload()
-        s2.lua.execute(b"__guid = 'Player-1-00000002'")
-        s2.login()
-        self.assertEqual(self.call(s2, "chat.listen.status"), {"on": False})
-        self.call(s2, "chat.listen.stop")
-        s3 = s2.reload()
-        s3.login()
-        self.assertTrue(self.call(s3, "chat.listen.status")["on"])
-        self.sessions = [s, s2, s3]
 
     def test_history_belongs_to_its_character(self):
         """what ran is undone only on the character it ran on: another one neither lists it nor undoes it"""

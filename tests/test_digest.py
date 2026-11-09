@@ -1,21 +1,24 @@
-"""Feed items in 0.5 (ARCHITECTURE section 5): ids and times, the ring a feed keeps (keep = n, <name>.recent, through
-reloads, afresh for another character), the digest (urgent, full, batch and idle wakes, its parameters changed in place,
-a wake kept under its size), the status counters and when the agent last called (seen, from an agent's call through a
-WoWBridge stub), and the digest's ticker, which runs only while a digest feed does."""
+"""The digest and what goes with it (Core/Digest.lua), as apps use it: ids and times of the items a source gives (an
+item's own id moves the core's one counter on; the rings move it on at load), urgent, full, batch and idle wakes, the
+ticker that runs only while an app does, the lease kept through a reload; and the helpers themselves (ns.Digest.Params,
+ns.Digest.Small, ns.UrgentList, ns.Lease, ns.RingRecent)."""
 import unittest
 
 from kitmock import Session, lupa, py
 from test_standalone import bridge
 
+# a source of the test's own: dg:a, dg:b or dg:*; __push(what, item) hands an item to whoever subscribed
 DEFINE = b"""
 local x = WuxianKit:Extension('dg', { title = 'DG' })
-__x = x
-__f = x:Feed('talk', { title = 'Talk', event = 'said', keep = 5, events = { 'CHAT_MSG_SAY' },
-	doc = 'hears /say', eventDoc = 'a line said: {text}', options = { quiet = 'number?' },
-	read = function(self, ev, text) return { text = text } end,
-	digest = { gather = 3, every = 20, most = 4,
-		urgent = function(self, o, item) return type(item.text) == 'string' and item.text:find('!') ~= nil end } })
-__p = x:Feed('plain', { title = 'Plain', keep = 3, read = function() end })
+__x, __subs, __n = x, {}, 0
+x:Source('dg', { title = 'DG items', doc = 'dg:a, dg:b or dg:*: what the test pushes', values = { 'a', 'b' },
+	check = function(what) if what ~= 'a' and what ~= 'b' and what ~= '*' then return 'a dg source is a, b or *' end end,
+	covers = function(a, b) return a == '*' and b ~= '*' end,
+	on = function(self, what, fn) __n = __n + 1 __subs[__n] = { what = what, fn = fn } return __n end,
+	off = function(self, t) __subs[t] = nil end })
+function __push(what, item)
+	for _, s in pairs(__subs) do if s.what == what or s.what == '*' then s.fn(item) end end
+end
 """
 
 TICKERS = b"""
@@ -38,9 +41,9 @@ class Digest(unittest.TestCase):
         s = s or Session(self, **kw)
         s.lua.execute(b"__events = {} WuxianKit:On('*', function(topic, data) "
                       b"__events[#__events + 1] = { topic = topic, data = data } end)")
-        s.login()
         s.lua.execute(DEFINE)
-        s.run(1)                                                   # on once its file has run
+        s.login()
+        s.run(1)
         self.addCleanup(lambda: self.assertEqual(s.errors(), []))
         return s
 
@@ -48,192 +51,138 @@ class Digest(unittest.TestCase):
         s.lua.execute(f"__answer = WuxianKit:Call({cap!r}, {args})".encode())
         return py(s.g("__answer"))
 
-    def wakes(self, s):
-        return [e["data"] for e in py(s.g("__events")) or [] if e["topic"] == "dg.said"]
+    def agent(self, s, cap, args="{}"):
+        s.lua.execute(f"__answer = __fns[{cap!r}]({args})".encode())
+        return py(s.g("__answer"))
 
-    def push(self, s, *texts):
+    def wakes(self, s, app):
+        return [e["data"] for e in py(s.g("__events")) or [] if e["topic"] == "app." + app]
+
+    def push(self, s, what, *texts, **fields):
         for t in texts:
-            self.assertTrue(s.lua.eval(f"__f:Push({{ text = {t!r} }})".encode()))
+            extra = "".join(f", {k} = {v!r}" for k, v in fields.items())
+            s.lua.execute(f"__push({what!r}, {{ text = {t!r}{extra} }})".encode())
 
     def live(self, s):
         return [t["live"] for t in py(s.g("__tickers")) or [] if t["d"] == 1]
 
-    def test_ids_times_and_the_ring(self):
+    def test_ids_and_times(self):
         s = self.start()
-        self.call(s, "dg.plain")
-        for item in ("{ a = 1 }", "{ id = 50 }", "{ b = 2 }", "{ time = 5 }"):
-            self.assertTrue(s.lua.eval(f"__p:Push({item})".encode()))
+        self.call(s, "kit.app.open", "{ app = 'p', hear = { 'dg:a' }, lease = 0 }")
+        a = s.lua.eval(b"WuxianKit:NewId()")
+        for item in ("{ a = 1 }", "{ id = 500 }", "{ b = 2 }", "{ time = 5 }"):
+            s.lua.execute(f"__push('a', {item})".encode())
         now = s.lua.eval(b"time()")
-        heard = [e["data"] for e in py(s.g("__events")) if e["topic"] == "dg.plain"]
-        self.assertEqual([(h["id"], h["time"]) for h in heard], [(1, now), (50, now), (51, now), (52, 5)])
-        self.assertEqual(self.call(s, "dg.plain.recent"), {"items": [{"id": 50, "time": now}, {"id": 51, "b": 2,
-                                                                      "time": now}, {"id": 52, "time": 5}], "next": 52})
-        self.assertEqual(self.call(s, "dg.plain.recent", "{ since = 50, limit = 1 }")["items"], [{"id": 52, "time": 5}])
-        empty = self.call(s, "dg.plain.recent", "{ since = 52 }")
-        self.assertEqual((empty["items"], empty["next"]), ({}, 52))
-        self.assertEqual(py(s.lua.eval(b"__p:Recent(52)"))["next"], 52)
-        self.assertEqual(py(s.lua.eval(b"__p:Item(51)"))["b"], 2)
-        self.assertIsNone(s.lua.eval(b"__p:Item(1)"))                  # out of the ring
-        self.call(s, "dg.plain.stop")
-        self.assertEqual(self.call(s, "dg.plain.recent")["next"], 52)   # the ring stays after a stop
-        self.assertIsNone(s.lua.eval(b"WuxianKit:Capability('dg.nothing.recent')"))
-        s.lua.execute(b"__x:Feed('nokeep', { read = function() end })")
-        self.assertIsNone(s.lua.eval(b"WuxianKit:Capability('dg.nokeep.recent')"))   # no keep, no recent
+        items = [w["items"][0] for w in self.wakes(s, "p")]
+        self.assertEqual([(i["id"], i["time"], i["source"]) for i in items],
+                         [(a + 1, now, "dg"), (500, now, "dg"), (501, now, "dg"), (502, 5, "dg")])
+        self.assertEqual(s.lua.eval(b"WuxianKit:NewId()"), 503)             # an item's own id moved the counter on
+        recent = self.call(s, "kit.app.recent", "{ app = 'p', since = 500, limit = 1 }")
+        self.assertEqual((recent["items"][0]["id"], recent["next"]), (502, 502))
 
-        s2 = s.reload()                                                 # through a reload: the ring and its counter
-        s2 = self.start(s2)
-        self.assertEqual(self.call(s2, "dg.plain.recent")["next"], 52)
-        self.call(s2, "dg.plain")
-        s2.lua.eval(b"__p:Push({})")
-        self.assertEqual(self.call(s2, "dg.plain.recent", "{ since = 52 }")["items"][0]["id"], 53)
-
-        s3 = s2.reload()                                                # another character starts the ring afresh
-        s3.lua.execute(b"__guid = 'Player-1-00000002'")
-        s3 = self.start(s3)
-        recent = self.call(s3, "dg.plain.recent", "{ since = 53 }")
-        self.assertEqual(py(s3.lua.eval(b"#__p:Recent().items")), 0)
-        self.assertEqual(recent["next"], 53)                            # (since, when it has none)
-        self.call(s3, "dg.plain")
-        s3.lua.eval(b"__p:Push({})")
-        self.assertEqual(self.call(s3, "dg.plain.recent")["items"][0]["id"], 54)   # the core's one counter goes on
+    def test_ids_go_on_from_the_rings(self):
+        saved = {"WuxianKitDB": b"{ apps = { old = { recent = { who = 'Player-1-00000001', n = 900, items = {} } } } }"}
+        s = self.start(saved=saved)
+        self.assertEqual(s.lua.eval(b"WuxianKit:NewId()"), 901)
 
     def test_urgent_full_and_batch(self):
         s = self.start()
-        status = self.call(s, "dg.talk")
-        self.assertEqual((status["on"], status["heard"], status["wakes"], status.get("lastWake")), (True, 0, 0, None))
-        s.fire("CHAT_MSG_SAY", "hi")
-        self.push(s, "help!")
+        self.call(s, "kit.app.open", "{ app = 't', hear = { 'dg:a' }, lease = 0, urgent = { 'question' }, "
+                                     "digest = { gather = 3, every = 20, most = 4 } }")
+        self.push(s, "a", "hi")
+        self.push(s, "a", "help?", why="question")
         s.run(1.5)
-        self.assertEqual(self.wakes(s), [])                             # gather: 3 s to finish talking
+        self.assertEqual(self.wakes(s, "t"), [])                         # gather: 3 s to finish talking
         s.run(3)
-        w = self.wakes(s)
-        self.assertEqual([(x["reason"], [i["text"] for i in x["items"]], x["skipped"]) for x in w],
-                         [("urgent", ["hi", "help!"], 0)])
-        self.assertEqual([i["id"] for i in w[0]["items"]], [1, 2])
-        self.push(s, "a", "b", "c", "d")                                # at most 4: at once
-        self.assertEqual([(x["reason"], len(x["items"])) for x in self.wakes(s)][1:], [("full", 4)])
-        self.push(s, "later")
+        self.assertEqual([(w["reason"], [i["text"] for i in w["items"]], w["skipped"]) for w in self.wakes(s, "t")],
+                         [("urgent", ["hi", "help?"], 0)])
+        self.push(s, "a", "a", "b", "c", "d")                            # at most 4: at once
+        self.assertEqual([(w["reason"], len(w["items"])) for w in self.wakes(s, "t")][1:], [("full", 4)])
+        self.push(s, "a", "later")
         s.run(18)
-        self.assertEqual(len(self.wakes(s)), 2)
-        s.run(3)                                                        # every 20 s after the first gathered
-        self.assertEqual([(x["reason"], [i["text"] for i in x["items"]]) for x in self.wakes(s)][2:],
+        self.assertEqual(len(self.wakes(s, "t")), 2)
+        s.run(3)                                                         # every 20 s after the first gathered
+        self.assertEqual([(w["reason"], [i["text"] for i in w["items"]]) for w in self.wakes(s, "t")][2:],
                          [("batch", ["later"])])
-        status = self.call(s, "dg.talk.status")
+        status = self.call(s, "kit.app.status", "{ app = 't' }")
         self.assertEqual((status["heard"], status["wakes"]), (7, 3))
         self.assertAlmostEqual(status["lastWake"], s.now(), delta=4)
-        self.assertNotIn("seen", status)                                # no agent call yet
-        self.assertEqual([i["text"] for i in self.call(s, "dg.talk.recent")["items"]], ["a", "b", "c", "d", "later"])
 
-    def test_changed_in_place_every_false_and_idle(self):
+    def test_every_false_and_idle(self):
         s = self.start()
-        self.call(s, "dg.talk")
-        s.lua.execute(b"__f:Running().digest.every = false")
-        self.push(s, "x")
-        s.run(60)
-        self.assertEqual(self.wakes(s), [])                             # only urgent or full now
-        s.lua.execute(b"__f:Running().digest.most = 2")
-        self.push(s, "y")
-        self.assertEqual([(w["reason"], len(w["items"])) for w in self.wakes(s)], [("full", 2)])
-        s.lua.execute(b"__f:Running().digest.idle = 30")
-        s.run(29)
-        self.assertEqual(len(self.wakes(s)), 1)
-        s.run(2)                                                        # 30 s without an item or a wake
-        s.run(28)
-        self.assertEqual([(w["reason"], w["items"]) for w in self.wakes(s)][1:], [("idle", {})])
-        s.run(3)                                                        # and again after another 30
-        w = self.wakes(s)
-        self.assertEqual([x["reason"] for x in w], ["full", "idle", "idle"])
-        status = self.call(s, "dg.talk.status")
-        self.assertEqual((status["wakes"], status["digest"]), (3, {"every": False, "most": 2, "idle": 30}))
-        self.call(s, "dg.talk")                                         # started again: the run afresh
-        status = self.call(s, "dg.talk.status")
-        self.assertEqual((status["heard"], status["wakes"], status["digest"]), (0, 0, {}))
-        self.push(s, "z")
-        self.call(s, "dg.talk")
+        self.call(s, "kit.app.open", "{ app = 'q', hear = { 'dg:b' }, lease = 0, "
+                                     "digest = { every = false, idle = 30, most = 2 } }")
+        self.push(s, "b", "x")
         s.run(25)
-        self.assertEqual(len(self.wakes(s)), 3)                         # what was gathered went with the old run
-        self.assertEqual(self.call(s, "dg.talk.recent")["items"][-1]["text"], "z")   # the ring keeps it
+        self.assertEqual(self.wakes(s, "q"), [])                         # only full, urgent or idle
+        self.push(s, "b", "y")
+        self.assertEqual([(w["reason"], len(w["items"])) for w in self.wakes(s, "q")], [("full", 2)])
+        s.run(28)
+        self.assertEqual(len(self.wakes(s, "q")), 1)
+        s.run(3)                                                         # 30 s without an item or a wake
+        self.assertEqual([(w["reason"], len(w["items"])) for w in self.wakes(s, "q")][1:], [("idle", 0)])
+        s.run(30)                                                        # and again after another 30
+        self.assertEqual([w["reason"] for w in self.wakes(s, "q")], ["full", "idle", "idle"])
 
-    def test_prepare_fills_digest(self):
-        s = self.start()
-        s.lua.execute(b"__q = __x:Feed('quick', { event = 'q', options = { gather = 'number?' }, read = function() end, "
-                      b"digest = { every = 50 }, prepare = function(self, o) return { digest = { every = o.gather } } end })")
-        self.call(s, "dg.quick", "{ gather = 2 }")
-        s.lua.eval(b"__q:Push({ n = 1 })")
-        s.run(3.5)
-        self.assertEqual([e["data"]["reason"] for e in py(s.g("__events")) if e["topic"] == "dg.q"], ["batch"])
-
-    def test_a_wake_kept_under_its_size(self):
-        s = self.start()
-        self.call(s, "dg.talk")
-        s.lua.execute(b"__f:Running().digest.most = 10")
-        for i in range(8):
-            s.lua.eval(f"__f:Push({{ text = '{i}' .. string.rep('x', 1000) }})".encode())
-        s.run(21)
-        w = self.wakes(s)[0]
-        self.assertEqual(w["reason"], "batch")
-        self.assertGreater(w["skipped"], 0)
-        self.assertEqual(len(w["items"]) + w["skipped"], 8)
-        self.assertEqual(w["items"][-1]["text"][0], "7")                # the oldest go
-        self.assertEqual(w["items"][0]["id"], w["skipped"] + 1)
-        size = s.lua.eval(b"#WuxianKit.Comm.Serialize(__events[#__events].data)")
-        self.assertLessEqual(size, 5500)
-        kept = self.call(s, "dg.talk.recent")["items"]                  # the ring keeps them, cut small
-        self.assertEqual(len(kept), 5)
-        self.assertTrue(all(len(i["text"].encode()) <= 503 for i in kept))
-
-    def test_declared_event_and_doc(self):
-        s = self.start()
-        doc = py(s.lua.eval(b"WuxianKit:Capability('dg.talk')"))["doc"]
-        self.assertIn("Items are gathered", doc)
-        events = next(e for e in py(s.lua.eval(b"WuxianKit:Manifest()"))["extensions"] if e["id"] == "dg")["events"]
-        said = next(e for e in events if e["topic"] == "dg.said")
-        self.assertEqual(said["data"], {"reason": "urgent|full|batch|idle", "items": "table", "skipped": "number"})
-        self.assertIn("a line said: {text}", said["doc"])
-        plain = next(e for e in events if e["topic"] == "dg.plain")
-        self.assertNotIn("data", plain)
-        self.assertEqual(py(s.lua.eval(b"WuxianKit:Capability('dg.talk.recent')"))["args"],
-                         {"since": "number?", "limit": "number?"})
-
-    def test_seen_from_an_agent_call(self):
-        s = self.start(saved={"WoWBridge": bridge("0.9.7")})
-        self.call(s, "dg.talk")
-        self.assertNotIn("seen", self.call(s, "dg.talk.status"))         # an addon's call is not the agent's
-        s.run(10)
-        s.lua.execute(b"__agent = __fns['dg.talk.recent']({ since = 0 })")
-        at = int(s.now())
-        status = self.call(s, "dg.talk.status")
-        self.assertEqual(status["seen"], at)
-        s.run(5)
-        s.lua.execute(b"__x:Do('poke', { title = 'Poke', apply = function() end })")
-        s.lua.execute(b"__fns['kit.propose']({ title = 'poke', steps = { { cap = 'dg.poke', args = {} } } })")
-        self.assertEqual(self.call(s, "dg.talk.status")["seen"], at + 5)  # a step of kit.propose reaches it too
-
-    def test_the_ticker_runs_only_while_a_digest_feed_does(self):
+    def test_the_ticker_runs_only_while_an_app_does(self):
         s = Session(self)
         s.lua.execute(TICKERS)
         s = self.start(s)
-        self.call(s, "dg.plain")
-        self.assertEqual(self.live(s), [])                             # a feed without digest needs none
-        self.call(s, "dg.talk")
+        self.assertEqual(self.live(s), [])                              # no app runs
+        self.call(s, "kit.app.open", "{ app = 'p', hear = { 'dg:a' }, lease = 0 }")
         self.assertEqual(self.live(s), [True])
-        self.call(s, "dg.talk")                                         # one, started again or not
+        self.call(s, "kit.app.open", "{ app = 'q', hear = { 'dg:b' }, lease = 0, digest = { every = 20 } }")
+        self.call(s, "kit.app.open", "{ app = 'p' }")                    # one, however many run
         self.assertEqual(self.live(s), [True])
-        self.call(s, "dg.talk.stop")
-        self.assertEqual(self.live(s), [False])
-        self.call(s, "dg.talk", "{ minutes = 1 }")
-        self.push(s, "before the reload")
-        self.assertEqual(self.live(s), [False, True])
-        s2 = s.reload()                                                 # it runs on after a reload, gathered and all
+        self.call(s, "kit.app.stop", "{ app = 'p' }")
+        self.call(s, "kit.app.stop", "{ app = 'q' }")
+        s.run(1.5)
+        self.assertEqual(self.live(s), [False])                          # gone once none runs
+        self.call(s, "kit.app.open", "{ app = 'q', minutes = 1 }")
+        self.push(s, "b", "before the reload")
+        s2 = s.reload()                                                  # it runs on after a reload, gathered and all
         s2.lua.execute(TICKERS)
         s2 = self.start(s2)
-        s2.run(6)
         self.assertEqual(self.live(s2), [True])
-        s2.run(20)
-        self.assertEqual([[i["text"] for i in w["items"]] for w in self.wakes(s2)], [["before the reload"]])
-        s2.run(40)                                                      # its minute is over
+        s2.run(30)
+        self.assertEqual([[i["text"] for i in w["items"]] for w in self.wakes(s2, "q")], [["before the reload"]])
+        s2.run(40)                                                       # its minute is over
         self.assertEqual(self.live(s2), [False])
-        self.assertFalse(self.call(s2, "dg.talk.status")["on"])
+        self.assertFalse(self.call(s2, "kit.app.status", "{ app = 'q' }")["on"])
+
+    def test_the_lease_through_a_reload(self):
+        s = self.start(saved={"WoWBridge": bridge("0.9.7")})
+        self.agent(s, "kit.app.open", "{ app = 'l', title = 'L', hear = { 'dg:a' }, lease = 60 }")
+        s.run(40)
+        self.agent(s, "kit.app.status", "{ app = 'l' }")                 # the heartbeat, kept in its run
+        s2 = self.start(s.reload())
+        self.assertTrue(self.call(s2, "kit.app.status", "{ app = 'l' }")["present"])
+        s2.run(40)
+        self.assertTrue(self.call(s2, "kit.app.status", "{ app = 'l' }")["on"])
+        s2.run(25)
+        st = self.call(s2, "kit.app.status", "{ app = 'l' }")
+        self.assertEqual((st["on"], st["why"]), (False, "left"))
+
+    def test_the_helpers(self):
+        s = self.start()
+        ns = s.ns
+        self.assertEqual([ns.Lease(v) for v in (0, 30, 90.7, b"x", -5)], [None, 60, 90, None, None])
+        urgent = ns.UrgentList(s.lua.table_from({1: b"question", b"mention": True}))
+        self.assertEqual([urgent(None, None, s.lua.table_from(t)) for t in
+                          ({b"why": b"question"}, {b"kind": b"mention"}, {b"why": b"burst"})], [True, True, False])
+        host = s.lua.eval(b"{ spec = { digest = { every = 45 } } }")
+        run = s.lua.eval(b"{ options = { digest = { gather = -1, idle = false, most = 500 } } }")
+        self.assertEqual(py(ns.Digest.Params(host, run)), {"gather": 0, "every": 45, "idle": False, "most": 200})
+        self.assertEqual(py(ns.Digest.Params(s.lua.eval(b"{ spec = {} }"), s.lua.eval(b"{}"))),
+                         {"gather": 5, "every": 60, "idle": False, "most": 30})
+        small = py(ns.Digest.Small(s.lua.eval(b"{ text = string.rep('x', 600), a = { b = { c = { d = { e = 1 } } } }, "
+                                               b"f = print }")))
+        self.assertLessEqual(len(small["text"].encode()), 503)
+        self.assertEqual((small["a"]["b"]["c"], "f" in small), ({}, False))    # four levels deep, data only
+        items = s.lua.eval(b"{ { id = 3 }, { id = 4 }, { id = 7 } }")
+        self.assertEqual(py(ns.RingRecent(items, 3, None, 100)), {"items": [{"id": 4}, {"id": 7}], "next": 7})
+        self.assertEqual(py(ns.RingRecent(items, 0, 1, 100))["items"], [{"id": 7}])
+        self.assertEqual(py(ns.RingRecent(s.lua.eval(b"{}"), 9, None, 100)), {"items": {}, "next": 9})
 
 
 if __name__ == "__main__":

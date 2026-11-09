@@ -58,11 +58,8 @@ ns.WORDS = {
 		UNCHANGED = "%s：%s（不变）",
 		ON = "开启",
 		OFF = "关闭",
-		FEED_STARTED = "%s：%s，至 %s",
-		FEED_STOPPED = "%s：已停止",
-		FEED_ON = "%s：%s（至 %s）",
 		STOP = "停止",
-		-- 0.5: options, copy box, budgets, digest feeds
+		-- 0.5: options, copy box, budgets
 		OPTION_LIST_HINT = "用逗号分开",
 		COPY_HINT = "Ctrl+C 复制",
 		COPIED = "已复制",
@@ -72,9 +69,6 @@ ns.WORDS = {
 		BUDGET = "每 %s 最多 %d 次",
 		BUDGET_ANY = "不限次数",
 		BUDGET_FULL = "已到免确认上限（每 %s 最多 %d 次），需要确认",
-		FEED_SEEN = "Agent 最近应答：%s前",
-		FEED_UNSEEN = "Agent 尚未应答",
-		FEED_WAKES = "已唤醒 %d 次",
 		-- extensions
 		EXT_ON = "已启用：%s",
 		EXT_OFF = "已停用：%s（界面上的改动在重载后清除）",
@@ -177,11 +171,8 @@ ns.WORDS = {
 		UNCHANGED = "%s: %s (unchanged)",
 		ON = "On",
 		OFF = "Off",
-		FEED_STARTED = "%s: %s, until %s",
-		FEED_STOPPED = "%s: stopped",
-		FEED_ON = "%s: %s (until %s)",
 		STOP = "Stop",
-		-- 0.5: options, copy box, budgets, digest feeds
+		-- 0.5: options, copy box, budgets
 		OPTION_LIST_HINT = "Separate with commas",
 		COPY_HINT = "Ctrl+C to copy",
 		COPIED = "Copied",
@@ -191,9 +182,6 @@ ns.WORDS = {
 		BUDGET = "Per %s: at most %d",
 		BUDGET_ANY = "No limit",
 		BUDGET_FULL = "Pre-approval limit reached (per %s: at most %d): needs confirmation",
-		FEED_SEEN = "Agent last answered %s ago",
-		FEED_UNSEEN = "Agent has not answered yet",
-		FEED_WAKES = "Woken %d times",
 		EXT_ON = "Enabled: %s",
 		EXT_OFF = "Disabled: %s (its UI changes clear after a reload)",
 		EXT_LOAD_FAILED = "Cannot load %s: %s",

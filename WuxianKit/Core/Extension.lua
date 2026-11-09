@@ -1,11 +1,11 @@
 -- An extension: one object per id, made by WuxianKit:Extension(id, info) when its file runs (its other files get it with
--- WuxianKit:Extension(id), no info). What it declares
--- (capabilities and scopes, game events, timers, feeds; Kinds.lua) is kept on it and goes live when the core turns it
--- on: the built-in ones when the core's saved variables come, another addon's once its files have run, each unless the
--- player turned it off (WuxianKitDB.off[id]). Turned off from the window, it stops at once: its game events are no
--- longer handed to it, its timers and feeds stop, its capabilities refuse calls, its proposals not run yet go; what its
--- proposals changed stays (the history undoes it), what it made of the UI stays until a reload. Its storage is
--- WuxianKitDB.ext[id], info.defaults filled in.
+-- WuxianKit:Extension(id), no info). What it declares (capabilities and scopes, Kinds.lua; game events, timers, the
+-- sources apps hear) is kept on it and goes live when the core turns it on: the built-in ones when the core's saved
+-- variables come, another addon's once its files have run, each unless the player turned it off (WuxianKitDB.off[id]).
+-- Turned off from the window, it stops at once: its game events are no longer handed to it, its timers stop, its
+-- capabilities refuse calls, apps hear nothing of its sources (and one that hears them cannot start, Apps.lua), its
+-- proposals not run yet go; what its proposals changed stays (the history undoes it), what it made of the UI stays until
+-- a reload. Its storage is WuxianKitDB.ext[id], info.defaults filled in.
 --   info: { title, version, notes, addon, docs, prompt, defaults = {...}, setup(self) when it goes on, teardown(self)
 --           when it goes off }; docs: the folder (in its addon's) of its AGENT.md and skills/ for the agent (Agent access
 --           spec); prompt: the name of one of its skills (ext.prompt; kept for the workshop, no button: an app's
@@ -28,6 +28,7 @@
 --                                          empty or twice, at most 20 of at most 32 bytes); a change calls changed and
 --                                          emits kit.option { extension, name, value }
 --   ext:Command(word, fn(self, rest), help)  "/wk <word> ..." runs fn while it is on; /wk help lists it
+--   ext:Source(name, spec) -> source       what apps hear: the hear entries <name>:<what> (see "sources" below)
 local addonName, ns = ...
 local Kit, L = ns.Kit, ns.L
 
@@ -103,7 +104,6 @@ end
 
 function ns.Disable(ext)
 	if not ext.active or ext.id == "kit" then return end
-	for _, name in ipairs(ext.feedOrder) do ns.FeedStop(ext.feeds[name], true, true) end
 	ext.active = false
 	for _, name in ipairs(ext.capOrder) do caps[ext.caps[name].id] = nil end
 	if ns.ForgetExtension then ns.ForgetExtension(ext) end
@@ -127,8 +127,8 @@ function Kit:Extension(id, info)
 	if ext and info == nil then return ext end           -- another file of an extension defined before
 	info = info or {}
 	if not ext then
-		ext = setmetatable({ id = id, caps = {}, capOrder = {}, scopes = {}, scopeOrder = {}, timers = {}, feeds = {},
-			feedOrder = {}, options = {}, optionOrder = {}, emits = {}, emitOrder = {}, budgets = {}, builtin = not started },
+		ext = setmetatable({ id = id, caps = {}, capOrder = {}, scopes = {}, scopeOrder = {}, timers = {},
+			sourceOrder = {}, options = {}, optionOrder = {}, emits = {}, emitOrder = {}, budgets = {}, builtin = not started },
 			Extension)
 		extensions[id] = ext
 		order[#order + 1] = id
@@ -397,6 +397,80 @@ function Extension:Command(word, fn, help)
 end
 
 function ns.Commands() return commands end
+
+------------------------------------------------------------------------------------------------------------------------
+-- sources: what apps hear (Apps.lua). ext:Source(name, spec) registers the hear entries <name>:<what>. A name is the
+-- whole kit's: another extension's of the same name is an error (the same extension's again replaces it). spec:
+--   title, doc         doc: what <name>:<what> hears and what an item is (kit.app.open's doc and the manifest show it)
+--   values             the known values of what (a list, or a function that gives one), for the docs
+--   check(what)        nil when <name>:<what> is an entry it takes, else why not (in the agent's words)
+--   covers(a, b)       whether <name>:a hears all that <name>:b does (chat:* covers chat:guild): an app hears b once
+--   on(self, what, fn) -> token   subscribes: fn(item) for each item heard, a new table each time (an app writes its
+--                      fields on it); off(self, token) unsubscribes; self is the extension
+--   me = true          an app that declared me gets the player (WuxianKit:Me()) on this source's items
+-- An extension that is off keeps its sources registered: an app that hears one cannot start (Apps.lua says why), and
+-- one that runs hears nothing of it until it is on again.
+-- addon, control and player are the apps' own sources (an item's source) and cannot be registered.
+-- ns.sources: name -> { name, ext, spec }; ns.sourceOrder: the names as registered; ns.SourceList(ext) and
+-- ns.SourceValues(source) for the manifest and the docs.
+
+local sources, sourceOrder = {}, {}
+ns.sources, ns.sourceOrder = sources, sourceOrder
+local RESERVED = { addon = true, control = true, player = true }
+local SOURCE_MAX = 24
+
+function Extension:Source(name, spec)
+	if type(name) ~= "string" or #name > SOURCE_MAX or not name:match("^[a-z][a-z0-9_]*$") then
+		error(("%s: a source's name is lowercase letters, digits and _, at most %d bytes"):format(self.id, SOURCE_MAX), 2)
+	end
+	if RESERVED[name] then error(("%s: the source name %s is the apps' own"):format(self.id, name), 2) end
+	if type(spec) ~= "table" or type(spec.on) ~= "function" or type(spec.off) ~= "function" then
+		error(("%s: source %s's spec has on(self, what, fn) and off(self, token)"):format(self.id, name), 2)
+	end
+	for _, k in ipairs({ "check", "covers" }) do
+		if spec[k] ~= nil and type(spec[k]) ~= "function" then
+			error(("%s: source %s's %s is a function"):format(self.id, name, k), 2)
+		end
+	end
+	local old = sources[name]
+	if old and old.ext ~= self then
+		error(("%s: the source %s is extension %s's"):format(self.id, name, old.ext.id), 2)
+	end
+	local source = { name = name, ext = self, spec = spec }
+	if not old then
+		sourceOrder[#sourceOrder + 1] = name
+		self.sourceOrder[#self.sourceOrder + 1] = name
+	end
+	sources[name] = source
+	ns.Changed("source", source)
+	return source
+end
+
+-- a source's known values of what: a list of strings, or nil
+function ns.SourceValues(source)
+	local v = source.spec.values
+	if type(v) == "function" then
+		local ok, got = pcall(v)
+		v = ok and got or nil
+	end
+	if type(v) ~= "table" then return nil end
+	local out = {}
+	for _, x in ipairs(v) do out[#out + 1] = ns.Text(x) end
+	return #out > 0 and out or nil
+end
+
+-- an extension's sources as the manifest lists them: [{ name, title, doc, values? }]
+function ns.SourceList(ext)
+	local out = {}
+	for _, name in ipairs(ext.sourceOrder) do
+		local s = sources[name]
+		if s and s.ext == ext then
+			out[#out + 1] = { name = name, title = ns.T(s.spec.title) or name, doc = ns.Text(ns.T(s.spec.doc) or ""),
+				values = ns.SourceValues(s) }
+		end
+	end
+	return out
+end
 
 ------------------------------------------------------------------------------------------------------------------------
 -- the extensions another addon brings: each addon whose .toc says ## X-WuxianKit-Extension: <id>, loaded or not

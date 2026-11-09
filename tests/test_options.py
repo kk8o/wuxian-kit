@@ -1,7 +1,7 @@
 """0.5's options and what goes with them, under Lua 5.1 in the mock client: the option kinds (boolean, text, number,
 choice, list) and how each keeps a value, kit.options and the kit.option event, WuxianKit:Requires, scopes with a
 suggested budget (ns.ScopeBudget), the copy box (WuxianKit:Copy), WuxianKit:OptionsPanel, and the window's page: the new
-controls, "connect an agent", the line under a running feed, the budget button of a ticked scope."""
+controls, "connect an agent", the budget button of a ticked scope."""
 import unittest
 from unittest import mock
 
@@ -30,7 +30,6 @@ x:Option('odd', { title = 'Odd', kind = 'weird' })
 x:Scope('guild.reply', { title = 'Replies', budget = { per = 600, most = 3 } })
 x:Scope('guild', 'Guild chat')
 x:Scope('bad', { title = 'Bad', budget = { per = 0, most = 3 } })
-x:Feed('hear', { title = 'Hear', events = { 'CHAT_MSG_SAY' }, read = function(self, ev, text) return { text = text } end })
 WuxianKit:Extension('bare', { title = 'Bare' })
 __x = x
 """
@@ -232,7 +231,7 @@ class Options(unittest.TestCase):
 
     def test_the_page(self):
         """the page draws the new kinds (the list joined in the language in force, its hint), no "connect an agent" for
-        its prompt (an app's card hands the start line), a running feed says when the agent last answered"""
+        its prompt (an app's card hands the start line)"""
         s = self.start()
         w = self.window(s, "opt")
         body = texts(w[b"body"])
@@ -246,15 +245,6 @@ class Options(unittest.TestCase):
         s.lua.execute(b"__ns.SetLanguage('enUS')")
         self.assertNotIn("Connect an agent", [b[b"label"][b"text"].decode() for b in self.shown(w[b"buttons"])])
         self.assertIsNone(s.g("WuxianKitCopyWindow"))
-        self.call(s, "opt.hear")
-        w = self.window(s, "opt")
-        self.assertIn("Agent has not answered yet", texts(w[b"body"]))
-        s.lua.execute(b"function __ns.FeedInfo(feed) return { heard = 3, wakes = 2, seen = time() - 600 } end")
-        s.lua.execute(b"WuxianKit:Window('opt')")
-        self.assertIn("Agent last answered 10 min ago · Woken 2 times", texts(w[b"body"]))
-        s.lua.execute(b"__ns.SetLanguage('zhCN')")
-        self.assertIn("Agent 最近应答：10 分钟前 · 已唤醒 2 次",
-                      texts(w[b"body"]))
 
     def test_budgets_on_the_page(self):
         """a ticked scope shows its budget on a button that goes through the scope's suggested one, the usual ones and

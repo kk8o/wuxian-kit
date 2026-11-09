@@ -10,10 +10,10 @@
 -- WoWBridge does may break the core: every call into it is protected, and what it refuses is left out.
 -- WoWBridge carries 10 events a second for an addon (20 at once) and drops the rest: the core's own events (kit.*,
 -- a proposal's end above all) wait here (the last KEPT) and are sent again when there is room, and the extensions' (a
--- busy chat feed) take at most FEED_RATE a second of it, so the core's find room; what was dropped is told every
+-- busy app) take at most FEED_RATE a second of it, so the core's find room; what was dropped is told every
 -- DROPPED_EVERY seconds (kit.dropped). While 无限工坊 is not linked, WoWBridge itself keeps only its last few events.
 -- An agent's call that reaches a capability (kit.propose: each step's) marks its extension seen (ext.seen = time(), in
--- memory): a feed's status and the window tell when the agent last answered (ns.FeedInfo).
+-- memory): when the agent last called it.
 local addonName, ns = ...
 local Kit = ns.Kit
 

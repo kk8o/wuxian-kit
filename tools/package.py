@@ -79,7 +79,9 @@ def manifest(locale):
 
 def skills():
     out = []
-    for p in sorted(ADDON.glob("skills/*.md")) + sorted(ADDON.glob("Extensions/*/skills/*.md")):   # the core's first
+    # the core's first, then the extensions', then the apps' (an app's skills are its own: app, not extension)
+    for p in (sorted(ADDON.glob("skills/*.md")) + sorted(ADDON.glob("Extensions/*/skills/*.md"))
+              + sorted(ADDON.glob("Apps/*/skills/*.md"))):
         text = p.read_text(encoding="utf-8")
         m = re.match(r"^---\r?\n(.*?)\r?\n---", text, re.S)
         meta = {}
@@ -88,7 +90,10 @@ def skills():
             if sep:
                 meta[k.strip().lower()] = v.strip()
         name = meta.get("name") or p.stem
-        out.append({"name": name, "extension": "kit" if p.parent.parent == ADDON else p.parents[1].name.lower(),
+        holder = ({"extension": "kit"} if p.parent.parent == ADDON else
+                  {"app": p.parents[1].name.lower()} if p.parents[2].name == "Apps" else
+                  {"extension": p.parents[1].name.lower()})
+        out.append({"name": name, **holder,
                     "title": {"zh": meta.get("title-zh") or name, "en": meta.get("title") or name},
                     "description": {"zh": meta.get("description-zh") or meta.get("description", ""),
                                     "en": meta.get("description", "")}})

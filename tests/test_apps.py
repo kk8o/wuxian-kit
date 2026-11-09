@@ -1,7 +1,7 @@
 """Apps (ARCHITECTURE section 10): an agent's declaration (kit.app.open, checked, remembered, at most 8) and an addon's
 (WuxianKit:App, with check, urgent, enrich: it wins); status, the heartbeat and the lease, stop, recent, kit.apps; runs
-through reloads and per character; the sources (chat, game, bus, addon, control, player) with fakes of Chat:On and
-Game:On; digest, urgent lists, controls and the player's words; said; the extension an app belongs to; options; the
+through reloads and per character; the sources (chat, game and bus as the extensions register them, addon, control,
+player) with fakes of Chat:On and Game:On; digest, urgent lists, controls and the player's words; said; the extension an app belongs to; options; the
 manifest's apps. Pace and quiet hours are in test_apps_pace.py."""
 import unittest
 
@@ -115,7 +115,7 @@ class Basics(AppCase):
         apps = self.agent(s, "kit.apps")
         self.assertEqual([a["id"] for a in apps], ["guild", "notes"])     # the kit's own guild chat first
         self.assertEqual(apps[1], {"id": "notes", "title": "Notes", "by": "agent", "on": True, "ends": now + 7200,
-                                   "present": True})
+                                   "present": True, "launch": False, "temp": False, "launching": False})
 
         st = self.agent(s, "kit.app.stop", "{ app = 'notes' }")
         self.assertEqual((st["on"], st["present"], st["why"]), (False, False, "stopped"))
@@ -159,7 +159,10 @@ class Basics(AppCase):
                 ("{ app = 'a', hear = { 'bus:app.other' } }", "cannot hear kit.* or app.*"),
                 ("{ app = 'a', hear = { 'bus:*' } }", "a bus source is a topic"),
                 ("{ app = 'a', hear = { 'game:nope' } }", "game:nope: a game source is a topic"),
-                ("{ app = 'a', hear = { 'radio:x' } }", "a hear entry is chat:<channel>"),
+                ("{ app = 'a', hear = { 'radio:x' } }", "radio:x: no source radio (the sources: bus, chat, game)"),
+                ("{ app = 'a', hear = { 'guild' } }", "guild: a hear entry is <source>:<what>"),
+                ("{ app = 'a', driver = 'robot' }", "driver is \"prompt\" or \"program\""),
+                ("{ app = 'a', driver = 'prompt' }", "driver \"prompt\" goes with prompt"),
                 ("{ app = 'a', hear = 'chat:guild' }", "is a table"),
                 ("{ app = 'a', controls = { 'dance' } }", "controls: dance is not one of"),
                 ("{ app = 'a', urgent = { 'Big Deal' } }", "is not a word"),
@@ -232,7 +235,9 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
         self.assertEqual(self.agent(s, "kit.apps")[1], {"id": "club", "title": "Club chat", "by": "addon",
                                                         "addon": "WxClub", "on": True, "ends": st["ends"],
                                                         "present": True, "prompt": "club-chat",
-                                                        "start": START["en"].format("Club chat", "club-chat")})
+                                                        "start": START["en"].format("Club chat", "club-chat"),
+                                                        "driver": "prompt", "launch": False, "temp": False,
+                                                        "launching": False})
         self.assertIs(s.lua.eval(b"WuxianKit:App('club') == __app"), True)
         self.assertIsNone(s.lua.eval(b"WuxianKit:App('none')"))
 
@@ -476,23 +481,26 @@ class Manifest(AppCase):
         m = self.lua(s, "WuxianKit:Manifest()")
         guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
                  "hear": ["chat:guild", "game:guild"], "prompt": "guild-chat",
-                 "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat"}
+                 "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat", "driver": "prompt",
+                 "docs": "WuxianKit/Apps/Guild", "launch": False, "temp": False}
         self.assertEqual(m["apps"], [guild])                               # the kit's own
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
                          {"app": "string", "on": "boolean", "ends": "number?", "why": "string?"})
-        self.assertEqual(next(e for e in events if e["topic"] == "kit.feed")["data"]["why"], "string?")
+        self.assertEqual(next(e for e in events if e["topic"] == "kit.app.launch")["data"], {"app": "string"})
+        self.assertNotIn("kit.feed", [e["topic"] for e in events])
         caps = [c["id"] for c in next(e for e in m["extensions"] if e["id"] == "kit")["capabilities"]]
-        for cap in ("kit.app.open", "kit.app.status", "kit.app.stop", "kit.app.recent", "kit.apps"):
+        for cap in ("kit.app.open", "kit.app.declare", "kit.app.status", "kit.app.stop", "kit.app.recent", "kit.apps"):
             self.assertIn(cap, caps)
         rev = m["revision"]
         self.agent(s, "kit.app.open", "{ app = 'mm', title = 'MM', hear = { 'bus:demo.*' }, prompt = 'mm-skill' }")
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', hear = { 'game:quest' } })")
         m = self.lua(s, "WuxianKit:Manifest()")
         self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
-                                      "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill")},
+                                      "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill"),
+                                      "driver": "prompt", "launch": False, "temp": False},
                                      {"id": "ad", "title": "AD", "by": "addon", "addon": "WxAd", "topic": "app.ad",
-                                      "hear": ["game:quest"]}])
+                                      "hear": ["game:quest"], "launch": False, "temp": False}])
         self.assertNotEqual(m["revision"], rev)
         s.run(1)
         self.assertEqual(self.events(s, "kit.changed")[-1]["revision"], m["revision"])

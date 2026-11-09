@@ -1,8 +1,8 @@
-"""The kit's own app guild (公会聊天, Extensions/Chat/GuildApp.lua, ARCHITECTURE section 10) under Lua 5.1 in the mock
-client: the declaration loads, kit.apps and the manifest list it (addon WuxianKit, prompt guild-chat), it does not start
-outside a guild, it hears guild chat (with why and id) and the guild's joins through the real chat and game extensions,
-its options come in order, its skill is found among the kit's skills and packaged, and a second Kit:App("guild") by
-another addon (an older WuxianGuild) replaces it without an error."""
+"""The kit's own app guild (公会聊天, Apps/Guild/App.lua, ARCHITECTURE section 10) under Lua 5.1 in the mock client:
+the declaration loads, kit.apps and the manifest list it (addon WuxianKit, prompt guild-chat, driver prompt, docs
+WuxianKit/Apps/Guild), it does not start outside a guild, it hears guild chat (with why and id) and the guild's joins
+through the real chat and game sources, its options come in order, its skill is found in its docs folder and packaged
+as the app's, and a second Kit:App("guild") by another addon (an older WuxianGuild) replaces it without an error."""
 import importlib.util
 import io
 import os
@@ -84,13 +84,18 @@ class GuildApp(unittest.TestCase):
                           True, 600, 120))
         self.assertEqual(sorted(app["pace"]), ["lively", "normal", "quiet"])
         self.assertNotIn("enrich", app)
+        self.assertEqual((app["driver"], app["docs"]), ("prompt", "Apps/Guild"))
         self.assertEqual(self.agent(s, "kit.apps"), [{"id": "guild", "title": "Guild chat", "by": "addon",
                                                       "addon": "WuxianKit", "on": False, "present": False,
-                                                      "prompt": "guild-chat", "start": START_EN, "extension": "chat"}])
+                                                      "prompt": "guild-chat", "start": START_EN, "extension": "chat",
+                                                      "driver": "prompt", "launch": False, "temp": False,
+                                                      "launching": False}])
         m = py(s.lua.eval(b"WuxianKit:Manifest()"))
         self.assertEqual(m["apps"], [{"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit",
                                       "topic": "app.guild", "hear": ["chat:guild", "game:guild"],
-                                      "prompt": "guild-chat", "start": START_EN, "extension": "chat"}])
+                                      "prompt": "guild-chat", "start": START_EN, "extension": "chat",
+                                      "driver": "prompt", "docs": "WuxianKit/Apps/Guild", "launch": False,
+                                      "temp": False}])
         zh = self.start(locale="zhCN")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["title"], "公会聊天")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["start"],
@@ -172,7 +177,7 @@ class GuildApp(unittest.TestCase):
 
     def test_the_skill(self):
         root = KIT_DIR
-        p = root / "Extensions" / "Chat" / "skills" / "guild-chat.md"
+        p = root / "Apps" / "Guild" / "skills" / "guild-chat.md"
         text = p.read_text(encoding="utf-8")
         self.assertNotIn(b"\r\n", p.read_bytes())
         head = dict(re.findall(r"^([a-z-]+): (.+)$", text.split("---")[1], re.M))
@@ -185,19 +190,23 @@ class GuildApp(unittest.TestCase):
                       "claude mcp add --transport http wuxianwow", "wuxian listen guild --once --since <next>",
                       "0.9.13", "CLAUDE.md", "wk_sense_guild", "wk_kit_app_stop", "report_issue", "guild/"):
             self.assertIn(there.replace(" ", ""), re.sub(r"\s+", "", text), there)
-        # the chat extension's docs folder holds it (the workshop reads <docs>/skills/*.md)
+        # the app's docs folder holds it (the workshop reads <docs>/skills/*.md), not the chat extension's
         s = self.start()
-        chat = next(e for e in py(s.lua.eval(b"WuxianKit:Manifest()"))["extensions"] if e["id"] == "chat")
-        self.assertEqual(chat["docs"], "WuxianKit/Extensions/Chat")
-        self.assertTrue((root.parent / chat["docs"] / "skills" / "guild-chat.md").is_file())
-        # packaged: in the catalog entry's skills and in the zip
+        m = py(s.lua.eval(b"WuxianKit:Manifest()"))
+        guild = next(a for a in m["apps"] if a["id"] == "guild")
+        self.assertEqual(guild["docs"], "WuxianKit/Apps/Guild")
+        self.assertTrue((root.parent / guild["docs"] / "skills" / "guild-chat.md").is_file())
+        chat = next(e for e in m["extensions"] if e["id"] == "chat")
+        self.assertFalse((root.parent / chat["docs"] / "skills").exists())
+        # packaged: in the catalog entry's skills (the app's) and in the zip
         package = load_package()
         skill = next(x for x in package.skills() if x["name"] == "guild-chat")
-        self.assertEqual(skill["extension"], "chat")
+        self.assertEqual((skill["app"], skill.get("extension")), ("guild", None))
         self.assertEqual(skill["title"], {"zh": "公会聊天", "en": "Guild chat"})
         names = zipfile.ZipFile(io.BytesIO(package.pack())).namelist()
-        for f in ("WuxianKit/Extensions/Chat/GuildApp.lua", "WuxianKit/Extensions/Chat/skills/guild-chat.md"):
+        for f in ("WuxianKit/Apps/Guild/App.lua", "WuxianKit/Apps/Guild/skills/guild-chat.md"):
             self.assertIn(f, names)
+        self.assertEqual([n for n in names if "GuildApp" in n or "Chat/skills" in n], [])
 
     @unittest.skipUnless(os.environ.get("WUXIAN_WORKSHOP"), "无限工坊's source is not there (WUXIAN_WORKSHOP)")
     def test_the_workshop_serves_it(self):
@@ -207,7 +216,7 @@ class GuildApp(unittest.TestCase):
             from wuxianworkshop.mcp.kit import skills_in
         except ImportError as e:                                       # pragma: no cover
             self.skipTest(str(e))
-        found = {x["name"]: x for x in skills_in(str(KIT_DIR.parent), "WuxianKit/Extensions/Chat")}
+        found = {x["name"]: x for x in skills_in(str(KIT_DIR.parent), "WuxianKit/Apps/Guild")}
         self.assertEqual(found["guild-chat"]["arguments"], [("hours", False)])
         self.assertIn("{{hours}}", found["guild-chat"]["body"])
 

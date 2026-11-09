@@ -8,14 +8,16 @@
 --                                changes them)
 --   kit.me                (See)  the player's name, what AI apps call them (the core's option nickname), their aliases
 --   kit.undo              (Do)   undo a proposal that ran
+--   bus                   (Source) what addons emit on the bus, for apps to hear (bus:<topic or prefix.*>)
+-- (The apps' capabilities, kit.app.* and kit.apps, are in Apps.lua.)
 local _, ns = ...
 local Kit, L = ns.Kit, ns.L
 
 -- words of the core's own extension that the core's Locale does not have
 local W = Kit:Words {
-	zhCN = { NICKNAME = "称呼", NICKNAME_HINT = "AI 应用怎么叫你；留空就叫角色名", ME = "关于我" },
+	zhCN = { NICKNAME = "称呼", NICKNAME_HINT = "AI 应用怎么叫你；留空就叫角色名", ME = "关于我", BUS = "插件事件" },
 	enUS = { NICKNAME = "What to call me", NICKNAME_HINT = "How AI apps address you; empty: your character name",
-		ME = "About me" },
+		ME = "About me", BUS = "Addon events" },
 }
 
 local kit = Kit:Extension("kit", { title = L"CORE", version = Kit.VERSION })
@@ -115,7 +117,9 @@ kit:Setting("extension", { title = L"SWITCH", doc = "whether an extension is on"
 kit:See("manifest", { title = L"MANIFEST",
 	doc = "what the agent may use (the Agent access spec): protocol, kit (version), language, revision, extensions [{id, "
 		.. "title, version, addon, builtin, state, docs (the folder under Interface\\AddOns of its AGENT.md and skills/), "
-		.. "capabilities, events}], the capabilities and events of those that are on. For 无限工坊's app",
+		.. "capabilities, events, sources [{name, title, doc, values}] (what apps can hear of it)}], the capabilities and "
+		.. "events of those that are on, apps [{id, title, by, addon, topic, hear, prompt, start, extension, driver (prompt "
+		.. "or program), docs (an addon's app: the folder of its skills/), launch, temp}]. For 无限工坊's app",
 	run = function() return Kit:Manifest() end })
 kit:See("revision", { title = L"REVISION", doc = "the manifest's revision: {revision}; it changes whenever the manifest does",
 	run = function() return { revision = Kit:Manifest().revision } end })
@@ -129,10 +133,29 @@ kit:Event("changed", { doc = "the manifest changed: an extension on or off, a ca
 	data = { revision = "string" } })
 kit:Event("ready", { doc = "WuxianKit is up, after a login or a reload", data = { version = "string", extensions = "table",
 	revision = "string" } })
-kit:Event("feed", { doc = "a feed started or stopped", data = { extension = "string", feed = "string", on = "boolean",
-	ends = "number?", options = "table?" } })
 kit:Event("option", { doc = "the player changed an option of an extension (kit.options reads them all)",
 	data = { extension = "string", name = "string", value = "any" } })
+
+-- the bus as a source apps hear (bus:<topic or prefix.*>): what addons tell each other with WuxianKit:Emit, not the
+-- core's own (kit.*) nor apps' wakes (app.*)
+kit:Source("bus", { title = W"BUS",
+	doc = "bus:<topic> or bus:<prefix>.* (an event addons emit, such as bus:demo.ping or bus:demo.*; not kit.* or app.*): "
+		.. "items {topic, data}",
+	check = function(what)
+		local base = what:gsub("%.%*$", "")
+		if not base:match("^[a-z][a-z0-9_.]*$") or base:sub(-1) == "." then
+			return "a bus source is a topic such as chat.message, or a prefix such as chat.*"
+		end
+		local head = base:match("^([^.]+)")
+		if head == "kit" or head == "app" then return "an app cannot hear kit.* or app.* topics" end
+	end,
+	covers = function(a, b)                              -- demo.* hears demo.ping and demo.x.*
+		return a:sub(-2) == ".*" and b:sub(1, #a - 1) == a:sub(1, -2)
+	end,
+	on = function(_, what, fn)
+		return Kit:On(what, function(topic, data) fn({ topic = topic, data = data }) end)
+	end,
+	off = function(_, t) Kit:Off(t) end })
 
 kit:Do("undo", { title = L"UNDO", args = { id = "number" }, scope = "undo", notes = false,
 	doc = "proposes to undo a proposal that ran (its id from kit.history): what its steps changed is put back, last step "

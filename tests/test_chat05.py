@@ -31,7 +31,8 @@ class Chat05(unittest.TestCase):
         return err.decode()
 
     def heard(self, s):
-        return [e["data"] for e in py(s.g("__events")) or [] if e["topic"] == "chat.message"]
+        """the items of the app ear's wakes (kit.app.open { app = 'ear', hear = ... }: no digest, one each)"""
+        return [i for e in py(s.g("__events")) or [] if e["topic"] == "app.ear" for i in e["data"]["items"]]
 
     def say(self, s, event, text, sender, guid):
         """the client's chat event, each with its own line id; answers what WuxianKit.Chat.Read makes of it"""
@@ -48,12 +49,12 @@ class Chat05(unittest.TestCase):
 
     def test_ids_go_on_through_a_reload(self):
         s = self.start()
-        self.call(s, "chat.listen", "{ channels = { 'guild' } }")
+        self.call(s, "kit.app.open", "{ app = 'ear', hear = { 'chat:guild' }, lease = 0 }")
         a = self.say(s, "CHAT_MSG_GUILD", "one", "Asker-Realm", ASKER)
         b = self.say(s, "CHAT_MSG_GUILD", "two", "Asker-Realm", ASKER)
         c = self.say(s, "CHAT_MSG_PARTY", "three", "Asker-Realm", ASKER)     # not listened to: still read, still an id
         self.assertEqual([b["id"] - a["id"], c["id"] - b["id"]], [1, 1])
-        self.assertEqual([m["id"] for m in self.heard(s)], [a["id"], b["id"]])    # the feed's item is the same message
+        self.assertEqual([m["id"] for m in self.heard(s)], [a["id"], b["id"]])    # the app's item: a copy, its id
         self.assertEqual(py(s.lua.eval(f"WuxianKit.Chat.Message({b['id']})".encode()))["plain"], "two")
         s2 = s.reload()
         s2.login()

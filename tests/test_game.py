@@ -1,6 +1,7 @@
-"""游戏动态 (Game events, ARCHITECTURE section 11): the feed game.listen and its topics, WuxianKit.Game:On / Off, the
-guild topic, and laziness (a topic's events are registered only while something hears it). The detectors of the other
-topics are in test_game_combat.py, test_game_progress.py and test_game_guide.py; GameTest here drives them all."""
+"""游戏动态 (Game events, ARCHITECTURE section 11): the source game (an app that hears game:<topic>, game:<kind> or
+game:*), WuxianKit.Game:On / Off, the guild topic, and laziness (a topic's events are registered only while something
+hears it). The detectors of the other topics are in test_game_combat.py, test_game_progress.py and test_game_guide.py;
+GameTest here drives them all, through a temporary app (kit.app.open temp = true) named probe."""
 import unittest
 
 from kitmock import Session, lupa, py
@@ -26,22 +27,28 @@ class Game:
         self.lua.execute(f"__ok, __answer = pcall(WuxianKit.Call, WuxianKit, {cap!r}, {args})".encode())
         return bool(self.s.g("__ok")), py(self.s.g("__answer"))
 
-    def listen(self, topics=None, me=None, minutes=60):
-        args = [f"minutes = {minutes}"]
-        if topics is not None:
-            args.append("topics = { " + ", ".join(repr(t) for t in topics) + " }")
+    def open_args(self, topics=None, me=None, minutes=60, temp=True):
+        hear = ["game:" + t for t in topics] if topics is not None else ["game:*"]
+        args = [f"app = 'probe', minutes = {minutes}, lease = 0", "hear = { " + ", ".join(repr(h) for h in hear) + " }"]
+        if temp:
+            args.append("temp = true")
         if me is not None:
             args.append(f"me = {'true' if me else 'false'}")
-        return self.call("game.listen", "{ " + ", ".join(args) + " }")
+        return "{ " + ", ".join(args) + " }"
+
+    def listen(self, topics=None, me=None, minutes=60, temp=True):
+        """the app probe hears the topics (all: game:*), a temporary one unless temp is false; no lease"""
+        return self.call("kit.app.open", self.open_args(topics, me, minutes, temp))
 
     def stop(self):
-        return self.call("game.listen.stop")
+        return self.call("kit.app.stop", "{ app = 'probe' }")
 
-    def events(self, topic="game.moment"):
+    def events(self, topic="app.probe"):
         return [e["data"] for e in py(self.s.g("__events")) or [] if e["topic"] == topic]
 
     def moments(self, kind=None):
-        return [m for m in self.events() if kind is None or m["kind"] == kind]
+        """the items of the app probe's wakes (each wake one item: no digest)"""
+        return [m for w in self.events() for m in w["items"] if kind is None or m["kind"] == kind]
 
     def kinds(self):
         return [m["kind"] for m in self.moments()]
@@ -101,33 +108,35 @@ end
 """
 
 
-class Feed(GameTest):
+class Source(GameTest):
     def test_listen_all_and_the_moment_shape(self):
         g = self.game()
         answer = g.listen()
         self.assertTrue(answer["on"])
-        self.assertNotIn("topics", answer)
+        self.assertEqual((answer["hear"], answer["temp"]), (["game:*"], True))
         self.assertEqual(g.active(), ["aura", "combat", "growth", "guide", "guild", "quest", "travel"])
         g.fire("QUEST_TURNED_IN", 3001, 2150, 1500)
+        [w] = g.events()
+        self.assertEqual((w["app"], w["reason"]), ("probe", "item"))
         [m] = g.moments()
-        self.assertEqual((m["kind"], m["topic"], m["data"]), ("quest.turnin", "quest",
+        self.assertEqual((m["source"], m["kind"], m["topic"], m["data"]), ("game", "quest.turnin", "quest",
                          {"quest": "Healing Herbs", "id": 3001, "xp": 2150, "money": 1500}))
         self.assertIsInstance(m["id"], int)
         self.assertIsInstance(m["time"], int)
         self.assertNotIn("me", m)
-        recent = g.call("game.listen.recent")
+        recent = g.call("kit.app.recent", "{ app = 'probe' }")
         self.assertEqual([i["kind"] for i in recent["items"]], ["quest.turnin"])
         self.assertEqual(recent["next"], m["id"])
 
     def test_me_and_topics(self):
         g = self.game()
-        answer = g.listen(topics=["quest", "combat", "quest"], me=True)
-        self.assertEqual(answer["topics"], ["combat", "quest"])                  # in order, none twice
+        answer = g.listen(topics=["quest", "combat", "quest", "quest.turnin"], me=True)
+        self.assertEqual(answer["hear"], ["game:quest", "game:combat"])     # none twice, none another covers
         self.assertEqual(g.active(), ["combat", "quest"])
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         g.lua.execute(b"__resting = true function IsResting() return __resting end")
         g.fire("PLAYER_UPDATE_RESTING")                                          # travel: not heard
-        [m] = g.moments()
+        [m] = g.moments()                                                        # once, though two entries match
         self.assertEqual(m["kind"], "quest.turnin")
         self.assertEqual(m["me"]["name"], "Wuxian Forever")
         self.assertEqual(m["me"]["level"], 8)
@@ -135,14 +144,14 @@ class Feed(GameTest):
 
     def test_bad_topics_are_refused(self):
         g = self.game()
-        ok, err = g.try_call("game.listen", "{ topics = { 'combat', 'loot' } }")
+        ok, err = g.try_call("kit.app.open", g.open_args(topics=["combat", "loot"]))
         self.assertFalse(ok)
-        self.assertIn("loot is no topic", err)
+        self.assertIn("game:loot: a game source is a topic (combat, aura, growth, quest, travel, guild, guide)", err)
         self.assertEqual(g.active(), [])
-        self.assertFalse(g.call("game.listen.status")["on"])
-        answer = g.listen(topics=[])                                             # an empty list: all
-        self.assertNotIn("topics", answer)
-        self.assertEqual(len(g.active()), 7)
+        self.assertNotIn("probe", [x["id"] for x in g.call("kit.apps")])
+        answer = g.listen(topics=["guild.join"])                                 # a kind turns its topic on
+        self.assertEqual(answer["hear"], ["game:guild.join"])
+        self.assertEqual(g.active(), ["guild"])
 
     def test_stop_and_the_end_of_its_time_turn_the_topics_off(self):
         g = self.game()
@@ -157,14 +166,22 @@ class Feed(GameTest):
         g.run(70)
         self.assertEqual(g.active(), [])
 
-    def test_a_reload_keeps_the_feed_and_its_topics(self):
+    def test_a_reload_keeps_a_kept_app_and_its_topics(self):
         g = self.game()
-        g.listen(topics=["quest"])
+        g.listen(topics=["quest"], temp=False)
         g2 = Game(self, session=g.s.reload())
         self.games.append(g2)
         self.assertEqual(g2.active(), ["quest"])
         g2.fire("QUEST_TURNED_IN", 3002, 0, 0)
         self.assertEqual([m["data"]["id"] for m in g2.moments()], [3002])
+
+    def test_a_reload_ends_a_temporary_app(self):
+        g = self.game()
+        g.listen(topics=["quest"])
+        g2 = Game(self, session=g.s.reload())
+        self.games.append(g2)
+        self.assertEqual(g2.active(), [])
+        self.assertNotIn("probe", [x["id"] for x in g2.call("kit.apps")])
 
     def test_the_extension_off_stops_everything(self):
         g = self.game()
@@ -173,16 +190,22 @@ class Feed(GameTest):
         self.assertEqual(len(g.active()), 7)
         g.s.ns[b"Switch"](b"game", False)
         self.assertEqual(g.active(), [])
-        self.assertFalse(g.events("kit.feed")[-1]["on"])
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         self.assertEqual(g.moments(), [])
         self.assertEqual(py(g.lua.eval(b"__heard")) or [], [])
         self.assertEqual(g.registered("quest"), [])
-        g.s.ns[b"Switch"](b"game", True)                                       # on again: the subscriber hears
+        status = g.call("kit.app.status", "{ app = 'probe' }")                   # the app runs on, hearing nothing
+        self.assertTrue(status["on"])
+        g.s.ns[b"Switch"](b"game", True)                                       # on again: both hear again
         self.assertEqual(len(g.active()), 7)
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         self.assertEqual(py(g.lua.eval(b"__heard")), ["quest.turnin"])
-        self.assertEqual(g.moments(), [])                                       # the feed stopped with it
+        self.assertEqual(len(g.moments()), 1)
+        g.stop()
+        g.s.ns[b"Switch"](b"game", False)                                       # off: a new app is blocked
+        answer = g.listen()
+        self.assertEqual((answer["on"], answer["blocked"]), (False, "Needs the Game events extension on"))
+        self.assertNotIn("probe", [x["id"] for x in g.call("kit.apps")])         # a temporary one is not kept
 
 
 class Subscribers(GameTest):
@@ -204,7 +227,7 @@ class Subscribers(GameTest):
         self.assertEqual((item["kind"], item["topic"], item["data"]["id"]), ("quest.turnin", "quest", 3001))
         self.assertEqual(got["topic"], ["rest"])
         self.assertEqual(got["all"], ["quest.turnin", "rest"])
-        self.assertEqual(g.moments(), [])                                       # no feed: no game.moment
+        self.assertEqual(g.events(), [])                                        # no app: no wakes
         g.lua.execute(b"WuxianKit.Game:Off(__t3)")
         self.assertEqual(g.active(), ["quest", "travel"])
         g.lua.execute(b"WuxianKit.Game:Off(__t1) WuxianKit.Game:Off(__t2)")
@@ -216,14 +239,14 @@ class Subscribers(GameTest):
         self.assertFalse(ok)
         self.assertEqual(g.active(), [])
 
-    def test_subscriber_and_feed_together(self):
+    def test_subscriber_and_app_together(self):
         g = self.game()
         g.lua.execute(b"__n = 0 __t = WuxianKit.Game:On('quest', function() __n = __n + 1 end)")
         g.listen(topics=["growth"])
         self.assertEqual(g.active(), ["growth", "quest"])
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         self.assertEqual(g.lua.eval(b"__n"), 1)
-        self.assertEqual(g.moments(), [])                                       # the feed hears growth only
+        self.assertEqual(g.moments(), [])                                       # the app hears growth only
         g.stop()
         self.assertEqual(g.active(), ["quest"])
 
