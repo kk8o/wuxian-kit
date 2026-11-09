@@ -276,7 +276,8 @@ class Core(unittest.TestCase):
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
-                         ["核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "游戏动态", "图鉴"])
+                         ["核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "游戏动态", "图鉴",
+                          "公会聊天"])                                  # the apps after the extensions
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
                          ("执行", "拒绝"))
@@ -373,7 +374,7 @@ class Core(unittest.TestCase):
         tools = {"wk_" + c.replace(".", "_") for c in caps} | {"wk_docs", "wk_wait", "wk_propose"}
         root = Path(__file__).resolve().parents[1] / "WuxianKit"
         skills = sorted(root.glob("skills/*.md")) + sorted(root.glob("Extensions/*/skills/*.md"))
-        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guide-tour", "tune-setup"])
+        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guild-chat", "guide-tour", "tune-setup"])
         for p in skills:
             text = p.read_text(encoding="utf-8")
             head = dict(re.findall(r"^([a-z-]+): (.+)$", text.split("---")[1], re.M))

@@ -124,6 +124,9 @@ An app is a feed you declare yourself, without an extension: what it hears, how 
 commands the player can give it, and how long it may go without hearing from you. The player sees it on the Apps
 (应用) page of the /wk window, with its state, a stop button, its controls and its options.
 
+The kit brings one app of its own: `guild` (公会聊天, guild chat with the player's character; `wk_docs` with
+`{"extension": "chat"}` and the prompt `guild-chat`).
+
 ### Opening one
 
 Call `wk_kit_app_open`. The first time, give its declaration; it is remembered (at most 8 of yours), so later

@@ -64,13 +64,13 @@ class Builtins06(unittest.TestCase):
         s = self.with_ns(self.start())
         self.assertIn("aliases", self.call(s, "kit.options", "{ extension = 'chat' }"))
         self.assertIn("no extension nope", self.fails(s, "WuxianKit:Call('kit.options', { extension = 'nope' })"))
-        self.assertIn("no app guild", self.fails(s, "WuxianKit:Call('kit.options', { app = 'guild' })"))
-        s.lua.execute(b"__ns.AppOptionList = function(id) if id == 'guild' then "
+        self.assertIn("no app club", self.fails(s, "WuxianKit:Call('kit.options', { app = 'club' })"))
+        s.lua.execute(b"__ns.AppOptionList = function(id) if id == 'club' then "
                       b"return { topics = { title = 'Topics', kind = 'list', value = { 'raids' } } } end end")
-        self.assertEqual(self.call(s, "kit.options", "{ app = 'guild' }"),
+        self.assertEqual(self.call(s, "kit.options", "{ app = 'club' }"),
                          {"topics": {"title": "Topics", "kind": "list", "value": ["raids"]}})
         self.assertIn("no app other", self.fails(s, "WuxianKit:Call('kit.options', { app = 'other' })"))
-        self.assertIn("not both", self.fails(s, "WuxianKit:Call('kit.options', { extension = 'chat', app = 'guild' })"))
+        self.assertIn("not both", self.fails(s, "WuxianKit:Call('kit.options', { extension = 'chat', app = 'club' })"))
         self.assertIn("give extension", self.fails(s, "WuxianKit:Call('kit.options', {})"))
         args = py(s.lua.eval(b"WuxianKit:Capability('kit.options').args"))
         self.assertEqual(args, {"extension": "string?", "app": "string?"})

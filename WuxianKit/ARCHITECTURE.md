@@ -36,6 +36,8 @@ WuxianKit/
     Builtins.lua           核心自己的扩展 kit：扩展开关、提案查询、撤销、清单、称呼
     Apps.lua               应用（第 10 节）：kit.app.*、WuxianKit:App
   Extensions/<名称>/        内置扩展：<名称>.lua 等代码，AGENT.md，skills/
+  Extensions/Chat/GuildApp.lua         框架自己的应用 guild（公会聊天，第 10 节）
+  Extensions/Chat/skills/guild-chat.md 它的技能
 ```
 
 ## 3. 扩展
@@ -280,9 +282,9 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 声明可以来自插件（Lua，可以带函数），也可以来自 Agent（`kit.app.open` 的参数，只有数据；会被记住，下次只写 `app` 就行）：
 
 ```lua
-WuxianKit:App("guild", {
-  title = "公会聊天", prompt = "guild-chat", addon = "WuxianGuild", extension = "guild",
-  hear = { "chat:guild", "game:guild" },
+WuxianKit:App("officers", {
+  title = "官员频道", prompt = "officer-chat", addon = "MyGuildTools", extension = "myguild",
+  hear = { "chat:officer", "game:guild" },
   pace = true, urgent = { "mention", "followup", "question", "burst" },
   controls = { "stop" }, lease = 600, minutes = 120,
   options = { topics = { kind = "list", title = "想多聊的话题" }, avoid = { kind = "list", title = "不聊的话题" } },
@@ -309,6 +311,8 @@ WuxianKit:App("guild", {
 | `addon`、`extension` | 所属插件、所属扩展（Lua 声明）：所属扩展停用时应用停止、不能开始 |
 | `check` | （Lua）开始前的前提，返回原因就不开始，卡片上显示原因 |
 | `enrich` | （Lua）条目发出前就地补字段 |
+
+框架自己带一个应用 `guild`（公会聊天，`Extensions/Chat/GuildApp.lua`）：所属插件 WuxianKit、所属扩展 `chat`，听 `chat:guild` 和 `game:guild`，`pace = true`，指令 `mute`、`unmute`、`stop`，`say = true`，租期 600 秒、最长 120 分钟，选项 `topics`「想多聊的话题」与 `avoid`「不聊的话题」（`order` 1、2），`check`：没有公会就不开始。没有 `enrich`。技能是聊天扩展的 `skills/guild-chat.md`（提示词 `guild-chat`）：游戏事实由 Agent 自己用无限图鉴的 MCP（wuxianwow.com/mcp）查。装了框架和无限工坊的玩家都有它；id 沿用无限公会助手 0.3 的 `guild`，玩家存在 `WuxianKitDB.apps.guild` 的选项接着用。无限公会助手不再声明它；旧版（0.3.0）还声明时，它后载入，它的声明替换框架的（同 id 后声明的为准，不报错）。
 
 核心的三档（`pace = true`）：
 

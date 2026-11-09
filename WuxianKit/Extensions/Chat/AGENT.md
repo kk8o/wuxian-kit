@@ -70,6 +70,16 @@ while the player is typing in a chat box and for 8 seconds after the player's ow
 shows 等你说完 (Waiting for you to finish). It is sent as soon as it can be (or when the player clicks Run, once it is
 ready); it only fails if it expires meanwhile.
 
+## The guild chat app
+
+The kit declares the app `guild` (公会聊天) itself: you take part in guild chat with the player's own character. It
+hears `chat:guild` and `game:guild` (guild.join, guild.leave, guild.achievement, guild.level), with the player's pace
+(activity, quiet hours) and the options `topics` and `avoid`; the player's controls are `mute`, `unmute` and `stop`,
+and `/wk guild <words>` speaks to you. It needs `chat` and `game` on and a character in a guild, else
+`wk_kit_app_open` fails with the reason. Each wake is the event `app.guild`: `{app, reason, items, skipped, pace,
+quiet}`, the items `chat` lines (with `why` and `id`, to pass as `reply`), `game` moments, `control` and `player`.
+You speak with `wk_chat_send` in the channel `guild`. The session procedure is the prompt `guild-chat`.
+
 ## For addon authors: `WuxianKit.Chat`
 
 Other addons can read chat the same way, with or without the listen feed running:

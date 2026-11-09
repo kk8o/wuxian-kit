@@ -37,6 +37,7 @@ Extensions\Tune\Bags.lua
 Extensions\Tune\AddOns.lua
 Extensions\Tune\Profiles.lua
 Extensions\Chat\Chat.lua
+Extensions\Chat\GuildApp.lua
 Extensions\Gate\Gate.lua
 Extensions\Data\Data.lua
 Extensions\Guide\Guide.lua

@@ -107,8 +107,10 @@ class Basics(AppCase):
         self.assertEqual(self.agent(s, "kit.app.recent", f"{{ app = 'notes', since = {first + 1} }}")["items"], {})
         st = self.agent(s, "kit.app.status", "{ app = 'notes' }")
         self.assertEqual((st["heard"], st["wakes"], st["next"]), (2, 2, first + 1))
-        self.assertEqual(self.agent(s, "kit.apps"), [{"id": "notes", "title": "Notes", "by": "agent", "on": True,
-                                                      "ends": now + 7200, "present": True}])
+        apps = self.agent(s, "kit.apps")
+        self.assertEqual([a["id"] for a in apps], ["guild", "notes"])     # the kit's own guild chat first
+        self.assertEqual(apps[1], {"id": "notes", "title": "Notes", "by": "agent", "on": True, "ends": now + 7200,
+                                   "present": True})
 
         st = self.agent(s, "kit.app.stop", "{ app = 'notes' }")
         self.assertEqual((st["on"], st["present"], st["why"]), (False, False, "stopped"))
@@ -171,7 +173,7 @@ class Basics(AppCase):
         ):
             self.assertIn(why, self.fails(s, "kit.app.open", args), args)
         self.assertIn("no app ghost (kit.apps lists them)", self.fails(s, "kit.app.status", "{ app = 'ghost' }"))
-        self.assertEqual(self.agent(s, "kit.apps"), {})                    # nothing kept of a refused one
+        self.assertEqual([a["id"] for a in self.agent(s, "kit.apps")], ["guild"])   # nothing kept of a refused one
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.a"))
 
         st = self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'game:quest', 'game:quest.turnin', 'chat:*', "
@@ -205,7 +207,7 @@ class Basics(AppCase):
 class Declarations(AppCase):
     ADDON = b"""
 __inguild = true
-__app = WuxianKit:App('guild', { title = 'Guild chat', addon = 'WxGuild', prompt = 'guild-chat',
+__app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 'club-chat',
 	hear = { 'chat:guild', 'game:guild' }, digest = { gather = 2, every = false }, controls = { 'stop' },
 	check = function() if not __inguild then return 'not in a guild' end end,
 	urgent = function(item) return item.kind == 'guild.join' or item.why == 'mention' end,
@@ -214,24 +216,24 @@ __app = WuxianKit:App('guild', { title = 'Guild chat', addon = 'WxGuild', prompt
 
     def test_an_addons_declaration_wins(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'guild', title = 'Mine', hear = { 'bus:x.*' } }")
-        self.assertIsNotNone(s.lua.eval(b"WuxianKitDB.apps.guild.decl"))
+        self.agent(s, "kit.app.open", "{ app = 'club', title = 'Mine', hear = { 'bus:x.*' } }")
+        self.assertIsNotNone(s.lua.eval(b"WuxianKitDB.apps.club.decl"))
         s.lua.execute(self.ADDON)
-        self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.guild.decl"))      # the agent's gives way
+        self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.club.decl"))      # the agent's gives way
         self.assertEqual(self.events(s, "kit.app")[-1]["on"], True)        # its run goes on, the addon's now
-        st = self.agent(s, "kit.app.open", "{ app = 'guild', title = 'Other', hear = { 'bus:y' }, lease = 120 }")
+        st = self.agent(s, "kit.app.open", "{ app = 'club', title = 'Other', hear = { 'bus:y' }, lease = 120 }")
         self.assertEqual((st["title"], st["by"], st["hear"], st["lease"], st["ignored"]),
-                         ("Guild chat", "addon", ["chat:guild", "game:guild"], 120, ["hear", "title"]))
-        self.assertEqual(self.agent(s, "kit.apps")[0], {"id": "guild", "title": "Guild chat", "by": "addon",
-                                                        "addon": "WxGuild", "on": True, "ends": st["ends"],
-                                                        "present": True, "prompt": "guild-chat"})
-        self.assertIs(s.lua.eval(b"WuxianKit:App('guild') == __app"), True)
+                         ("Club chat", "addon", ["chat:guild", "game:guild"], 120, ["hear", "title"]))
+        self.assertEqual(self.agent(s, "kit.apps")[1], {"id": "club", "title": "Club chat", "by": "addon",
+                                                        "addon": "WxClub", "on": True, "ends": st["ends"],
+                                                        "present": True, "prompt": "club-chat"})
+        self.assertIs(s.lua.eval(b"WuxianKit:App('club') == __app"), True)
         self.assertIsNone(s.lua.eval(b"WuxianKit:App('none')"))
 
         s.lua.execute(b"__moment('guild.join', 'guild', { name = 'Newbie' })")   # urgent (its function), enriched
         s.lua.execute(b"__say('guild', { plain = 'hello', sender = 'A' })")
         s.run(3.5)
-        w = self.wakes(s, "guild")
+        w = self.wakes(s, "club")
         self.assertEqual([x["reason"] for x in w], ["urgent"])
         join, line = w[0]["items"]
         self.assertEqual((join["source"], join["kind"], join["topic"], join["data"], join["recruited"]),
@@ -239,12 +241,12 @@ __app = WuxianKit:App('guild', { title = 'Guild chat', addon = 'WxGuild', prompt
         self.assertNotIn("me", join)
         self.assertEqual((line["source"], line["plain"], line["channel"]), ("chat", "hello", "guild"))
 
-        self.agent(s, "kit.app.stop", "{ app = 'guild' }")
+        self.agent(s, "kit.app.stop", "{ app = 'club' }")
         s.lua.execute(b"__inguild = false")
-        self.assertIn("app guild cannot start: not in a guild", self.fails(s, "kit.app.open", "{ app = 'guild' }"))
-        st = py(s.ns.AppStatus(b"guild"))
+        self.assertIn("app club cannot start: not in a guild", self.fails(s, "kit.app.open", "{ app = 'club' }"))
+        st = py(s.ns.AppStatus(b"club"))
         self.assertEqual((st["on"], st["blocked"]), (False, "not in a guild"))
-        self.assertEqual(self.lua(s, "__app.decl.prompt"), "guild-chat")
+        self.assertEqual(self.lua(s, "__app.decl.prompt"), "club-chat")
 
     def test_sources_copy_and_dedupe(self):
         s = self.start()
@@ -461,7 +463,9 @@ class Manifest(AppCase):
     def test_apps_in_the_manifest(self):
         s = self.start()
         m = self.lua(s, "WuxianKit:Manifest()")
-        self.assertEqual(m["apps"], {})
+        guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
+                 "hear": ["chat:guild", "game:guild"], "prompt": "guild-chat"}
+        self.assertEqual(m["apps"], [guild])                               # the kit's own
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
                          {"app": "string", "on": "boolean", "ends": "number?", "why": "string?"})
@@ -473,7 +477,7 @@ class Manifest(AppCase):
         self.agent(s, "kit.app.open", "{ app = 'mm', title = 'MM', hear = { 'bus:demo.*' }, prompt = 'mm-skill' }")
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', hear = { 'game:quest' } })")
         m = self.lua(s, "WuxianKit:Manifest()")
-        self.assertEqual(m["apps"], [{"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
+        self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
                                       "prompt": "mm-skill"},
                                      {"id": "ad", "title": "AD", "by": "addon", "addon": "WxAd", "topic": "app.ad",
                                       "hear": ["game:quest"]}])
@@ -482,7 +486,7 @@ class Manifest(AppCase):
         self.assertEqual(self.events(s, "kit.changed")[-1]["revision"], m["revision"])
         self.assertIs(s.ns.ForgetApp(b"ad"), False)                       # an addon's stays
         self.assertIs(s.ns.ForgetApp(b"mm"), True)
-        self.assertEqual([a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]], ["ad"])
+        self.assertEqual([a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]], ["guild", "ad"])
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.mm"))
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "mm", "on": False, "why": "player"})
 
