@@ -8,9 +8,49 @@
 -- wheel. One window: nothing else is spread over the screen.
 -- WuxianKit:OptionsPanel(id, parent, width) draws an extension's options in another addon's window with the same
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
+-- Under the extensions, the group 应用 (apps, 0.6): each app's page is its card (UI.AppCard, AppPanel.lua), an app an
+-- agent declared with a remove button. /wk <app> [word or words] gives an app the player's command or words.
+-- UI.Canvas: the drawing pieces, for AppPanel.lua's card (one canvas drawn at a time).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
 local S, C = UI.Skin, UI.Skin.C
+
+-- the words of the apps' parts (the window's group and page, the card, the slash command)
+local A = Kit:Words {
+	zhCN = {
+		GROUP = "应用", PILL = "应用", BY_ADDON = "插件 %s", BY_AGENT = "Agent 声明", REMOVE = "移除",
+		LIST_ON = "运行中", LIST_OFF = "未运行",
+		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
+		EXT_OFF = "扩展「%s」未启用", EXT_OFF_HINT = "启用后才能接入", OPEN_EXT = "打开扩展页",
+		UNTIL = "Agent 在场至 %s", PRESENT = "Agent 在场", LEFT = "Agent 已离开",
+		SEEN = "最近应答 %d 分钟前", SEEN_NOW = "最近应答 刚刚", UNSEEN = "Agent 尚未应答", SAID = "今天发言 %d 条",
+		READY = "可以接入 Agent",
+		CONNECT_HINT = "在 Claude Code 的专用对话里粘贴；其他客户端：请 Agent 使用无限工坊的提示词「%s」",
+		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
+			resume = "继续", stop = "停止" },
+		NAME = "「%s」",
+		SENT = "已告知%s：%s", SAID_TO = "已转告%s", NOT_RUNNING = "%s未运行", USAGE = "%s的指令：%s",
+		NO_WORDS = "%s不接受指令", HELP = "应用：",
+	},
+	enUS = {
+		GROUP = "Apps", PILL = "App", BY_ADDON = "Addon %s", BY_AGENT = "Declared by an agent", REMOVE = "Remove",
+		LIST_ON = "On", LIST_OFF = "Off",
+		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
+		EXT_OFF = "Extension %s is off", EXT_OFF_HINT = "Turn it on to connect", OPEN_EXT = "Open its page",
+		UNTIL = "Agent here until %s", PRESENT = "Agent here", LEFT = "Agent has left",
+		SEEN = "Last answer %d min ago", SEEN_NOW = "Last answer just now", UNSEEN = "Agent has not answered yet",
+		SAID = "Said today: %d",
+		READY = "Ready to connect an agent",
+		CONNECT_HINT = "Paste it into a dedicated Claude Code conversation. Other clients: ask the agent to use Wuxian "
+			.. "Workshop's prompt \"%s\"",
+		CONTROL = { mute = "Mute", unmute = "Unmute", less = "Less", more = "More", test = "Test", pause = "Pause",
+			resume = "Resume", stop = "Stop" },
+		NAME = "%s",
+		SENT = "Told %s: %s", SAID_TO = "Passed on to %s", NOT_RUNNING = "%s is not running", USAGE = "%s takes: %s",
+		NO_WORDS = "%s takes no commands", HELP = "Apps:",
+	},
+}
+UI.AppWords = A
 
 local W, H, LEFT = 640, 470, 176
 local BODY, ROW = H - 66, 19              -- the page's height; a line's (Put: 14 and 5 between)
@@ -18,7 +58,7 @@ local HISTORY_SHOWN = 8
 local KIND_ORDER = { "see", "say", "do", "keep", "point" }
 local NUMBER_W = 80                       -- a number option's box
 local f                                   -- the frame, made the first time it opens
-local selected = "kit"
+local selected = "kit"                    -- the page shown: an extension's id, or "app:" .. an app's
 local cv                                  -- the canvas being drawn: the window (f) or an OptionsPanel
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -130,49 +170,81 @@ local function ValueText(o, v)
 	return v == nil and "" or tostring(v)
 end
 
--- each option of ext with its control: a check box, a text box, a number box and its unit, a row of buttons (the
--- chosen one gold), a text box of items; a change is the "option" action, as the window's always were
-local function Options(ext)
-	local id = ext.id
-	for _, name in ipairs(ext.optionOrder) do
-		local o = ext.options[name]
-		local value = ext:Get(name)
-		local function Set(v) ns.Act("option", id, name, v) end
-		if o.kind == "boolean" then
+-- a row of buttons ({ label, primary, fn, least }) from x0 (0), each as wide as its label (at least least), wrapped at
+-- the edge
+local function ButtonRow(list, x0)
+	x0 = x0 or 0
+	local y, x = cv.y, x0
+	for _, it in ipairs(list) do
+		local b = PutButton(x, y, it[1], it[2], it[3])
+		local w = Fit(b, it[4] or 48)
+		if x > x0 and x + w > cv.width - 12 then             -- no room left on this row: the next
+			x, y = x0, y + 28
+			b:ClearAllPoints()
+			b:SetPoint("TOPLEFT", cv.body, "TOPLEFT", x, -y)
+		end
+		b:SetWidth(w)
+		x = x + w + 6
+	end
+	cv.y = y + 28
+end
+
+-- options from a source: the names in order; entry(name) -> the option ({ title, kind, choices, unit, hint }) and its
+-- value; set(name, value) when the player changes it. Each with its control: a check box, a text box, a number box and
+-- its unit, a row of buttons (the chosen one gold), a text box of items. indent: each title on the left, its control
+-- from there on the same row (the core's page: as its language row), its hint under the control
+local function Options(order, entry, set, indent)
+	local x = indent or 0
+	for _, name in ipairs(order) do
+		local o, value = entry(name)
+		local function Set(v) set(name, v) end
+		if type(o) ~= "table" then                             -- (gone meanwhile)
+		elseif o.kind == "boolean" or o.kind == nil then
 			PutCheck(0, ns.T(o.title), value, Set)
 		else
-			Put(0, C.fg, ns.T(o.title))
+			if indent then                                     -- the title beside the control
+				local y = cv.y + 4
+				cv.y = y
+				Put(0, C.fg, ns.T(o.title), indent - 6, true)
+				cv.y = o.kind == "choice" and y - 3 or y - 4
+			else
+				Put(0, C.fg, ns.T(o.title))
+			end
 			if o.kind == "number" then
 				local y = cv.y
-				PutEdit(0, ValueText(o, value), Set, NUMBER_W)
+				PutEdit(x, ValueText(o, value), Set, NUMBER_W)
 				if o.unit ~= nil then
 					local after = cv.y
 					cv.y = y + 4
-					Put(NUMBER_W + 8, C.muted, ns.T(o.unit), cv.width - 20 - NUMBER_W, true)
+					Put(x + NUMBER_W + 8, C.muted, ns.T(o.unit), cv.width - 20 - NUMBER_W - x, true)
 					cv.y = after
 				end
 			elseif o.kind == "choice" then
-				local y, x = cv.y, 0
-				for _, c in ipairs(o.choices) do
-					local b = PutButton(x, y, ns.T(c.label), c.value == value, function() Set(c.value) end)
-					local w = Fit(b, 48)
-					if x > 0 and x + w > cv.width - 12 then          -- no room left on this row: the next
-						x, y = 0, y + 28
-						b:ClearAllPoints()
-						b:SetPoint("TOPLEFT", cv.body, "TOPLEFT", x, -y)
-					end
-					b:SetWidth(w)
-					x = x + w + 6
+				local row = {}
+				for _, c in ipairs(type(o.choices) == "table" and o.choices or {}) do
+					local v = c.value
+					if v == nil then v = c[1] end
+					row[#row + 1] = { ns.T(c.label or c[2] or v), v == value, function() Set(v) end }
 				end
-				cv.y = y + 28
+				ButtonRow(row, x)
 			else                                                   -- text, list
-				PutEdit(0, ValueText(o, value), Set)
-				if o.kind == "list" and not o.hint then Put(0, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
+				PutEdit(x, ValueText(o, value), Set)
+				if o.kind == "list" and not o.hint then Put(x, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
 			end
 		end
-		if o.hint then Put(0, C.muted, ns.T(o.hint)) end
+		if type(o) == "table" and o.hint then Put(o.kind == "boolean" and 0 or x, C.muted, ns.T(o.hint)) end
 	end
 end
+
+-- an extension's options; a change is the "option" action, as the window's always were
+local function ExtOptions(ext, indent)
+	local id = ext.id
+	Options(ext.optionOrder, function(name) return ext.options[name], ext:Get(name) end,
+		function(name, v) ns.Act("option", id, name, v) end, indent)
+end
+
+UI.Canvas = { Begin = Begin, Finish = Finish, Put = Put, PutButton = PutButton, ButtonRow = ButtonRow, Fit = Fit,
+	Heading = Heading, Options = Options, Current = function() return cv end }
 
 ------------------------------------------------------------------------------------------------------------------------
 -- an extension's page
@@ -283,6 +355,7 @@ local function Page(e)
 				function() ns.Act("language", lang[1]) end, 78)
 		end
 		cv.y = y + 26
+		if ext and #ext.optionOrder > 0 then ExtOptions(ext, 76) end   -- its options (称呼) as rows like the language's
 	end
 	if ext and ext.active then
 		for _, name in ipairs(ext.feedOrder) do                -- a running feed: what it hears, until when, and a stop
@@ -313,9 +386,9 @@ local function Page(e)
 			cv.y = y + 30
 		end
 	end
-	if ext and #ext.optionOrder > 0 then                    -- the player's choices for it, made here and only here
+	if ext and not e.core and #ext.optionOrder > 0 then     -- the player's choices for it, made here and only here
 		Heading(L.OPTIONS)
-		Options(ext)
+		ExtOptions(ext)
 	end
 	if e.core then                                          -- the core: what has not run yet, a stop for each
 		local open = ns.Open()
@@ -373,6 +446,22 @@ local function Page(e)
 	end
 end
 
+-- an app's page: its title and where it came from, then its card (with a remove button when an agent declared it)
+local function AppPage(e)
+	local title = Put(0, C.fg, e.title, W - LEFT - 160, true)
+	f.pill.Set(A.PILL, "custom")
+	f.pill:ClearAllPoints()
+	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
+	f.pill:Show()
+	local agent = e.by == "agent"
+	if agent then
+		Put(0, C.muted, A.BY_AGENT)
+	elseif e.addon then
+		Put(0, C.muted, A.BY_ADDON:format(ns.Escape(e.addon)))
+	end
+	UI.AppCard(e.app, agent and { { A.REMOVE, false, function() ns.Act("app.forget", e.app) end } } or nil)
+end
+
 ------------------------------------------------------------------------------------------------------------------------
 -- the window
 
@@ -426,6 +515,9 @@ local function Item(i)
 		b.label:SetPoint("LEFT", 8, 0)
 		b.label:SetWidth(LEFT - 30)
 		b.label:SetWordWrap(false)                          -- a long title: one line, cut with "..."
+		b.state = S.Text(b, C.muted, true)                  -- an app's state, dim, at the right
+		b.state:SetPoint("RIGHT", -8, 0)
+		b.state:SetJustifyH("RIGHT")
 		b:SetScript("OnClick", function(self)
 			selected = self.id
 			f.scroll:SetVerticalScroll(0)
@@ -442,8 +534,12 @@ function UI.DrawWindow()
 	f.more:SetText(L.SCROLL)
 	f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)   -- none without 无限工坊
 	local list = ns.ExtensionList()
-	local groups = { { kind = "sys", list = {} }, { kind = "custom", list = {} } }   -- WuxianKit's own, then other addons'
-	for _, e in ipairs(list) do table.insert(groups[e.builtin and 1 or 2].list, e) end
+	local groups = { { kind = "sys", list = {} }, { kind = "custom", list = {} }, { kind = "apps", list = {} } }
+	for _, e in ipairs(list) do table.insert(groups[e.builtin and 1 or 2].list, e) end   -- WuxianKit's own, other addons'
+	for _, a in ipairs(UI.Apps()) do                       -- then the apps
+		table.insert(groups[3].list, { id = "app:" .. a.id, app = a.id, title = a.title, by = a.by, addon = a.addon,
+			state = a.on and "on" or "off" })
+	end
 	local current, n, nHead, y = nil, 0, 0, 0
 	for _, g in ipairs(groups) do
 		if #g.list > 0 then
@@ -452,7 +548,7 @@ function UI.DrawWindow()
 			f.heads[nHead] = h
 			h:ClearAllPoints()
 			h:SetPoint("TOPLEFT", f.list, "TOPLEFT", 8, -y - 3)
-			h:SetText(L.GROUP[g.kind])
+			h:SetText(g.kind == "apps" and A.GROUP or L.GROUP[g.kind])
 			h:Show()
 			y = y + 20
 			for _, e in ipairs(g.list) do
@@ -462,6 +558,9 @@ function UI.DrawWindow()
 				b:SetPoint("TOPLEFT", 0, -y)
 				b.id = e.id
 				b.label:SetText(e.title or e.id)
+				b.label:SetWidth(e.app and LEFT - 76 or LEFT - 30)
+				b.state:SetText(e.app and (e.state == "on" and A.LIST_ON or A.LIST_OFF) or "")
+				b.state:SetShown(e.app ~= nil)
 				S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
 				S.Ink(b.label, e.state == "on" and C.fg or C.muted)
 				b:Show()
@@ -475,7 +574,7 @@ function UI.DrawWindow()
 	for i = nHead + 1, #f.heads do f.heads[i]:Hide() end
 	if not current then selected, current = "kit", list[1] end
 	Begin(f)
-	Page(current)
+	if current.app then AppPage(current) else Page(current) end
 	f.range = math.max(0, f.y + 8 - BODY)                  -- how far the page scrolls
 	f.body:SetHeight(BODY + f.range)
 	if f.scroll:GetVerticalScroll() > f.range then f.scroll:SetVerticalScroll(f.range) end
@@ -486,12 +585,15 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- WuxianKit:OptionsPanel(id, parent, width): extension id's options in another addon's window
 
-local panels = setmetatable({}, { __mode = "k" })       -- every panel made, to redraw when an option changes
+local panels = setmetatable({}, { __mode = "k" })       -- every panel made (and the apps' cards), to redraw
+
+-- another panel to redraw with the window: p:Refresh() while it is visible (AppPanel.lua's cards)
+function UI.AddPanel(p) panels[p] = true end
 
 local function DrawPanel(p)
 	if not ns.extensions[p.ext.id] then return end
 	Begin(p)
-	Options(p.ext)
+	ExtOptions(p.ext)
 	Finish(p)
 	p:SetHeight(math.max(1, p.y))
 end
@@ -532,8 +634,13 @@ end
 -- minimap button)
 function Kit:Window(page)
 	Frame()
-	if type(page) == "string" and ns.extensions[page] and page ~= selected then
-		selected = page
+	local want
+	if type(page) == "string" then                          -- an extension's page, else an app's ("app:<id>" too)
+		local app = page:match("^app:(.+)$") or page
+		want = ns.extensions[page] and page or ns.App(app) and "app:" .. app or nil
+	end
+	if want and want ~= selected then
+		selected = want
 		f.scroll:SetVerticalScroll(0)
 	end
 	if not f:IsShown() then
@@ -549,8 +656,13 @@ function UI.Refresh()
 	UI.DrawProposal()
 	UI.DrawWindow()
 	for p in pairs(panels) do
-		if p:IsVisible() then DrawPanel(p) end
+		if p:IsVisible() then p:Refresh() end
 	end
+end
+
+-- every few seconds (AppPanel.lua): an app's page drawn again ("last answer n min ago")
+function UI.TickApps()
+	if f and f:IsShown() and selected:match("^app:") then UI.DrawWindow() end
 end
 
 function UI.Tick()
@@ -592,6 +704,27 @@ ns.AddAction("button", function(id, i)
 	return ok
 end)
 
+-- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (ns.CONTROL_WORDS) the command;
+-- else the player's words, when it takes them; else what it takes
+local function AppCommand(id, rest)
+	if rest == "" then return Kit:Window("app:" .. id) end
+	local name = A.NAME:format(UI.AppTitle(id))
+	local word = rest:match("^(%S+)")
+	local cmd = ns.CONTROL_WORDS[word:lower()] or ns.CONTROL_WORDS[word]
+	if cmd then
+		for _, c in ipairs(UI.AppControlList(id)) do
+			if c.cmd == cmd then
+				if Kit:AppControl(id, cmd) then return ns.Say(A.SENT:format(name, c.label)) end
+				return ns.Say(A.NOT_RUNNING:format(name))
+			end
+		end
+	end
+	if Kit:AppSay(id, rest) then return ns.Say(A.SAID_TO:format(name)) end
+	local words = UI.AppWordList(id)
+	if words == "" then return ns.Say(A.NO_WORDS:format(name)) end
+	ns.Say(A.USAGE:format(name, words))
+end
+
 SLASH_WUXIANKIT1 = "/wk"
 SlashCmdList.WUXIANKIT = function(msg)
 	local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
@@ -620,8 +753,16 @@ SlashCmdList.WUXIANKIT = function(msg)
 		end
 		table.sort(words)
 		for _, word in ipairs(words) do ns.Say(L.HELP_COMMAND:format(word, ns.T(ns.Commands()[word].help))) end
+		local apps = UI.Apps()
+		if #apps > 0 then ns.Say(A.HELP) end
+		for _, a in ipairs(apps) do
+			local words = UI.AppWordList(a.id)
+			ns.Say(L.HELP_COMMAND:format(a.id, a.title .. (words ~= "" and (" · " .. words) or "")))
+		end
 	elseif command and command.ext.active then             -- an extension's own: /wk <word> ...
 		ns.Safe(command.fn, command.ext, rest)
+	elseif cmd ~= "" and ns.App(cmd) then                  -- an app's: /wk <app> [word or words]
+		AppCommand(cmd, rest)
 	else
 		UI.Toggle()
 	end
