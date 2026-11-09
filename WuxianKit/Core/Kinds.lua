@@ -229,19 +229,30 @@ end
 -- the chat line say it hears, eventDoc / data (the event's doc and fields). The window shows a running feed with a stop
 -- button; the player hears when it starts and stops (by itself too, when its time is up); the bus says so ("kit.feed").
 -- A feed is the character's that started it: another character logging in neither hears through it nor stops it.
--- Every item (a table) goes out with id (its own when it has a number there, else the feed's counter, kept in storage)
--- and time (its own, else time()). keep = n (at most KEEP_MAX): the last n items in a ring in the extension's storage
--- (db.recent[name] = { who, n, items }: through stops and reloads; another character starts it afresh), each a copy cut
--- to what saved variables should hold (strings ITEM_TEXT bytes, ITEM_DEPTH tables deep).
+-- Every item (a table) goes out with id (its own when it has a number there, which the core's counter then goes on
+-- from: ns.BumpId; else WuxianKit:NewId(), the one counter of chat messages, feeds and apps) and time (its own, else
+-- time()). keep = n (at most KEEP_MAX): the last n items in a ring in the extension's storage (db.recent[name] = { who,
+-- n (the newest id), items }: through stops and reloads; another character starts it afresh), each a copy cut to what
+-- saved variables should hold (strings ITEM_TEXT bytes, ITEM_DEPTH tables deep). lease = seconds (at least 60; the
+-- running options' lease wins over the spec's; 0 or none: no lease): the feed stops (why "left") once the agent has not
+-- called the extension (ext.seen, or the start) for that long; its status says present while it has not.
+-- kit.feed { extension, feed, on = false, why } tells a stop: why "stopped" (its .stop, the window), "expired" (its
+-- time was up), "left" (its lease) or "extension" (its extension went off).
 -- digest = { gather, every, idle, most, urgent(self, options, item) }: items are gathered, not sent one by one, and go as
 -- one wake { reason = "urgent" | "full" | "batch" | "idle", items (oldest first), skipped }: gather s (5) after an urgent
 -- item, every s (60; false: only urgent or full) after the first one gathered, at once at most (30) of them, and after
 -- idle s (false: never) without an item or a wake (an idle wake carries what is gathered: nothing, unless every is
 -- false). The fields of the running options' digest table (prepare may fill it; feed:Running().digest may be changed in
 -- place) win over the spec's, read each time. A wake is kept under WAKE_MAX bytes: the oldest items go (skipped counts
--- them; the ring still has them). One ticker a second runs while some digest feed runs.
+-- them; the ring still has them). urgent may be a list instead: an item is urgent when its why or its kind is in it.
+-- One ticker a second runs while some digest feed runs. Apps (Apps.lua) use the same digest (ns.Digest).
 
 local KEEP_MAX, ITEM_TEXT, ITEM_DEPTH = 200, 500, 4
+local LEASE_MIN = 60
+local W = Kit:Words {
+	zhCN = { FEED_LEFT = "%s：Agent 已离开，已停止" },
+	enUS = { FEED_LEFT = "%s: the agent left, stopped" },
+}
 -- a wake's size as Comm.Serialize writes it: WoWBridge sends an event's data as JSON of at most 8000 bytes (more goes as
 -- {cut = true}) and queues at most 6000 bytes of waiting events; JSON's keys and quotes take more than Serialize's
 -- lengths, so a wake keeps well under both
@@ -277,14 +288,37 @@ local function Params(feed, s)
 	end
 	local function Seconds(k, min)                        -- a number of seconds, or false
 		local v = Get(k)
-		if not ns.Finite(v) then return v == false and false or DIGEST[k] end
+		if not ns.Finite(v) then
+			if v == false then return false end           -- (not "v == false and false or ...": that is never false)
+			return DIGEST[k]
+		end
 		return math.max(min, v)
 	end
 	local most = Get("most")
 	most = ns.Finite(most) and math.max(1, math.min(KEEP_MAX, math.floor(most))) or DIGEST.most
 	local urgent = Get("urgent")
+	if type(urgent) == "table" then urgent = ns.UrgentList(urgent) end
 	return { gather = Seconds("gather", 0) or 0, every = Seconds("every", 1), idle = Seconds("idle", 1), most = most,
 		urgent = type(urgent) == "function" and urgent or nil }
+end
+
+-- a list of whys and kinds ({ "mention", "question" }) as an urgent function: an item whose why or kind is in it
+function ns.UrgentList(list)
+	local set = {}
+	for k, v in pairs(list) do
+		if type(v) == "string" then set[v] = true elseif v == true and type(k) == "string" then set[k] = true end
+	end
+	return function(_, _, item)
+		return type(item) == "table" and ((item.why ~= nil and set[item.why] == true) or
+			(item.kind ~= nil and set[item.kind] == true)) or false
+	end
+end
+
+-- a lease as kept: whole seconds, at least LEASE_MIN, or nil for none (0, false, nothing usable)
+function ns.Lease(v)
+	v = tonumber(v)
+	if not ns.Finite(v) or v <= 0 then return nil end
+	return math.max(LEASE_MIN, math.floor(v))
 end
 
 local digesting                                         -- the ticker of the digest feeds, while some runs
@@ -307,22 +341,38 @@ local function Settle()                                 -- no digest feed runs: 
 	end
 end
 
--- stops a feed of this character's; quiet: no chat line; any: whoever started it (its extension is going off)
-function ns.FeedStop(feed, quiet, any)
+-- stops a feed of this character's; quiet: no chat line; any: whoever started it (its extension is going off); why:
+-- what kit.feed says ("stopped", "expired", "left"; without one "extension" when any, else "stopped")
+function ns.FeedStop(feed, quiet, any, why)
 	local db = feed.ext.db
 	local s = db and type(db.feeds) == "table" and db.feeds[feed.name]
 	if type(s) ~= "table" or not (any or s.who == Me()) then return end
+	why = why or (any and "extension" or "stopped")
 	db.feeds[feed.name] = nil
-	if not quiet then feed.ext:Tell(L.FEED_STOPPED:format(ns.T(feed.spec.title) or feed.name)) end
-	Kit:Emit("kit.feed", { extension = feed.ext.id, feed = feed.name, on = false })
+	if not quiet then
+		local title = ns.T(feed.spec.title) or feed.name
+		feed.ext:Tell((why == "left" and W.FEED_LEFT or L.FEED_STOPPED):format(title))
+	end
+	Kit:Emit("kit.feed", { extension = feed.ext.id, feed = feed.name, on = false, why = why })
 	Settle()
+end
+
+-- when the agent last touched a running feed: the extension's seen (memory), the one kept in the run (through a
+-- reload), or its start
+local function Touched(feed, s)
+	return math.max(tonumber(feed.ext.seen) or 0, tonumber(s.seen) or 0, tonumber(s.started) or 0)
 end
 
 -- what the window and status show of a running feed: { heard, wakes, lastWake, seen }, nil when it does not run
 function ns.FeedInfo(feed)
 	local s = feed.ext.active and FeedState(feed)
 	if not s then return nil end
-	return { heard = s.heard or 0, wakes = s.wakes or 0, lastWake = s.lastWake, seen = feed.ext.seen }
+	local out = { heard = s.heard or 0, wakes = s.wakes or 0, lastWake = s.lastWake, seen = feed.ext.seen or s.seen }
+	if s.lease then
+		out.lease = s.lease
+		out.present = time() - Touched(feed, s) <= s.lease
+	end
+	return out
 end
 
 local function Plain(t)                                 -- options as they go out: no functions (a digest's urgent)
@@ -375,18 +425,14 @@ local function Keep(feed)
 	return math.max(0, math.min(KEEP_MAX, n))
 end
 
--- an item gets its id and time, and a copy goes into the ring
+-- an item gets its id (its own number, which the core's counter goes on from, or the counter's next) and time, and a
+-- copy goes into the ring
 local function Stamp(feed, item)
+	if ns.Finite(item.id) then ns.BumpId(item.id) else item.id = Kit:NewId() end
+	if item.time == nil then item.time = time() end
 	local r = Ring(feed)
 	if not r then return end
-	r.n = tonumber(r.n) or 0
-	if ns.Finite(item.id) then
-		r.n = math.max(r.n, item.id)
-	else
-		r.n = r.n + 1
-		item.id = r.n
-	end
-	if item.time == nil then item.time = time() end
+	r.n = math.max(tonumber(r.n) or 0, item.id)
 	local keep = Keep(feed)
 	if keep == 0 then return end
 	local items = r.items
@@ -402,13 +448,17 @@ local function Size(v)
 	return ok and #text or math.huge
 end
 
+-- one wake of what is gathered: { reason, items, skipped } and what host:Wrap(s) adds (an app's app, pace, quiet); sent
+-- by host:Send(data) when it has one, else as the feed's event
 local function Wake(feed, s, reason)
 	local items = s.buffer or {}
 	if s.urgentAt then reason = "urgent" end
 	s.buffer, s.first, s.urgentAt = {}, nil, nil
 	local now = time()
 	s.wakes, s.lastWake = (s.wakes or 0) + 1, now
-	local sizes, total = {}, Size({ reason = reason, items = {}, skipped = 1000 })
+	local data = feed.Wrap and feed:Wrap(s) or {}
+	data.reason, data.items, data.skipped = reason, {}, 1000
+	local sizes, total = {}, Size(data)
 	for i, item in ipairs(items) do
 		sizes[i] = Size(item) + 24                        -- (its key, and room)
 		total = total + sizes[i]
@@ -420,7 +470,8 @@ local function Wake(feed, s, reason)
 	end
 	local out = {}
 	for i = skipped + 1, #items do out[#out + 1] = items[i] end
-	feed.ext:Emit(feed.topic, { reason = reason, items = out, skipped = skipped })
+	data.items, data.skipped = out, skipped
+	if feed.Send then feed:Send(data) else feed.ext:Emit(feed.topic, data) end
 end
 
 -- wakes a running digest feed whose time has come
@@ -468,7 +519,24 @@ local function Gather(feed, s, item)
 		if not ok then geterrorhandler()(yes) elseif yes then s.urgentAt = now end
 	end
 	Due(feed, s)
-	Digesting()
+end
+
+-- the digest for Apps.lua: a host is { ext, spec = { digest = {...} }, Wrap(host, s)?, Send(host, data)? } and a run s
+-- as a feed's ({ options = { digest }, buffer, first, last, urgentAt, wakes, lastWake, started })
+ns.Digest = { Params = Params, Gather = Gather, Due = Due, Wake = Wake, Small = function(v) return Small(v, 1) end }
+
+-- the items of a ring (oldest first) with id > since, the last `limit` (default 50, at most `most`), and the newest id
+function ns.RingRecent(items, since, limit, most)
+	since = ns.Finite(since) and since or 0
+	limit = ns.Finite(limit) and math.max(1, math.min(most or KEEP_MAX, math.floor(limit))) or 50
+	local out = {}
+	for i = #items, 1, -1 do
+		local item = items[i]
+		if #out >= limit or not (tonumber(item.id) and item.id > since) then break end
+		table.insert(out, 1, item)
+	end
+	local last = items[#items]
+	return { items = out, next = last and last.id or since }
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -485,28 +553,32 @@ function Feed:Running()
 	return s and (s.options or {}) or nil
 end
 
-function Feed:Push(data)
+-- opts { key, every }: of the items with the same key (none: the whole feed) only the first in every seconds goes
+function Feed:Push(data, opts)
 	local options = data ~= nil and self:Running()
 	if not options or (self.spec.accept and not self.spec.accept(self.ext, options, data)) then return false end
+	local every = type(opts) == "table" and tonumber(opts.every)
+	if every and ns.Finite(every) and every > 0 then
+		local key = opts.key == nil and "" or ns.Text(opts.key)
+		self.pushed = self.pushed or {}
+		local now = GetTime()
+		if self.pushed[key] and now - self.pushed[key] < every then return false end
+		self.pushed[key] = now
+	end
 	local s = FeedState(self)
 	if type(data) == "table" then Stamp(self, data) end
 	s.heard = (s.heard or 0) + 1
-	if self.spec.digest then Gather(self, s, data) else self.ext:Emit(self.topic, data) end
+	if self.spec.digest then
+		Gather(self, s, data)
+		Digesting()
+	else
+		self.ext:Emit(self.topic, data)
+	end
 	return true
 end
 
 function Feed:Recent(since, limit)
-	since = ns.Finite(since) and since or 0
-	limit = ns.Finite(limit) and math.max(1, math.min(KEEP_MAX, math.floor(limit))) or 50
-	local items = (Ring(self) or { items = {} }).items
-	local out = {}
-	for i = #items, 1, -1 do
-		local item = items[i]
-		if #out >= limit or not (tonumber(item.id) and item.id > since) then break end
-		table.insert(out, 1, item)
-	end
-	local last = items[#items]
-	return { items = out, next = last and last.id or since }
+	return ns.RingRecent((Ring(self) or { items = {} }).items, since, limit, KEEP_MAX)
 end
 
 function Feed:Item(id)
@@ -551,7 +623,9 @@ function Extension:Feed(name, spec)
 	end
 	self:See(name, { title = title, args = args,
 		doc = ("starts a feed that %s, for `minutes` (default %d, at most %d); calling it again replaces the running "
-			.. "one. %s"):format(spec.doc or name, spec.minutes or 60, spec.most or 720, heard),
+			.. "one.%s %s"):format(spec.doc or name, spec.minutes or 60, spec.most or 720, ns.Lease(spec.lease) and
+			(" It stops by itself once you have not called this extension's tools for %d s."):format(ns.Lease(spec.lease))
+			or "", heard),
 		run = function(self, a)
 			local o = {}
 			for k in pairs(spec.options or {}) do o[k] = a[k] end
@@ -564,7 +638,9 @@ function Extension:Feed(name, spec)
 			minutes = math.max(1, math.min(ns.Finite(minutes) and minutes or spec.minutes or 60, spec.most or 720))
 			self.db.feeds = type(self.db.feeds) == "table" and self.db.feeds or {}
 			local now = time()
-			local s = { options = o, ends = now + math.floor(minutes * 60), who = Me(), started = now, heard = 0, wakes = 0 }
+			local lease = ns.Lease(type(o) == "table" and o.lease ~= nil and o.lease or spec.lease)
+			local s = { options = o, ends = now + math.floor(minutes * 60), who = Me(), started = now, heard = 0, wakes = 0,
+				lease = lease }
 			self.db.feeds[name] = s
 			self:Tell(L.FEED_STARTED:format(ns.T(title), FeedText(feed, s), date("%H:%M", s.ends)))
 			Kit:Emit("kit.feed", { extension = self.id, feed = name, on = true, ends = s.ends, options = Plain(o) })
@@ -579,7 +655,8 @@ function Extension:Feed(name, spec)
 		end })
 	self:See(name .. ".status", { title = title,
 		doc = "answers whether the feed runs: {on, ends (Unix time), its options, and while it runs heard (items this "
-			.. "run), wakes, lastWake, seen (when the agent last called this extension)}",
+			.. "run), wakes, lastWake, seen (when the agent last called this extension); with a lease: lease (seconds) and "
+			.. "present (the agent called within it)}",
 		run = function() return Status(feed) end })
 	if Keep(feed) > 0 then
 		self:See(name .. ".recent", { title = title, args = { since = "number?", limit = "number?" },
@@ -604,11 +681,27 @@ C_Timer.NewTicker(5, function()
 			if type(s) == "table" and s.who == nil then
 				feeds[name] = nil
 			elseif type(s) == "table" and s.who == me and (tonumber(s.ends) or 0) <= now then
-				ns.FeedStop(ext.feeds[name])
+				ns.FeedStop(ext.feeds[name], false, false, "expired")
+			elseif type(s) == "table" and s.who == me then
+				local feed = ext.feeds[name]
+				if ext.seen and ext.seen > (tonumber(s.seen) or 0) then s.seen = ext.seen end   -- (through a reload)
+				if s.lease and now - Touched(feed, s) > s.lease then ns.FeedStop(feed, false, false, "left") end
 			end
 		end
 	end
 	if not digesting and DigestRunning() then Digesting() end
+end)
+
+-- ids never go back: the core's counter goes on from what the feeds' rings (and an older chat counter) reached
+ns.When("load", function(db)
+	for _, edb in pairs(type(db) == "table" and type(db.ext) == "table" and db.ext or {}) do
+		if type(edb) == "table" then
+			ns.BumpId(edb.lastId)
+			for _, r in pairs(type(edb.recent) == "table" and edb.recent or {}) do
+				if type(r) == "table" then ns.BumpId(r.n) end
+			end
+		end
+	end
 end)
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -712,6 +805,10 @@ local function Revision(m)
 		end
 		for _, v in ipairs(e.events or {}) do parts[#parts + 1] = table.concat({ v.topic, v.doc, Specs(v.data) }, "\1") end
 	end
+	for _, a in ipairs(m.apps or {}) do
+		parts[#parts + 1] = table.concat({ "app", a.id, a.title or "", a.by or "", a.addon or "", a.topic or "",
+			table.concat(a.hear or {}, ","), a.prompt or "" }, "\1")
+	end
 	return Hash(table.concat(parts, "\2"))
 end
 
@@ -733,6 +830,7 @@ function Kit:Manifest()
 		end
 		m.extensions[#m.extensions + 1] = entry
 	end
+	m.apps = ns.AppManifest and ns.AppManifest() or {}             -- (Apps.lua) [{ id, title, by, addon?, topic, hear, prompt? }]
 	m.revision = Revision(m)
 	return m
 end
