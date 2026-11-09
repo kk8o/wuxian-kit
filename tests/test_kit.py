@@ -325,7 +325,7 @@ class Core(unittest.TestCase):
         self.assertEqual((chat_source["title"], chat_source["values"][:3]), ("Chat", ["*", "guild", "officer"]))
         self.assertIn("chat:<channel>", chat_source["doc"])
         self.assertEqual(ext["game"]["sources"][0]["values"],
-                         ["combat", "aura", "growth", "quest", "travel", "guild", "guide"])
+                         ["combat", "aura", "growth", "quest", "travel", "guild"])
         self.assertNotIn("values", ext["kit"]["sources"][0])
         self.assertEqual(ext["guide"]["events"][0]["topic"], "guide.tour")
         self.assertEqual(self.call(s, "kit.revision")["revision"], m["revision"])

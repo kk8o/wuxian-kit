@@ -1,7 +1,8 @@
 -- 游戏动态 · Travel: the topic travel (zone, taxi, rest). Ported from 无限陪玩 (the companion's Progress.lua). The zones
 -- this character has been to (for zone's `first`) are kept in the extension's storage for the character (ext:Char()),
 -- also while nobody listens: been there is been there. That costs two rare events (ZONE_CHANGED_NEW_AREA,
--- PLAYER_ENTERING_WORLD); the rest runs only while the topic does.
+-- PLAYER_ENTERING_WORLD); the rest runs only while the topic does. A zone first been to goes to the day's tally
+-- (G.Tally "zones").
 local addonName, ns = ...
 local Kit = WuxianKit
 local G = ns.game
@@ -18,6 +19,7 @@ local function Visit(zone)
 	char.zones = type(char.zones) == "table" and char.zones or {}
 	local first = not char.zones[zone]
 	char.zones[zone] = true
+	if first then G.Tally("zones") end
 	return first
 end
 

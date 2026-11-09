@@ -7,6 +7,8 @@
 --   - right at PLAYER_REGEN_DISABLED the nameplates' threat is not there yet: foes are counted 0.5 s later;
 --   - in instances a target's GUID and name may be secret: such kills go uncounted;
 --   - auras are read only out of combat (in combat addedAuras may be a secret table).
+-- A kill's streak counts the kills within STREAK seconds, this one too, across fights (a kill not told because two came
+-- within a second still counts in the next one's streak). Kills and deaths go to the day's tally (G.Tally).
 -- UNIT_COMBAT, UNIT_HEALTH and NAME_PLATE_UNIT_REMOVED are registered only during a fight that started while combat ran;
 -- UNIT_AURA only out of combat while aura runs. Never COMBAT_LOG_EVENT_UNFILTERED.
 local addonName, ns = ...
@@ -18,6 +20,7 @@ local ADDS = 3               -- enemies hitting you at once: danger
 local DANGER_GAP = 8         -- seconds between two dangers of one fight
 local START_DELAY = 0.5      -- threat is not there right at the start of a fight
 local PLATES = 40
+local STREAK = 30            -- seconds a kill counts in the streak
 
 local NOTABLE = { elite = true, rare = true, rareelite = true, worldboss = true }
 local DISPELS = { Poison = true, Curse = true, Disease = true, Magic = true }
@@ -30,6 +33,7 @@ local dead = false
 local rezAt                  -- when someone last offered to resurrect you
 local paced = {}             -- kind -> GetTime() it last went out
 local ticker                 -- counts the foes every second during a fight
+local kills = {}             -- GetTime() of the kills within STREAK seconds, oldest first
 
 ------------------------------------------------------------------------------------------------------------------------
 -- reading units (all through Kit:Value)
@@ -83,7 +87,14 @@ local function CheckDead(unit)
 	if doneCount > 200 then done, doneCount = {}, 0 end
 	done[guid], doneCount = true, doneCount + 1
 	if fight then fight.kills = fight.kills + 1 end
-	Send("kill", { unit = Kit:Unit(unit) })
+	local now, recent = GetTime(), {}
+	for _, at in ipairs(kills) do
+		if now - at < STREAK then recent[#recent + 1] = at end
+	end
+	recent[#recent + 1] = now
+	kills = recent
+	G.Tally("kills")
+	Send("kill", { unit = Kit:Unit(unit), streak = #recent })
 end
 
 -- a unit of this fight: one with threat; force (your target, hit) needs none
@@ -235,6 +246,7 @@ G.Topic("combat", {
 		UNIT_SPELLCAST_CHANNEL_START = CastAtMe,
 		UNIT_SPELLCAST_SUCCEEDED = Succeeded,
 		PLAYER_DEAD = function()
+			if not dead then G.Tally("deaths") end
 			dead, rezAt = true, nil
 			G.Moment("death", {}, { every = 5 })
 		end,
@@ -253,7 +265,7 @@ G.Topic("combat", {
 	on = function()
 		EndFight()                                       -- a fight going on now started unheard: not told
 		dead = UnitIsDeadOrGhost ~= nil and Yes(Read(UnitIsDeadOrGhost, "player"))
-		rezAt = nil
+		rezAt, kills = nil, {}
 	end,
 	off = EndFight,
 })

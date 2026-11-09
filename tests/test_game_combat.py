@@ -41,11 +41,11 @@ end
 
 
 class Combat(GameTest):
-    def start(self, listen=True, me=None):
+    def start(self, listen=True):
         g = self.game()
         g.lua.execute(UNITS.encode())
         if listen:
-            g.listen(me=me)
+            g.listen()
         return g
 
     def lua(self, g, code):
@@ -79,7 +79,7 @@ class Combat(GameTest):
     # ---------------------------------------------------------------------------------------------------------------
 
     def test_combat_start_counts_foes_half_a_second_later(self):
-        g = self.start(me=True)
+        g = self.start()
         self.mob(g, "target nameplate1", "Creature-A", name="Raptor", level=23, creature="Beast")
         self.mob(g, "nameplate2", "Creature-B", threat=3)
         self.mob(g, "nameplate3", "Creature-C", threat=0)                     # 0: not on you, does not count
@@ -92,7 +92,6 @@ class Combat(GameTest):
         self.assertEqual(m["data"]["foes"], 2)
         self.assertEqual(m["data"]["target"], {"name": "Raptor", "fullName": "Raptor", "level": 23,
                                                "classification": "normal", "creature": "Beast", "hostile": True})
-        self.assertTrue(m["me"]["combat"])
 
     def test_combat_start_needs_at_least_one_foe_and_no_quick_exit(self):
         g = self.start()
@@ -107,7 +106,7 @@ class Combat(GameTest):
         self.assertEqual(m["data"], {"foes": 1})
 
     def test_combat_end_sums_up_the_fight(self):
-        g = self.start(me=True)
+        g = self.start()
         self.mob(g, "target nameplate1", "Creature-A", threat=3)
         self.mob(g, "nameplate2", "Creature-B", threat=3)
         self.combat(g, True)
@@ -124,7 +123,6 @@ class Combat(GameTest):
         self.combat(g, False)
         [m] = g.moments("combat.end")
         self.assertEqual(m["data"], {"secs": 7, "kills": 1, "foes": 2})       # no taken, peak, crits: secret now
-        self.assertFalse(m["me"]["combat"])
         self.assertEqual(self.kinds(g), ["combat.start", "kill", "combat.end"])
 
     def test_no_danger_from_damage(self):
