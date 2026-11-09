@@ -877,7 +877,7 @@ class Session:
         self.saved = saved or {}
         folders = [KIT_DIR] + [FIXTURES / f for f in self.fixtures]
         install(lua, folders, loaded=("WuxianKit",), disabled=self.disabled)
-        run_files(test, lua, KIT_DIR)
+        self.ns = run_files(test, lua, KIT_DIR)        # the core's private table, for tests of its insides
         self.loaded.append("WuxianKit")
 
     def load_addon(self, name):
