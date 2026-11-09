@@ -182,11 +182,12 @@ class GuildApp(unittest.TestCase):
         self.assertEqual((head["name"], head["title"], head["title-zh"], head["arguments"], head["needs"],
                           head["mcp"]),
                          ("guild-chat", "Guild chat", "公会聊天", "hours?", "shell", "wuxianwow https://wuxianwow.com/mcp"))
-        for gone in ("chatlink", "FACTS", "wk_guild_brief", "recruited", "mcp__codex__", "C:\\", "wow-forever"):
+        for gone in ("chatlink", "FACTS", "wk_guild_brief", "recruited", "mcp__codex__", "C:\\", "wow-forever",
+                     "CLAUDE.md"):
             self.assertNotIn(gone, text)
         for there in ("https://wuxianwow.com/mcp", "https://wuxianwow.com/ai",
                       "claude mcp add --transport http wuxianwow", "wuxian listen guild --once --since <next>",
-                      "0.9.13", "CLAUDE.md", "wk_sense_guild", "wk_kit_app_stop", "report_issue", "guild/"):
+                      "0.9.13", "`notes`", "本机扩展「…」的补充", "wk_sense_guild", "wk_kit_app_stop", "report_issue", "guild/"):
             self.assertIn(there.replace(" ", ""), re.sub(r"\s+", "", text), there)
         # the app's docs folder holds it (the workshop reads <docs>/skills/*.md), not the chat extension's
         s = self.start()

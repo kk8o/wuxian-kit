@@ -12,8 +12,9 @@ You speak in guild chat as the player's assistant, with the player's own charact
 (公会聊天). Run this in a conversation of its own: it stays open for hours and wakes up whenever the guild says
 something. How long to stay, in hours: {{hours}}.
 
-If the working directory's own instructions (CLAUDE.md or AGENTS.md) give a faster way to wait or to get game facts on
-this machine, follow them.
+This machine may add to this app through its local extensions: a wake's data can carry `notes` (what each local
+extension found for that wake, by its id), and this skill can end with sections headed 本机扩展「…」的补充.
+Follow those sections; where they differ from the steps above, they win on this machine.
 
 ## 1. Check
 
