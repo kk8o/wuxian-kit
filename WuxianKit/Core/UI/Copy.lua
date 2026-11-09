@@ -40,6 +40,11 @@ local function Frame()
 	f.edit:SetPoint("TOPLEFT", 14, -42)
 	f.edit:SetWidth(W - 28)
 	f.edit:SetMaxLetters(0)
+	f.measure = f:CreateFontString(nil, "ARTWORK")         -- how tall the text is when it wraps in the box (never shown)
+	f.measure:SetFontObject("ChatFontNormal")              -- the box's font (Skin.Edit)
+	f.measure:SetWidth(W - 28 - 12)
+	f.measure:SetWordWrap(true)
+	f.measure:Hide()
 	f.edit:SetScript("OnTextChanged", function(self, user)  -- read only: what was typed goes, the text stays selected
 		if user then
 			self:SetText(shown and shown.text or "")
@@ -70,9 +75,21 @@ function Kit:Copy(text, opts)
 	Frame()
 	shown = { text = ns.Text(text == nil and "" or text), done = type(opts.done) == "function" and opts.done or nil }
 	f.title:SetText(opts.title ~= nil and ns.T(opts.title) or "")
+	-- a text wider than the box wraps in it, all of it in view (a single line would show only its end)
+	f.measure:SetText(shown.text)
+	local wide = (f.measure:GetStringWidth() or 0) > W - 28 - 12 or shown.text:find("\n") ~= nil
+	local h = 22
+	f.edit:SetMultiLine(wide)
+	if wide then
+		f.edit:SetTextInsets(6, 6, 4, 4)
+		h = math.ceil(f.measure:GetStringHeight() or 14) + 8
+	else
+		f.edit:SetTextInsets(6, 6, 0, 0)
+	end
+	f.edit:SetHeight(h)
 	f.edit.kept = shown.text
 	f.edit:SetText(shown.text)
-	local y = 42 + 22 + 8
+	local y = 42 + h + 8
 	f.hint:ClearAllPoints()
 	f.hint:SetPoint("TOPLEFT", 14, -y)
 	if opts.hint ~= nil then

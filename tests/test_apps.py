@@ -9,9 +9,9 @@ from kitmock import Session, lupa, py
 from test_standalone import bridge
 
 # the start line (启动语) of an app with a prompt, as the contract gives it
-START = {"en": 'Start the 无限工坊 app "{}": first call the tool wk_docs with {{"skill": "{}"}} and follow the steps it '
+START = {"en": 'Start the 无限工坊 app "{}": first call the 无限工坊 MCP tool wk_docs with {{"skill": "{}"}} and follow the steps it '
                'gives.',
-         "zh": '开始无限工坊的应用「{}」：先调用工具 wk_docs，参数 {{"skill": "{}"}}，照读到的步骤做。'}
+         "zh": '开始无限工坊的应用「{}」：先调用无限工坊 MCP 的工具 wk_docs，参数 {{"skill": "{}"}}，照读到的步骤做。'}
 
 # Chat:On and Game:On as K4 and K1 give them, faked: __say(channel, msg) and __moment(kind, topic, data) hand a message
 # or a moment to whoever subscribed (a fresh copy of the moment to each, the same message table to all)

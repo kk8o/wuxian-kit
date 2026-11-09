@@ -150,6 +150,15 @@ class Options(unittest.TestCase):
         for scope in ("opt.guild", "opt.bad", "nope.x", "opt"):
             self.assertIsNone(s.lua.eval(f"__ns.ScopeBudget({scope!r})".encode()), scope)
 
+    def test_a_long_text_wraps_in_the_copy_box(self):
+        """a text wider than the box wraps in it, all of it in view; a short one stays on one line"""
+        s = self.start()
+        s.lua.execute(b"WuxianKit:Copy(string.rep('x', 80))")
+        edit = s.g("WuxianKitCopyWindow")[b"edit"]
+        self.assertEqual((edit[b"multiline"], edit[b"text"]), (True, b"x" * 80))
+        s.lua.execute(b"WuxianKit:Copy('short')")
+        self.assertEqual((edit[b"multiline"], edit[b"h"]), (False, 22))
+
     def test_the_copy_box(self):
         """the text selected with the keyboard in it; what is typed goes; Ctrl+C says so, and a moment later the box
         goes and done runs; a new text takes the place of the one shown; Esc closes it"""

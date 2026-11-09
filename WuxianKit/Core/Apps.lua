@@ -48,7 +48,7 @@ local W = Kit:Words {
 		QUIET = "免打扰时段", QUIET_HINT = "如 01:00-08:00；这段时间只在点名时唤醒",
 		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
 			resume = "继续", stop = "停止" },
-		START = "开始无限工坊的应用「%s」：先调用工具 wk_docs，参数 {\"skill\": \"%s\"}，照读到的步骤做。",
+		START = "开始无限工坊的应用「%s」：先调用无限工坊 MCP 的工具 wk_docs，参数 {\"skill\": \"%s\"}，照读到的步骤做。",
 	},
 	enUS = {
 		STARTED = "%s: started, until %s", STOPPED = "%s: stopped", EXPIRED = "%s: time is up, stopped",
@@ -60,7 +60,7 @@ local W = Kit:Words {
 		QUIET = "Quiet hours", QUIET_HINT = "Such as 01:00-08:00; only wakes when you are named then",
 		CONTROL = { mute = "Mute", unmute = "Unmute", less = "Less", more = "More", test = "Test", pause = "Pause",
 			resume = "Resume", stop = "Stop" },
-		START = "Start the 无限工坊 app \"%s\": first call the tool wk_docs with {\"skill\": \"%s\"} and follow the steps "
+		START = "Start the 无限工坊 app \"%s\": first call the 无限工坊 MCP tool wk_docs with {\"skill\": \"%s\"} and follow the steps "
 			.. "it gives.",
 	},
 }

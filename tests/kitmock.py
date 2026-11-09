@@ -80,6 +80,7 @@ for _, m in ipairs({ "SetFrameStrata", "SetFrameLevel", "SetToplevel", "SetClamp
 	"EnableMouseWheel", "SetAutoFocus", "SetFontObject", "SetTextInsets", "SetMaxLetters", "Raise", "HighlightText" }) do
 	Region[m] = function() end
 end
+function Region:SetMultiLine(on) self.multiline = on and true or false end
 function Region:SetSize(w, h) self.w, self.h = w, h end
 function Region:SetWidth(w) self.w = w end
 function Region:SetHeight(h) self.h = h end

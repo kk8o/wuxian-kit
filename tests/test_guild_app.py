@@ -16,7 +16,7 @@ from kitmock import KIT_DIR, Session, lupa, py
 from test_standalone import bridge
 
 REPO = Path(__file__).resolve().parents[1]
-START_EN = ('Start the 无限工坊 app "Guild chat": first call the tool wk_docs with {"skill": "guild-chat"} and follow '
+START_EN = ('Start the 无限工坊 app "Guild chat": first call the 无限工坊 MCP tool wk_docs with {"skill": "guild-chat"} and follow '
             'the steps it gives.')
 ME, ASKER = "Player-1-00000001", "Player-1-00000002"
 GUILD = b"""
@@ -94,7 +94,7 @@ class GuildApp(unittest.TestCase):
         zh = self.start(locale="zhCN")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["title"], "公会聊天")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["start"],
-                         '开始无限工坊的应用「公会聊天」：先调用工具 wk_docs，参数 {"skill": "guild-chat"}，照读到的步骤做。')
+                         '开始无限工坊的应用「公会聊天」：先调用无限工坊 MCP 的工具 wk_docs，参数 {"skill": "guild-chat"}，照读到的步骤做。')
         o = py(zh.ns.AppOptionList(b"guild"))
         self.assertEqual((o["topics"]["title"], o["avoid"]["title"], o["avoid"]["hint"]),
                          ("想多聊的话题", "不聊的话题", "Agent 不会主动提起"))
