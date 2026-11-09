@@ -6,9 +6,8 @@ import unittest
 
 from kitmock import Session, click, lupa, py, texts, type_into
 
-# Apps.lua's functions as K2 documents them, over __apps (id -> { decl, by, addon, status, controls, options, say, launch,
-# temp, launching }); ns.AppLaunch (refused with __refuse) and ns.WorkshopOnline (__workshop) as the layers contract
-# (section 4) says; what the card did goes to __log
+# Apps.lua's functions as K2 documents them, over __apps (id -> { decl, by, addon, status, controls, options, say,
+# temp }); what the card did goes to __log
 FAKES = """
 local ns = ...
 __ns = ns
@@ -29,8 +28,7 @@ function ns.AppList()
 			out[#out + 1] = { id = id, title = t.decl.title, by = t.by or "addon", addon = t.addon, on = t.status.on or false,
 				ends = t.status.ends, present = t.status.present, prompt = t.decl.prompt,
 				start = t.decl.prompt and t.decl.prompt:match("^[%w_%-]+$") and ("Start " .. t.decl.prompt) or nil,
-				driver = t.decl.driver or (t.decl.prompt and "prompt" or nil), launch = t.launch or false,
-				temp = t.temp or false, launching = t.launching or false }
+				temp = t.temp or false }
 		end
 	end
 	return out
@@ -64,15 +62,6 @@ function WuxianKit:AppControl(id, cmd)
 	local on = __apps[id] and __apps[id].status.on or false
 	if on and cmd == "stop" then ns.AppStop(id, "player") end
 	return on
-end
-__workshop, __refuse = true, nil
-function ns.WorkshopOnline() return __workshop end
-function ns.AppLaunch(id)
-	Log("launch " .. id)
-	if __refuse then return false, __refuse end
-	__apps[id].launching = true
-	ns.Changed("app", id)
-	return true
 end
 function WuxianKit:AppSay(id, text)
 	Log("say " .. id .. " " .. text)
@@ -339,76 +328,28 @@ class AppPanel(unittest.TestCase):
         self.assertEqual(texts(f)[0], "||cffff0000Bot||r")
         self.assertEqual(f[b"edit"][b"text"].decode(), "Start |cffBot|r")
 
-    def test_a_program_app(self):
-        """a program's app (driver program): 开始 when 无限工坊 can start it (launch) and runs, to ns.AppLaunch; 启动中…
-        not to be clicked once asked; 开始 not to be clicked and "needs 无限工坊 running" when it does not run
-        (ns.WorkshopOnline, else the link); not to be clicked while its check says no; a refusal told in the chat; no
-        button and "driven by a local program" without launch; running as any app; never 交给 AI"""
+    def test_an_app_without_a_prompt(self):
+        """an app without a prompt has no main button (no 交给 AI, no 开始), whatever else its row says; running, its
+        stop and controls as any app's"""
         s = start(self)
-        s.lua.execute(b"__add('voice', { by = 'agent', launch = true, controls = { 'mute', 'stop' }, "
-                      b"decl = { title = 'Voice', driver = 'program', prompt = 'voice-run' } })")
+        s.lua.execute(b"__add('voice', { by = 'agent', controls = { 'mute', 'stop' }, launch = true, "
+                      b"decl = { title = 'Voice', driver = 'program' } })")
         st = s.g("__apps")[b"voice"][b"status"]
         p = self.panel(s, "voice")
-        self.assertEqual(texts(p), ["Ready to start"])
+        self.assertEqual(texts(p), ["Ready to connect an agent"])
         self.ink(s, self.first(p), "sky")
-        self.assertEqual(labels(p), ["Start"])                                  # no 交给 AI, though it has a prompt
-        self.assertEqual((button(p, "Start")[b"primary"], button(p, "Start")[b"enabled"]), (True, True))
-        click(button(p, "Start"))
-        self.assertEqual(log(s), ["launch voice"])
-        s.run(0.1)                                                              # ns.Changed("app"): redrawn
-        self.assertEqual(texts(p), ["Asked Wuxian Workshop to start it"])
-        self.assertEqual(labels(p), ["Starting…"])
-        self.assertEqual((button(p, "Starting…")[b"primary"], button(p, "Starting…")[b"enabled"]), (False, False))
-        click(button(p, "Starting…"))
-        self.assertEqual(log(s), ["launch voice"])
-        s.lua.execute(b"__apps.voice.launching = false")
-        st[b"on"], st[b"said"] = True, 0                                        # it started: as any app
+        self.assertEqual(labels(p), [])
+        st[b"on"], st[b"said"] = True, 0
         self.assertTrue(self.redraw(s)[0].startswith("Agent here"))
         self.assertEqual(labels(p), ["Stop", "Mute"])
         st[b"on"] = False
-        s.lua.execute(b"__workshop = false")
-        self.assertEqual(self.redraw(s), ["Wuxian Workshop not connected", "Needs Wuxian Workshop running"])
-        self.ink(s, self.first(p), "gold")
-        self.assertEqual((labels(p), button(p, "Start")[b"primary"], button(p, "Start")[b"enabled"]),
-                         (["Start"], False, False))
-        click(button(p, "Start"))
-        self.assertEqual(log(s), ["launch voice"])
-        s.lua.execute(b"__ns.WorkshopOnline = nil")                            # none: the link says
-        self.assertEqual(self.redraw(s), ["Ready to start"])
         s.lua.execute(b"__online = false")
-        self.assertEqual(self.redraw(s), ["Wuxian Workshop not connected", "Needs Wuxian Workshop running"])
-        s.lua.execute(b"__online = true")
-        st[b"blocked"] = b"No guild"
-        self.assertEqual(self.redraw(s), ["No guild"])
-        self.assertEqual((button(p, "Start")[b"primary"], button(p, "Start")[b"enabled"]), (False, False))
-        st[b"blocked"] = None
-        s.lua.execute(b"__refuse = 'Not registered'")
-        self.redraw(s)
-        s.lines.clear()
-        click(button(p, "Start"))
-        self.assertEqual(log(s)[-1], "launch voice")
-        self.assertIn("Voice cannot start: Not registered", s.chat())
-        self.assertEqual(labels(p), ["Start"])
-        s.lua.execute(b"__apps.voice.launch = false")                          # 无限工坊 has not said it can start it
-        self.assertEqual(self.redraw(s), ["Not running", "Driven by a local program"])
-        self.ink(s, self.first(p), "muted")
+        self.assertEqual(self.redraw(s), ["Wuxian Workshop not connected", "Open the Wuxian Workshop app; keep the game "
+                                          "in front or windowed"])
         self.assertEqual(labels(p), [])
-        s.lua.execute(b"__online = false")
-        self.assertEqual(self.redraw(s), ["Wuxian Workshop not connected", "Driven by a local program"])
-        s.lua.execute(b"__online = true __apps.voice.launch = true __refuse = nil __ns.SetLanguage('zhCN')")
-        self.assertEqual(self.redraw(s), ["可以开始"])
-        self.assertEqual(labels(p), ["开始"])
-        s.lua.execute(b"__apps.voice.launching = true")
-        self.assertEqual(self.redraw(s), ["已请求无限工坊启动"])
-        self.assertEqual(labels(p), ["启动中…"])
-        s.lua.execute(b"__apps.voice.launching = false __online = false")
-        self.assertEqual(self.redraw(s), ["无限工坊未连接", "需要无限工坊在运行"])
-        s.lua.execute(b"__online = true __apps.voice.launch = false")
-        self.assertEqual(self.redraw(s), ["未运行", "由本机程序驱动"])
-        s.lua.execute(b"__apps.voice.launch = true __ns.AppLaunch = nil __p:Refresh()")
-        s.lines.clear()
-        click(button(p, "开始"))                                                # no ns.AppLaunch: no launch
-        self.assertIn("「Voice」由本机程序驱动，请在无限工坊里开始", s.chat())
+        s.lua.execute(b"__online = true __ns.SetLanguage('zhCN')")
+        self.assertEqual(self.redraw(s), ["可以接入 Agent"])
+        self.assertEqual(labels(p), [])
         self.assertTrue(all(not set(GLYPHS) & set(t) for t in texts(p) + labels(p)))
 
     def test_a_temporary_app(self):

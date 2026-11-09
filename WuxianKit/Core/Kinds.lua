@@ -325,8 +325,8 @@ local function Revision(m)
 	end
 	for _, a in ipairs(m.apps or {}) do
 		parts[#parts + 1] = table.concat({ "app", a.id, a.title or "", a.by or "", a.addon or "", a.topic or "",
-			table.concat(a.hear or {}, ","), table.concat(a.see or {}, ","), a.prompt or "", a.start or "", a.extension or "", a.driver or "", a.docs or "",
-			tostring(a.launch), tostring(a.temp) }, "\1")
+			table.concat(a.hear or {}, ","), table.concat(a.see or {}, ","), a.prompt or "", a.start or "", a.extension or "", a.docs or "",
+			tostring(a.temp) }, "\1")
 	end
 	return Hash(table.concat(parts, "\2"))
 end
@@ -351,7 +351,7 @@ function Kit:Manifest()
 		end
 		m.extensions[#m.extensions + 1] = entry
 	end
-	-- (Apps.lua) [{ id, title, by, addon?, topic, hear, see, prompt?, start?, extension?, driver?, docs?, launch, temp }]
+	-- (Apps.lua) [{ id, title, by, addon?, topic, hear, see, prompt?, start?, extension?, docs?, temp }]
 	m.apps = ns.AppManifest and ns.AppManifest() or {}
 	m.revision = Revision(m)
 	return m

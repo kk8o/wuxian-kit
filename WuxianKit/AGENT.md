@@ -113,8 +113,6 @@ Read them with the workshop's `events` tool, for example
 - `kit.changed`: extensions or capabilities changed; your wk_ tools change with them.
 - `kit.ready`: WuxianKit started (a login or a UI reload; proposals that had not run are gone).
 - `kit.app`: an app started or stopped (`{app, on, ends?, why?}`), see Apps below.
-- `kit.app.launch`: the player asked to start a program app (`{app}`); 无限工坊 starts its program. Nothing for you to
-  do.
 - `kit.extension`: an extension went on or off.
 - `kit.option`: the player changed an option: an extension's (`{extension, name, value}`) or an app's
   (`{app, name, value}`).
@@ -128,14 +126,11 @@ There are no listen tools. To hear the game over time (chat lines, game moments,
 can give it and how long it may go without hearing from you. The player sees each app as a card in the Apps (应用)
 group of the /wk window, with its state, a stop button, its controls and its options. `wk_kit_apps` lists them.
 
-Every app has a driver, `driver` in `wk_kit_apps`:
-
-- `prompt`: an AI conversation runs it, following the skill named in `prompt`. The player hands you its start line
-  (the card's 交给 AI, Hand to AI): call `wk_docs` with `{"skill": "<prompt>"}` and follow the steps.
-- `program`: a local program runs it, loaded by 无限工坊's program loader. **Never open it with `wk_kit_app_open`.**
-  Use the workshop's tools: `programs` lists the programs, `program_start` starts one (`restart: true` starts it
-  again), `program_logs` reads its output and exit code, `program_stop` stops it; `new_program` and `program_add` make
-  and register one (the skill `kit-app`). The player starts it from its card (开始, Start) while 无限工坊 runs.
+An agent drives every app, following the skill named in its `prompt`. The player hands you its start line (the card's
+交给 AI, Hand to AI): call `wk_docs` with `{"skill": "<prompt>"}` and follow the steps. An app without a prompt has no
+button on its card; the agent that declared it opens it (as a temporary app while debugging). A local extension of
+无限工坊 (one that runs on this computer) may bring apps: 无限工坊 declares them in the game (`kit.app.declare`), and
+you drive them as any other, using that extension's tools for what runs on this computer.
 
 The kit brings one app of its own: `guild` (公会聊天), guild chat with the player's character; its skill is
 `guild-chat`.
@@ -249,8 +244,7 @@ Run the workshop's command in the background:
 
 It opens the app if it does not run (`--open` gives the declaration), prints each wake as one JSON line followed by
 `NEXT <id>` (pass it as `--since` next time), `END <why>` when the app stops and `TIMEOUT` after `--max` seconds, and
-sends the heartbeat by itself. With `--once` it exits after the first wake, which wakes you. Not for a program app:
-its program does the waiting.
+sends the heartbeat by itself. With `--once` it exits after the first wake, which wakes you.
 
 ### Rules for apps
 
@@ -259,5 +253,3 @@ its program does the waiting.
 - An app only listens. Speak or change anything only through proposals (`wk_chat_send`, `wk_propose` ...), as anywhere
   else.
 - Never ask the player to pre-approve a category so that you can answer faster; only they decide that.
-- A program app belongs to its program: start, stop and debug it with the workshop's program tools, not with
-  `wk_kit_app_open`.

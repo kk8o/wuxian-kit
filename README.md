@@ -6,12 +6,12 @@
 
 ## 概述
 
-- **零件、成品、运行时**：扩展是零件，声明能力（读取、存储、指引、发送、更改五类）、来源（应用能听的条目）、状态面（应用能看的现状）和事件，并附一份给 Agent 的说明 `AGENT.md`；应用是成品，一份声明加一个驱动者（AI 对话照技能做，或本机程序）；核心是运行时，负责确认、撤销、权限、窗口和应用的运行。应用用扩展，扩展不知道有哪些应用。
+- **零件、成品、运行时**：扩展是零件，声明能力（读取、存储、指引、发送、更改五类）、来源（应用能听的条目）、状态面（应用能看的现状）和事件，并附一份给 Agent 的说明 `AGENT.md`；应用是成品，一份声明，由 Agent 照技能驱动；核心是运行时，负责确认、撤销、权限、窗口和应用的运行。应用用扩展，扩展不知道有哪些应用。
 - **事实归核心，说法归应用**：发生了什么（来源）、现在怎样（状态面）由框架给出；说不说、何时说、怎么说由应用决定。核心不认识第三方插件，第三方插件经自定义扩展的适配器接到框架的接口上。
 - **提案与撤销**：发送、更改类操作生成提案，在游戏中逐项预览，玩家执行后生效；执行前存快照，可以撤销。多项改动可以合成一个提案，一次执行，一次撤销。
 - **权限**：免确认只能由玩家在 `/wk` 窗口中按类别开启，Agent 无法更改。其他玩家发来的提案始终需要确认。
 - **接入 Agent**：安装了无限工坊时，已启用扩展的能力由 App 转成 MCP 工具；没有无限工坊时照常运行，其他插件可以通过 Lua 接口直接调用。
-- **应用**：在游戏外听游戏只走应用。应用声明听哪些来源（聊天频道、游戏动态、任务指引、总线事件）、看哪些状态面（玩家、队伍、当前任务步骤、今天的进度）、怎么攒成唤醒、玩家能下什么指令；`/wk` 里每个应用一张卡片，「交给 AI」复制启动语，本机程序的应用点「开始」由无限工坊加载。
+- **应用**：在游戏外听游戏只走应用。应用声明听哪些来源（聊天频道、游戏动态、任务指引、总线事件）、看哪些状态面（玩家、队伍、当前任务步骤、今天的进度）、怎么攒成唤醒、玩家能下什么指令；`/wk` 里每个应用一张卡片，「交给 AI」复制启动语，由 Agent 照技能驱动；无限工坊的本机扩展也可以带应用。
 
 扩展框架是可选插件，无限工坊不会自动安装它。
 
@@ -41,7 +41,7 @@
 
 ## 开发扩展与应用
 
-[`WuxianKit/ARCHITECTURE.md`](WuxianKit/ARCHITECTURE.md) 说明分层（零件、成品、运行时）、扩展的写法、五类能力、Setting、来源与状态面、提案、Agent 接入、应用与驱动者（含本机程序）、任务指引与适配器，以及怎样让已有插件成为扩展。给 Agent 的总览见 [`WuxianKit/AGENT.md`](WuxianKit/AGENT.md)；交给 Agent 的开发做法见 `WuxianKit/skills/`（`kit-extension.md` 写扩展、`kit-app.md` 写应用）。
+[`WuxianKit/ARCHITECTURE.md`](WuxianKit/ARCHITECTURE.md) 说明分层（零件、成品、运行时）、扩展的写法、五类能力、Setting、来源与状态面、提案、Agent 接入、应用（含无限工坊本机扩展带的应用）、任务指引与适配器，以及怎样让已有插件成为扩展。给 Agent 的总览见 [`WuxianKit/AGENT.md`](WuxianKit/AGENT.md)；交给 Agent 的开发做法见 `WuxianKit/skills/`（`kit-extension.md` 写扩展、`kit-app.md` 写应用）。
 
 ```
 WuxianKit/                 插件本身（Interface\AddOns\WuxianKit）
@@ -96,12 +96,12 @@ python -m unittest discover -s tests -t tests
 
 WuxianKit is an extension framework for World of Warcraft: Wuxian addons that work with an AI agent. Addons declare what they can do as capabilities, and the agent uses them through [Wuxian Workshop](https://wuxianwow.com/workshop). Changes to the game are previewed in the game, run only when the player confirms, and can be undone.
 
-- **Parts, products, runtime**: an extension is a part. It declares capabilities in five kinds (Read, Store, Guide, Send and Change), sources (items apps can hear), facets (how things stand now, which apps see) and events, with an `AGENT.md` for the agent. An app is a product: a declaration and a driver (an AI conversation following a skill, or a local program). The core is the runtime: confirmation, undo, permissions, the window and running apps. Apps use extensions; extensions do not know about apps.
+- **Parts, products, runtime**: an extension is a part. It declares capabilities in five kinds (Read, Store, Guide, Send and Change), sources (items apps can hear), facets (how things stand now, which apps see) and events, with an `AGENT.md` for the agent. An app is a product: a declaration an agent drives by following a skill. The core is the runtime: confirmation, undo, permissions, the window and running apps. Apps use extensions; extensions do not know about apps.
 - **Facts in the kit, words in the app**: what happens (sources) and how things stand (facets) come from the kit; whether, when and how to speak is the app's. The core knows no third-party addon: such addons plug into the kit's interfaces through adapters in custom extensions.
 - **Proposals**: Send and Change make proposals, previewed step by step in the game and run when the player confirms. A snapshot taken before they run makes them undoable. Several changes can form one proposal, run and undone as one.
 - **Permissions**: only the player can pre-approve a category, in the `/wk` window; the agent cannot. Proposals from other players and shared profiles always need the player's click. With hot loading off in Wuxian Workshop (0.9.7 or later) the agent can only call what addons expose; with it on, the agent can run any code, and these permissions are a convention.
 - **The agent**: with Wuxian Workshop, the capabilities of enabled extensions become MCP tools. Without it, WuxianKit still runs, and other addons can call it through its Lua API.
-- **Apps**: outside the game, the game is heard only through apps. An app declares the sources it hears (chat channels, game events, the quest guide, bus events), the facets it sees (the player, the group, the quest step now, the day so far), how items are gathered into wakes and the player's commands. Each app has a card in `/wk`: 交给 AI (Hand to AI) copies its start line; a local program's app has Start, and Wuxian Workshop loads the program.
+- **Apps**: outside the game, the game is heard only through apps. An app declares the sources it hears (chat channels, game events, the quest guide, bus events), the facets it sees (the player, the group, the quest step now, the day so far), how items are gathered into wakes and the player's commands. Each app has a card in `/wk`: 交给 AI (Hand to AI) copies its start line for an AI client. A local extension of Wuxian Workshop can bring apps too.
 
 WuxianKit is optional: Wuxian Workshop does not install it.
 

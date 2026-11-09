@@ -115,7 +115,7 @@ class Basics(AppCase):
         apps = self.agent(s, "kit.apps")
         self.assertEqual([a["id"] for a in apps], ["guild", "notes"])     # the kit's own guild chat first
         self.assertEqual(apps[1], {"id": "notes", "title": "Notes", "by": "agent", "on": True, "ends": now + 7200,
-                                   "present": True, "launch": False, "temp": False, "launching": False})
+                                   "present": True, "temp": False})
 
         st = self.agent(s, "kit.app.stop", "{ app = 'notes' }")
         self.assertEqual((st["on"], st["present"], st["why"]), (False, False, "stopped"))
@@ -161,8 +161,7 @@ class Basics(AppCase):
                 ("{ app = 'a', hear = { 'game:nope' } }", "game:nope: a game source is a topic"),
                 ("{ app = 'a', hear = { 'radio:x' } }", "radio:x: no source radio (the sources: bus, chat, game, route)"),
                 ("{ app = 'a', hear = { 'guild' } }", "guild: a hear entry is <source>:<what>"),
-                ("{ app = 'a', driver = 'robot' }", "driver is \"prompt\" or \"program\""),
-                ("{ app = 'a', driver = 'prompt' }", "driver \"prompt\" goes with prompt"),
+                ("{ app = 'a', driver = 'prompt', prompt = 'a' }", "no argument driver"),
                 ("{ app = 'a', hear = 'chat:guild' }", "is a table"),
                 ("{ app = 'a', controls = { 'dance' } }", "controls: dance is not one of"),
                 ("{ app = 'a', urgent = { 'Big Deal' } }", "is not a word"),
@@ -236,8 +235,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
                                                         "addon": "WxClub", "on": True, "ends": st["ends"],
                                                         "present": True, "prompt": "club-chat",
                                                         "start": START["en"].format("Club chat", "club-chat"),
-                                                        "driver": "prompt", "launch": False, "temp": False,
-                                                        "launching": False})
+                                                        "temp": False})
         self.assertIs(s.lua.eval(b"WuxianKit:App('club') == __app"), True)
         self.assertIsNone(s.lua.eval(b"WuxianKit:App('none')"))
 
@@ -484,13 +482,13 @@ class Manifest(AppCase):
         m = self.lua(s, "WuxianKit:Manifest()")
         guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
                  "hear": ["chat:guild", "game:guild"], "see": {}, "prompt": "guild-chat",
-                 "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat", "driver": "prompt",
-                 "docs": "WuxianKit/Apps/Guild", "launch": False, "temp": False}
+                 "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat",
+                 "docs": "WuxianKit/Apps/Guild", "temp": False}
         self.assertEqual(m["apps"], [guild])                               # the kit's own
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
                          {"app": "string", "on": "boolean", "ends": "number?", "why": "string?"})
-        self.assertEqual(next(e for e in events if e["topic"] == "kit.app.launch")["data"], {"app": "string"})
+        self.assertNotIn("kit.app.launch", [e["topic"] for e in events])
         self.assertNotIn("kit.feed", [e["topic"] for e in events])
         caps = [c["id"] for c in next(e for e in m["extensions"] if e["id"] == "kit")["capabilities"]]
         for cap in ("kit.app.open", "kit.app.declare", "kit.app.status", "kit.app.stop", "kit.app.recent", "kit.apps"):
@@ -501,9 +499,9 @@ class Manifest(AppCase):
         m = self.lua(s, "WuxianKit:Manifest()")
         self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
                                       "see": {}, "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill"),
-                                      "driver": "prompt", "launch": False, "temp": False},
+                                      "temp": False},
                                      {"id": "ad", "title": "AD", "by": "addon", "addon": "WxAd", "topic": "app.ad",
-                                      "hear": ["game:quest"], "see": {}, "launch": False, "temp": False}])
+                                      "hear": ["game:quest"], "see": {}, "temp": False}])
         self.assertNotEqual(m["revision"], rev)
         s.run(1)
         self.assertEqual(self.events(s, "kit.changed")[-1]["revision"], m["revision"])
