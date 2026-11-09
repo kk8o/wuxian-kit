@@ -1,4 +1,4 @@
--- 记录 (Data): records kept on this computer (WuxianKitDB), for the agent and for other addons: data.put, data.get,
+-- 数据 (Data): records kept on this computer (WuxianKitDB), for the agent and for other addons: data.put, data.get,
 -- data.list, data.delete (Keep: at once, nothing in the game changes). A record is a key (1-64 bytes; "addon/thing" keeps
 -- addons apart) and a value of strings, numbers, booleans and tables; a big one comes back to the agent in parts
 -- (WoWBridge pieces long answers). Sizes as WuxianKit.Comm writes values: a record at most 64 KB, all of them 1 MB.

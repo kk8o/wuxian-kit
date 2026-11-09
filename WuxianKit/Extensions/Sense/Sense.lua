@@ -1,4 +1,4 @@
--- 感知 (Sense): what the game shows of the player, read at once: sense.character, sense.position, sense.bags,
+-- 角色信息 (Character info): what the game shows of the player, read at once: sense.character, sense.position, sense.bags,
 -- sense.quests, sense.professions, sense.reputation, sense.currency, sense.group, sense.guild. Nothing here reads what
 -- the client keeps secret on purpose (health and power are secret to addons on this client); a value that comes back
 -- secret (in combat, an encounter, a PvP match) is left out. sense.guild never reads public or officer notes.
