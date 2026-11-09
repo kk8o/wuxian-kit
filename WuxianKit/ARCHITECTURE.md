@@ -304,7 +304,7 @@ WuxianKit:App("guild", {
 | `me` | `true`：游戏动态的条目带 `me`（`WuxianKit:Me()`） |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有 `kit.app.*` 调用就算离开，应用停止（`why = "left"`） |
 | `minutes` | 最长运行多久（默认 120，最多 720）；`kit.app.open` 的 `minutes` 优先 |
-| `options` | 玩家给应用设的选项，`name → { kind, title, default, hint, choices, min, max, step, unit }`，种类同扩展选项；Agent 给的最多 8 个 |
+| `options` | 玩家给应用设的选项，`name → { kind, title, default, hint, choices, min, max, step, unit, order }`，种类同扩展选项；按 `order`（再按名字）排，核心的两个在最前；Agent 给的最多 8 个 |
 | `prompt` | 技能名：卡片上的「接入 Agent」复制 `/mcp__wuxian__<prompt>` |
 | `addon`、`extension` | 所属插件、所属扩展（Lua 声明）：所属扩展停用时应用停止、不能开始 |
 | `check` | （Lua）开始前的前提，返回原因就不开始，卡片上显示原因 |
