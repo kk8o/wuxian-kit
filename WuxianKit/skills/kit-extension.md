@@ -14,8 +14,11 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - the extension id (lowercase letters, digits, `_`);
    - each capability and its kind: Read (`See`) for questions about the game, Store (`Keep`) for data kept on this
      computer, Guide (`Point`) for pointing at things, Send (`Say`) for messages, Change (`Do`) for changes. A value the
-     game keeps is a `Setting`; events heard for a while are a `Feed`;
+     game keeps is a `Setting`;
+   - sources (`ext:Source`, section 5): a stream of items apps can hear, such as what the addon sees happen. A source
+     only hands items to its subscribers (`on` / `off`); it has no tools, and apps gather, keep and wake for it;
    - the categories the player may pre-approve (`ext:Scope`), the events it emits (`ext:Event`), options and commands.
+   An extension is a part: it never declares or names an app. An app that uses it is made with the skill `kit-app`.
 3. The `.toc`:
    - a new addon that only makes sense with WuxianKit: `## Dependencies: WuxianKit`, `## X-WuxianKit-Extension: <id>`,
      `## LoadOnDemand: 1` (WuxianKit loads it at login);
@@ -30,8 +33,12 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - `alone = true`: a message to a public channel; it must be a proposal of its own;
    - whatever a preview, label or format shows of the args goes through `WuxianKit:Escape`;
    - `doc`: one English sentence starting with a verb (Returns... / Proposes to...), naming other capabilities by
-     their id; errors in English; player-facing words short and plain.
-5. Docs: an `AGENT.md` in the addon folder (what the tools are for, how to use them together, cautions), and
+     their id; errors in English; player-facing words short and plain;
+   - a source: a name no other extension uses; `check(what)` answers why a `what` is wrong; `on(self, what, fn)` hands
+     `fn` a new table for each item (apps write fields on it), plain data only; the source's `doc` says what
+     `<name>:<what>` hears.
+5. Docs: an `AGENT.md` in the addon folder (what the tools are for, how to use them together, its sources and their
+   items' fields, cautions), and
    `skills/<name>.md` only for a workflow that needs several tools in order (its front matter: `name`, `title`,
    `description`, `arguments`; `needs: shell` when the client must run commands in the background, `mcp: <name>
    <URL>` for another MCP server it uses).
@@ -39,8 +46,11 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    (`<extension>.<name>`) and each event's full topic within 64 bytes.
 7. Try it in the game. A new addon appears only after a full restart of the game; later changes to its Lua need a UI
    reload (the workshop's `reload` asks the player). Then:
-   - `wk_docs` with the extension's id lists its tools and events (after the restart or reload);
+   - `wk_docs` with the extension's id lists its tools, sources and events (after the restart or reload);
    - call a Read tool and check the answer;
+   - for a source, hear it with a temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": true, "title": "Peek",
+     "hear": ["<source>:<what>"], "minutes": 15}`, make the thing happen in the game, read `wk_kit_app_recent` with
+     `{"app": "peek", "since": 0}`, then `wk_kit_app_stop`;
    - for a Change tool, tell the player first, make the proposal, `wk_wait` for the outcome, and offer `wk_kit_undo`
      afterwards.
 8. Report what the extension offers and what you checked in the game.
