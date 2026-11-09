@@ -13,6 +13,7 @@
 --   ext:Every(seconds, fn(self))           a timer, running while it is on
 --   ext:Emit(topic, data)                  the bus event "<id>.<topic>" (and so an agent event)
 --   ext:Event(topic, { doc, data })        declares one it emits, for the agent's manifest (data: field -> spec text)
+--   ext:Char()                             its storage for this character (ext.db.chars[GUID]), made when asked
 --   ext:Tell(text)                         a chat line for the player, under its title
 --   ext:Status(fn(self)), ext:Button(label, fn(self))   a line and buttons on its page in the window
 --   ext:Scope(name, title | { title, budget = { per, most } })   a category the player may let go without asking;
@@ -200,6 +201,25 @@ function Extension:Event(topic, spec)
 	if not self.emits[topic] then self.emitOrder[#self.emitOrder + 1] = topic end
 	self.emits[topic] = { topic = self.id .. "." .. topic, doc = spec.doc or "", data = spec.data }
 	ns.Changed("event", self)
+end
+
+-- ext:Char(): its storage for this character (ext.db.chars[<player GUID>]), made when first asked; the GUID read in
+-- plain text once and remembered (in combat it may be secret)
+local myGUID
+function Extension:Char()
+	if not myGUID then
+		local g = UnitGUID and Kit:Value(UnitGUID("player"))
+		if type(g) == "string" and g ~= "" then myGUID = g end
+	end
+	self.db = self.db or Storage(self)
+	self.db.chars = type(self.db.chars) == "table" and self.db.chars or {}
+	local key = myGUID or "?"
+	local t = self.db.chars[key]
+	if type(t) ~= "table" then
+		t = {}
+		self.db.chars[key] = t
+	end
+	return t
 end
 
 function Extension:Tell(text)

@@ -1,0 +1,1 @@
+-- 游戏动态 · Guide: the detectors of the topic guide (guide.step, guide.arrive: RestedXP's steps; nothing without RXPGuides). Package K1 fills this in (see Game.lua).

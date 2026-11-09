@@ -1,0 +1,1 @@
+-- 游戏动态 · Guild: the detectors of the topic guild (guild.join, guild.leave, guild.achievement, guild.level). Package K1 fills this in (see Game.lua).

@@ -105,6 +105,130 @@ function ns.Cut(s, n)
 	return (s:sub(1, n):gsub("[\192-\255][\128-\191]*$", "")) .. "…"
 end
 
+------------------------------------------------------------------------------------------------------------------------
+-- small helpers for extensions (0.6): reading the game without tripping over secret values, game text as plain text
+
+-- WuxianKit:Value(v): v as an addon may use it, or nil when the client keeps it secret (or will not let it be read)
+function Kit:Value(v)
+	if v == nil then return nil end
+	if issecretvalue and issecretvalue(v) then return nil end
+	if canaccessvalue and not canaccessvalue(v) then return nil end
+	return v
+end
+
+-- WuxianKit:Clean(text): game text as one plain line: no colours, textures, atlases; a link as its text ("[name]");
+-- line breaks and runs of spaces as one space, trimmed. nil for nil, secret, not a string or nothing left
+function Kit:Clean(text)
+	text = Kit:Value(text)
+	if type(text) ~= "string" then return nil end
+	text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:]*:", ""):gsub("|r", "")
+		:gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("|n", " ")
+		:gsub("[\r\n]+", " "):gsub("%s%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	return text ~= "" and text or nil
+end
+
+-- WuxianKit:Links(text): the links in game text, in order: { { kind ("item", "spell", "quest", "achievement" ...),
+-- id (the first number of the link's data, or nil), name (its text without brackets) } }
+function Kit:Links(text)
+	local out = {}
+	text = Kit:Value(text)
+	if type(text) ~= "string" then return out end
+	for kind, data, name in text:gmatch("|H(%a+):([^|]*)|h%[(.-)%]|h") do
+		out[#out + 1] = { kind = kind, id = tonumber(data:match("^(%-?%d+)")), name = name }
+	end
+	return out
+end
+
+local CLASSIFICATIONS = { normal = true, elite = true, rare = true, rareelite = true, worldboss = true, trivial = true,
+	minus = true }
+
+-- WuxianKit:Unit(unit): what an addon may read of a unit, or nil when there is none: { name, fullName (as other players
+-- address a player: both parts of a two-part name), level (-1: ??), classification, creature, player, hostile,
+-- class (classFile, players) }; a field the client keeps secret is left out
+function Kit:Unit(unit)
+	local V = function(v) return Kit:Value(v) end
+	local ok, out = pcall(function()
+		if not (UnitExists and V(UnitExists(unit))) then return nil end
+		local o = {}
+		local name = V((UnitName(unit)))
+		if type(name) == "string" and name ~= "" then o.name = name end
+		local full = GetUnitName and V(GetUnitName(unit, true))
+		if type(full) == "string" and full ~= "" then o.fullName = full end
+		local level = V(UnitLevel(unit))
+		if type(level) == "number" then o.level = level end
+		local cls = UnitClassification and V(UnitClassification(unit))
+		if CLASSIFICATIONS[cls] then o.classification = cls end
+		local creature = UnitCreatureType and V(UnitCreatureType(unit))
+		if type(creature) == "string" and creature ~= "" then o.creature = creature end
+		if V(UnitIsPlayer(unit)) then
+			o.player = true
+			local _, file = UnitClass(unit)
+			o.class = V(file)
+		end
+		if UnitCanAttack and V(UnitCanAttack("player", unit)) then o.hostile = true end
+		return o
+	end)
+	return ok and out or nil
+end
+
+-- WuxianKit:Pattern(fmt): a GlobalStrings format ("%s has joined the guild.") as a pattern that matches its messages:
+-- anchored, %s captures text, %d a number, the rest literal; nil for nothing usable
+function Kit:Pattern(fmt)
+	if type(fmt) ~= "string" or fmt == "" then return nil end
+	local parts, i = { "^" }, 1
+	while i <= #fmt do
+		local spec = fmt:match("^%%%d*%$?[sd]", i)
+		if spec then
+			parts[#parts + 1] = spec:sub(-1) == "d" and "(%d+)" or "(.+)"
+			i = i + #spec
+		elseif fmt:sub(i, i + 1) == "%%" then
+			parts[#parts + 1] = "%%"
+			i = i + 2
+		else
+			local c = fmt:sub(i, i)
+			if c:find("[%^%$%(%)%%%.%[%]%*%+%-%?]") then c = "%" .. c end
+			parts[#parts + 1] = c
+			i = i + 1
+		end
+	end
+	parts[#parts + 1] = "$"
+	return table.concat(parts)
+end
+
+-- WuxianKit:NewId(): the next number of the core's one counter (WuxianKitDB.lastId), for chat messages, feed items and
+-- app items alike, so that no two ever share an id, through reloads too. ns.BumpId(n): the counter goes on from at
+-- least n (what an older counter reached)
+local lastId = 0
+function ns.BumpId(n)
+	n = tonumber(n)
+	if not ns.Finite(n) then return end
+	if n > lastId then lastId = math.floor(n) end
+	if ns.db and (tonumber(ns.db.lastId) or 0) < lastId then ns.db.lastId = lastId end
+end
+
+function Kit:NewId()
+	local id = math.max(lastId, ns.db and tonumber(ns.db.lastId) or 0) + 1
+	lastId = id
+	if ns.db then ns.db.lastId = id end
+	return id
+end
+
+-- WuxianKit:Me(): a small picture of the player for an AI app: { name (whole), nickname (the core's option 称呼: what
+-- an AI calls the player; "" = by name), level, class, classToken, zone, subzone, combat }
+function Kit:Me()
+	local V = function(v) return Kit:Value(v) end
+	local core = ns.extensions and ns.extensions.kit
+	local nick = core and core.options and core.options.nickname and core:Get("nickname") or ""
+	nick = type(nick) == "string" and nick:match("^%s*(.-)%s*$") or ""
+	local className, classToken = UnitClass("player")
+	local name = GetUnitName and V(GetUnitName("player", true)) or V((UnitName("player")))
+	return { name = name, nickname = nick, level = V(UnitLevel("player")), class = V(className),
+		classToken = V(classToken), zone = Kit:Clean(GetZoneText and GetZoneText()),
+		subzone = Kit:Clean(GetSubZoneText and GetSubZoneText()),
+		combat = ((InCombatLockdown and InCombatLockdown()) or
+			(UnitAffectingCombat and V(UnitAffectingCombat("player")))) and true or false }
+end
+
 -- a chat line the player reads (not print: WoWBridge forwards print output to the daemon)
 function ns.Say(text)
 	if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(L.TAG .. text) end

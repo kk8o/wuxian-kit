@@ -1,0 +1,1 @@
+-- 游戏动态 · Combat: the detectors of the topic combat (combat.start, combat.end, danger, cast.at_me, kill, death, alive, spell.big, target) and aura (aura.gift, aura.bad). Package K1 fills this in (see Game.lua).

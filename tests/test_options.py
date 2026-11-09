@@ -131,8 +131,8 @@ class Options(unittest.TestCase):
     def test_requires(self):
         """WuxianKit:Requires(version): this version or newer; false when the version is unknown"""
         s = self.start()
-        self.assertEqual(s.lua.eval(b"WuxianKit.VERSION"), b"0.5.0")
-        for want, ok in (("0.5.0", True), ("0.4.9", True), ("0.5", True), ("0.4.12", True), ("0.5.1", False),
+        self.assertEqual(s.lua.eval(b"WuxianKit.VERSION"), b"0.6.0")
+        for want, ok in (("0.6.0", True), ("0.5.9", True), ("0.6", True), ("0.5.12", True), ("0.6.1", False),
                          ("0.10.0", False), ("1.0", False), ("x", False)):
             self.assertEqual(s.lua.eval(f"WuxianKit:Requires({want!r})".encode()), ok, want)
         s.lua.execute(b"WuxianKit.VERSION = '?'")

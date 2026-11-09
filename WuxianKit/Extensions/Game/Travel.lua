@@ -1,0 +1,1 @@
+-- 游戏动态 · Travel: the detectors of the topic travel (zone, taxi, rest). Package K1 fills this in (see Game.lua).

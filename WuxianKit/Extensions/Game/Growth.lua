@@ -1,0 +1,1 @@
+-- 游戏动态 · Growth: the detectors of the topic growth (xp, level, talent, spell.new). Package K1 fills this in (see Game.lua).

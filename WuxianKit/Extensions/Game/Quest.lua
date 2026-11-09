@@ -1,0 +1,1 @@
+-- 游戏动态 · Quest: the detectors of the topic quest (quest.accept, quest.progress, quest.ready, quest.turnin). Package K1 fills this in (see Game.lua).

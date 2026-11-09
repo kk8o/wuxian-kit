@@ -253,6 +253,18 @@ Chat.Names = Public(function()
 	for i, n in ipairs(Names()) do copy[i] = n end
 	return copy
 end)
+-- (0.6 contract stubs, K4 fills them in) Chat:On(channel, fn(msg)) -> token: every message read on channel ("guild" ...,
+-- or "*") while the chat extension is on, whether or not chat.listen runs, each read once (the same table Read gives,
+-- with why); Chat:Off(token)
+local chatSubs, chatToken = {}, 0
+Chat.subs = chatSubs
+Chat.On = Public(function(channel, fn)
+	if type(channel) ~= "string" or type(fn) ~= "function" then error("WuxianKit.Chat:On(channel, fn)", 2) end
+	chatToken = chatToken + 1
+	chatSubs[chatToken] = { channel = channel, fn = fn }
+	return chatToken
+end)
+Chat.Off = Public(function(t) chatSubs[t] = nil end)
 Kit.Chat = Chat
 
 chat:Option("aliases", { title = L"ALIASES", kind = "list", hint = L"ALIASES_HINT", changed = Forget })

@@ -419,9 +419,7 @@ class Core(unittest.TestCase):
         self.assertEqual(self.call(s, "tune.cvar.set", "{ name = 'graphicsQuality', value = 2 }")["state"], "pending")
         public = py(s.lua.eval(b"(function() local out = {} for k in pairs(WuxianKit) do out[#out + 1] = k end "
                                b"table.sort(out) return out end)()"))
-        self.assertEqual(public, ["AgentOnline", "Call", "Capabilities", "Capability", "Chat", "Check", "Comm", "Copy", "Emit",
-                                  "Escape", "Extension", "Granted", "Manifest", "Off", "On", "OptionsPanel", "Proposal",
-                                  "Proposals", "Propose", "Requires", "Skin", "VERSION", "Window", "Words"])
+        self.assertEqual(public, sorted(["AgentOnline", "App", "AppControl", "AppPanel", "AppSay", "Call", "Capabilities", "Capability", "Chat", "Check", "Clean", "Comm", "Copy", "Emit", "Escape", "Extension", "Game", "Granted", "Links", "Manifest", "Me", "NewId", "Off", "On", "OptionsPanel", "Pattern", "Proposal", "Proposals", "Propose", "Requires", "Skin", "Unit", "VERSION", "Value", "Window", "Words"]))
         s.lua.execute(b"WuxianKitDB = { grants = { ['tune.settings.sound'] = true } }")   # even replaced
         s.fire("PLAYER_LOGOUT")
         self.assertEqual(py(s.g("WuxianKitDB"))["grants"], {"tune.settings.game": True})
