@@ -4,7 +4,7 @@
 -- its scopes to tick "without asking", each ticked one with its budget (a button that goes through the usual ones), and
 -- what it can do, a line of titles for each kind. The core's own page lists, instead of what it can do (that is the
 -- agent's), what has not run yet, to stop, and what ran, to undo. A page longer than the window scrolls with the mouse
--- wheel. One window: nothing else is spread over the screen.
+-- wheel, and so does the list at the left. One window: nothing else is spread over the screen.
 -- WuxianKit:OptionsPanel(id, parent, width) draws an extension's options in another addon's window with the same
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
 -- The groups in the player's order: 应用 (apps, 0.6) first, then the built-in extensions, then the custom ones; the
@@ -446,9 +446,16 @@ local function Frame()
 	f.close = S.Button(f, "×", false, function() f:Hide() end)
 	f.close:SetSize(24, 24)
 	f.close:SetPoint("TOPRIGHT", -8, -8)
-	f.list = CreateFrame("Frame", nil, f)
-	f.list:SetPoint("TOPLEFT", 10, -56)
-	f.list:SetSize(LEFT - 10, H - 66)
+	f.side = CreateFrame("ScrollFrame", nil, f)              -- the list, cut at the window's edge, scrolled by the wheel
+	f.side:SetPoint("TOPLEFT", 10, -56)
+	f.side:SetSize(LEFT - 10, BODY)
+	f.side:EnableMouseWheel(true)
+	f.side:SetScript("OnMouseWheel", function(self, delta)
+		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScroll() - delta * 2 * 24, f.sideRange or 0)))
+	end)
+	f.list = CreateFrame("Frame", nil, f.side)
+	f.list:SetSize(LEFT - 10, BODY)
+	f.side:SetScrollChild(f.list)
 	f.items = {}
 	f.scroll = CreateFrame("ScrollFrame", nil, f)            -- the page, cut at the window's edge, scrolled by the wheel
 	f.scroll:SetPoint("TOPLEFT", LEFT + 14, -56)
@@ -550,6 +557,9 @@ function UI.DrawWindow()
 	end
 	for i = n + 1, #f.items do f.items[i]:Hide() end
 	for i = nHead + 1, #f.heads do f.heads[i]:Hide() end
+	f.sideRange = math.max(0, y - 8 - BODY)                -- how far the list scrolls
+	f.list:SetHeight(BODY + f.sideRange)
+	if f.side:GetVerticalScroll() > f.sideRange then f.side:SetVerticalScroll(f.sideRange) end
 	Begin(f)
 	if current.app then AppPage(current) else Page(current) end
 	f.range = math.max(0, f.y + 8 - BODY)                  -- how far the page scrolls
