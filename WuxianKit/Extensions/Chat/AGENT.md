@@ -16,12 +16,22 @@ Extension id `chat`. Listens to chat channels and sends messages for the player.
    again (after a gap, or when you start late).
 3. Each message: `id`, `channel`, `text`, `plain` (without links and colors), `links`, `sender`, `self` (true: the
    player's own message), `target` (a whisper: the other player, whom to answer; a channel or community: its name),
-   `mention`, `time`. For a whisper the player sent, `sender` is the player and `target` the other player.
+   `mention`, `why`, `time`. For a whisper the player sent, `sender` is the player and `target` the other player.
    - `id`: a number unique to this message, also across reloads. Use it as `reply` when you answer it.
    - `mention`: true when it is not the player's own and it is a whisper to the player or names them: their whole
      character name, a part of it (names on this client often have two parts, "Name Surname"; each part of two or more
      characters counts), or one of the names the player listed in the option 别人怎么叫我 (What others call me). Latin
      letters match in any case.
+   - `why`: whether the message calls for attention now, and why; none for the player's own lines and for ordinary
+     talk. Counted per conversation: the channel, and for a whisper the other player, for a channel or community its
+     name. The first that holds:
+     - `mention`: as `mention` above.
+     - `followup`: said within 90 seconds after the player's own line in the same conversation (each of their lines
+       starts the 90 seconds again): most likely an answer to the player.
+     - `question`: it asks something (a question mark, 吗, 怎么, 哪, 多少, "how do", "anyone know" ...; at least 6
+       bytes) and is no group or trade call (求组, 缺, 出售, WTB, LFG ...).
+     - `burst`: 3 lines or more by 2 people or more in 20 seconds, the talk is lively; at most once in 45 seconds per
+       conversation.
 4. `wk_chat_listen_status` tells whether it runs and until when; `wk_chat_listen_stop` stops it. Stop it when done.
 
 ## Sending
@@ -69,6 +79,14 @@ Other addons can read chat the same way, with or without the listen feed running
   handler and the feed) gives the same message. Treat it as read-only.
 - `WuxianKit.Chat.Mentions(text)`: whether a text names the player (links and colors are ignored).
 - `WuxianKit.Chat.Message(id)`: one of the last 200 messages read in this session, or nil.
-- `WuxianKit.Chat.NewId()`: a new id from the same counter, for items an addon feeds alongside chat lines (so ids in one feed never repeat).
 - `WuxianKit.Chat.Names()`: the player's names as `mention` uses them (a copy).
-- Calling them with `:` works too. They exist from WuxianKit 0.5 (`WuxianKit:Requires("0.5.0")`).
+- `WuxianKit.Chat:On(channel, fn)`: `fn(msg)` gets every message read on `channel` (guild, officer, party, raid,
+  instance, whisper, say, yell, channel, community, or `"*"` for all) while the chat extension is on, whether or not
+  the listen feed runs. Each message once, at the moment it is first read (inside the game's `CHAT_MSG_*` event), with
+  `why` counted; it is the same table `Read`, `Message` and the listen feed give, so read it and copy what you keep,
+  never change it. Answers a token; `WuxianKit.Chat:Off(token)` ends it. An error in `fn` goes to the error handler
+  and does not stop the others.
+- Ids come from the core's one counter, `WuxianKit:NewId()`: take ids for an addon's own items there, so they never
+  repeat among chat lines and other feeds. (0.5's `WuxianKit.Chat.NewId()` is gone in 0.6.)
+- Calling them with `:` works too. `Read`, `Mentions`, `Message` and `Names` exist from WuxianKit 0.5; `On`, `Off` and
+  `why` from 0.6 (`WuxianKit:Requires("0.6.0")`).

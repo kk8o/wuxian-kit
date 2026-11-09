@@ -4,14 +4,24 @@
 --   kit.proposals         (See)  the proposals still open and the last finished ones; kit.proposal one of them
 --   kit.history           (See)  what ran on this character (the last `limit`, 20, of the 50 kept), to undo
 --   kit.extension.get/set        a Setting: whether an extension is on; turning one on or off is a proposal, undoable
---   kit.options           (See)  an extension's options as the player set them (read only: only the player changes them)
+--   kit.options           (See)  an extension's or an app's options as the player set them (read only: only the player
+--                                changes them)
+--   kit.me                (See)  the player's name, what AI apps call them (the core's option nickname), their aliases
 --   kit.undo              (Do)   undo a proposal that ran
 local _, ns = ...
 local Kit, L = ns.Kit, ns.L
 
+-- words of the core's own extension that the core's Locale does not have
+local W = Kit:Words {
+	zhCN = { NICKNAME = "称呼", NICKNAME_HINT = "AI 应用怎么叫你；留空就叫角色名", ME = "关于我" },
+	enUS = { NICKNAME = "What to call me", NICKNAME_HINT = "How AI apps address you; empty: your character name",
+		ME = "About me" },
+}
+
 local kit = Kit:Extension("kit", { title = L"CORE", version = Kit.VERSION })
 kit:Scope("extensions", L"SCOPE_EXTENSIONS")
 kit:Scope("undo", L"SCOPE_UNDO")
+kit:Option("nickname", { title = W"NICKNAME", kind = "text", default = "", hint = W"NICKNAME_HINT" })
 
 kit:See("extensions", { title = L"LIST_EXTENSIONS",
 	doc = "the extensions: id, title, version, addon, builtin, state (on, off, disabled in the game's addon list, missing: "
@@ -51,14 +61,33 @@ kit:See("history", { title = L"HISTORY", args = { limit = "number?" },
 		return out
 	end })
 
-kit:See("options", { title = L"LIST_OPTIONS", args = { extension = "string" },
-	doc = "an extension's options, as the player set them on its page: name -> {title, kind (boolean, text, number, "
-		.. "choice, list), value, default, choices [{value, label}] (choice), min, max, unit (number)}. Read only: only "
-		.. "the player changes them; kit.option says when one changed",
+kit:See("options", { title = L"LIST_OPTIONS", args = { extension = "string?", app = "string?" },
+	doc = "the options of an extension (extension = its id) or of an app (app = its id; give one of the two), as the "
+		.. "player set them on its page: name -> {title, kind (boolean, text, number, choice, list), value, default, "
+		.. "choices [{value, label}] (choice), min, max, unit (number)}. Read only: only the player changes them; "
+		.. "kit.option says when one changed",
 	run = function(_, a)
+		if a.extension and a.app then error("give extension or app, not both", 0) end
+		if not a.extension and not a.app then error("give extension (an extension's id) or app (an app's id)", 0) end
+		if a.app then
+			local list = ns.AppOptionList and ns.AppOptionList(a.app)
+			if not list then error(("no app %s (kit.apps lists them)"):format(a.app), 0) end
+			return list
+		end
 		local ext = ns.extensions[a.extension]
 		if not ext then error(("no extension %s (kit.extensions lists them)"):format(a.extension), 0) end
 		return ns.OptionList(ext)
+	end })
+
+kit:See("me", { title = W"ME",
+	doc = "the player as AI apps address them: name (the whole character name), nickname (the core's option 称呼, What "
+		.. "to call me: call the player this; \"\" = by name), aliases (the names chat counts as naming the player: the "
+		.. "whole name, its parts, the chat option 别人怎么叫我; none while the chat extension is off)",
+	run = function()
+		local me = Kit:Me()
+		local chat = ns.extensions.chat
+		local aliases = chat and chat.active and Kit.Chat and Kit.Chat.Names and Kit.Chat.Names() or {}
+		return { name = me.name, nickname = me.nickname, aliases = aliases }
 	end })
 
 kit:Setting("extension", { title = L"SWITCH", doc = "whether an extension is on",
