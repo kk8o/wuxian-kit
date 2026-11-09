@@ -86,11 +86,11 @@ class GuildApp(unittest.TestCase):
         self.assertNotIn("enrich", app)
         self.assertEqual(self.agent(s, "kit.apps"), [{"id": "guild", "title": "Guild chat", "by": "addon",
                                                       "addon": "WuxianKit", "on": False, "present": False,
-                                                      "prompt": "guild-chat", "start": START_EN}])
+                                                      "prompt": "guild-chat", "start": START_EN, "extension": "chat"}])
         m = py(s.lua.eval(b"WuxianKit:Manifest()"))
         self.assertEqual(m["apps"], [{"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit",
                                       "topic": "app.guild", "hear": ["chat:guild", "game:guild"],
-                                      "prompt": "guild-chat", "start": START_EN}])
+                                      "prompt": "guild-chat", "start": START_EN, "extension": "chat"}])
         zh = self.start(locale="zhCN")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["title"], "公会聊天")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["start"],

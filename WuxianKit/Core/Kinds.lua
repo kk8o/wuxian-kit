@@ -808,7 +808,7 @@ local function Revision(m)
 	end
 	for _, a in ipairs(m.apps or {}) do
 		parts[#parts + 1] = table.concat({ "app", a.id, a.title or "", a.by or "", a.addon or "", a.topic or "",
-			table.concat(a.hear or {}, ","), a.prompt or "", a.start or "" }, "\1")
+			table.concat(a.hear or {}, ","), a.prompt or "", a.start or "", a.extension or "" }, "\1")
 	end
 	return Hash(table.concat(parts, "\2"))
 end

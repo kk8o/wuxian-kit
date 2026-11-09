@@ -936,7 +936,8 @@ function ns.AppList()
 		local app = apps[id]
 		local s = Run(app)
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
-			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt, start = StartLine(app) }
+			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt, start = StartLine(app),
+			extension = app.decl.extension, blocked = not s and Blocked(app) or nil }
 	end
 	return out
 end
@@ -946,7 +947,7 @@ function ns.AppManifest()
 	for _, id in ipairs(order) do
 		local app = apps[id]
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, topic = "app." .. id,
-			hear = Copy(app.decl.hear), prompt = app.decl.prompt, start = StartLine(app) }
+			hear = Copy(app.decl.hear), prompt = app.decl.prompt, start = StartLine(app), extension = app.decl.extension }
 	end
 	return out
 end
@@ -1134,7 +1135,8 @@ kit:See("app.recent", { title = "kit.app.recent", args = { app = "string", since
 kit:See("apps", { title = "kit.apps",
 	doc = "the apps: [{id, title, by (addon: an addon declared it, kit.app.open takes only app, minutes, lease; agent: "
 		.. "declared by kit.app.open), addon?, on, ends, present, prompt? (its skill), start? (the start line: one sentence "
-		.. "that tells an AI client to read the skill with wk_docs)}]",
+		.. "that tells an AI client to read the skill with wk_docs), extension? (the extension it belongs to), blocked? "
+		.. "(why it cannot start, while off)}]. Not a heartbeat: it does not keep an app alive",
 	run = function() return ns.AppList() end })
 
 kit:Event("feed", { doc = "a feed started or stopped; a stop says why: stopped, expired (its time was up), left (its "

@@ -363,6 +363,9 @@ class Runs(AppCase):
         self.assertEqual(self.agent(s, "kit.app.open", "{ app = 'xa' }")["blocked"], "Its extension XG is off")
         st = py(s.ns.AppStatus(b"xa"))
         self.assertEqual((st["extension"], st["blocked"], st["why"]), (False, "Its extension XG is off", "extension"))
+        listed = next(a for a in self.agent(s, "kit.apps") if a["id"] == "xa")      # the list says so too (no heartbeat)
+        self.assertEqual((listed["extension"], listed["blocked"], listed["on"]), ("xg", "Its extension XG is off", False))
+        self.assertEqual(next(a for a in py(s.ns.AppManifest()) if a["id"] == "xa")["extension"], "xg")
         s.ns.Switch(b"xg", True)
         self.assertTrue(self.agent(s, "kit.app.open", "{ app = 'xa' }")["on"])
         s.ns.Switch(b"chat", False)                                       # a source's extension off: cannot start
@@ -473,7 +476,7 @@ class Manifest(AppCase):
         m = self.lua(s, "WuxianKit:Manifest()")
         guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
                  "hear": ["chat:guild", "game:guild"], "prompt": "guild-chat",
-                 "start": START["en"].format("Guild chat", "guild-chat")}
+                 "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat"}
         self.assertEqual(m["apps"], [guild])                               # the kit's own
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
