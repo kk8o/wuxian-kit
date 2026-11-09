@@ -93,6 +93,7 @@ G.Topic("quest", {
 			id = Num(id)
 			if not id then return end
 			xp, money = Num(xp), Num(money)
+			G.Tally("quests")
 			G.Moment("quest.turnin", { quest = QuestTitle(id), id = id, xp = xp and xp > 0 and xp or nil,
 				money = money and money > 0 and money or nil }, { key = id, every = 5 })
 			if quests then quests[id] = nil end

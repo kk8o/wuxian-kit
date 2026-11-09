@@ -271,7 +271,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
         self.assertEqual((item["source"], item["why"], item["id"]), ("chat", "question", s.lua.eval(b"__msg.id")))
         s.lua.execute(b"__moment('quest.turnin', 'quest', { id = 5 })")
         g = self.wakes(s, "c")[1]["items"][0]
-        self.assertEqual((g["kind"], g["data"], g["me"]["name"]), ("quest.turnin", {"id": 5}, s.lua.eval(b"WuxianKit:Me().name").decode()))
+        self.assertEqual((g["kind"], g["data"]), ("quest.turnin", {"id": 5}))   # no me: the source game has none
         self.assertGreater(g["id"], item["id"])
         self.agent(s, "kit.app.stop", "{ app = 'c' }")
         self.assertEqual((self.lua(s, "__count(__chatsubs)"), self.lua(s, "__count(__gamesubs)")), (0, 0))

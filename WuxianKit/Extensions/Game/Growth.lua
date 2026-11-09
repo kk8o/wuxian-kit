@@ -1,6 +1,6 @@
 -- 游戏动态 · Growth: the topic growth (xp, level, talent, spell.new). Ported from 无限陪玩 (the companion's
 -- Progress.lua). The xp, level and talent baselines are taken when the topic turns on, so the first change after it is
--- measured against then.
+-- measured against then. Every xp gained (across one level up too) and every level go to the day's tally (G.Tally).
 local addonName, ns = ...
 local Kit = WuxianKit
 local G = ns.game
@@ -36,8 +36,13 @@ local function XPFlush()
 	local before, beforeMax, beforeLevel = xpLast, xpMaxLast, levelLast
 	xpLast, xpMaxLast, levelLast = xp, max, level
 	if not (xp and max and max > 0 and before and beforeMax and beforeMax > 0) then return end
-	if level ~= beforeLevel or xp < before or GetTime() - leveledAt < 1.5 then return end   -- a level: only level
 	local gained = xp - before
+	if level == beforeLevel and gained > 0 then
+		G.Tally("xp", gained)
+	elseif level and beforeLevel and level == beforeLevel + 1 and beforeMax >= before then
+		G.Tally("xp", beforeMax - before + xp)       -- over one level up: the rest of the old one, then the new one's
+	end
+	if level ~= beforeLevel or xp < before or GetTime() - leveledAt < 1.5 then return end   -- a level: only level
 	if gained <= 0 then return end
 	local was, now = before * 100 / max, xp * 100 / max
 	local crossed = gained * 100 / max >= 5
@@ -85,6 +90,7 @@ end
 local function LevelUp(_, level)
 	leveledAt = GetTime()
 	level = Num(level)
+	G.Tally("levels")
 	C_Timer.After(0.5, function()                -- talent points come a moment later
 		if not G.active.growth then return end
 		XPBase()

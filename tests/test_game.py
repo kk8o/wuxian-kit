@@ -1,7 +1,7 @@
 """游戏动态 (Game events, ARCHITECTURE section 11): the source game (an app that hears game:<topic>, game:<kind> or
 game:*), WuxianKit.Game:On / Off, the guild topic, and laziness (a topic's events are registered only while something
-hears it). The detectors of the other topics are in test_game_combat.py, test_game_progress.py and test_game_guide.py;
-GameTest here drives them all, through a temporary app (kit.app.open temp = true) named probe."""
+hears it). The detectors of the other topics are in test_game_combat.py and test_game_progress.py, the facet today in
+test_game_today.py; GameTest here drives them all, through a temporary app (kit.app.open temp = true) named probe."""
 import unittest
 
 from kitmock import Session, lupa, py
@@ -27,18 +27,16 @@ class Game:
         self.lua.execute(f"__ok, __answer = pcall(WuxianKit.Call, WuxianKit, {cap!r}, {args})".encode())
         return bool(self.s.g("__ok")), py(self.s.g("__answer"))
 
-    def open_args(self, topics=None, me=None, minutes=60, temp=True):
+    def open_args(self, topics=None, minutes=60, temp=True):
         hear = ["game:" + t for t in topics] if topics is not None else ["game:*"]
         args = [f"app = 'probe', minutes = {minutes}, lease = 0", "hear = { " + ", ".join(repr(h) for h in hear) + " }"]
         if temp:
             args.append("temp = true")
-        if me is not None:
-            args.append(f"me = {'true' if me else 'false'}")
         return "{ " + ", ".join(args) + " }"
 
-    def listen(self, topics=None, me=None, minutes=60, temp=True):
+    def listen(self, topics=None, minutes=60, temp=True):
         """the app probe hears the topics (all: game:*), a temporary one unless temp is false; no lease"""
-        return self.call("kit.app.open", self.open_args(topics, me, minutes, temp))
+        return self.call("kit.app.open", self.open_args(topics, minutes, temp))
 
     def stop(self):
         return self.call("kit.app.stop", "{ app = 'probe' }")
@@ -114,7 +112,7 @@ class Source(GameTest):
         answer = g.listen()
         self.assertTrue(answer["on"])
         self.assertEqual((answer["hear"], answer["temp"]), (["game:*"], True))
-        self.assertEqual(g.active(), ["aura", "combat", "growth", "guide", "guild", "quest", "travel"])
+        self.assertEqual(g.active(), ["aura", "combat", "growth", "guild", "quest", "travel"])
         g.fire("QUEST_TURNED_IN", 3001, 2150, 1500)
         [w] = g.events()
         self.assertEqual((w["app"], w["reason"]), ("probe", "item"))
@@ -128,9 +126,9 @@ class Source(GameTest):
         self.assertEqual([i["kind"] for i in recent["items"]], ["quest.turnin"])
         self.assertEqual(recent["next"], m["id"])
 
-    def test_me_and_topics(self):
+    def test_topics(self):
         g = self.game()
-        answer = g.listen(topics=["quest", "combat", "quest", "quest.turnin"], me=True)
+        answer = g.listen(topics=["quest", "combat", "quest", "quest.turnin"])
         self.assertEqual(answer["hear"], ["game:quest", "game:combat"])     # none twice, none another covers
         self.assertEqual(g.active(), ["combat", "quest"])
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
@@ -138,15 +136,13 @@ class Source(GameTest):
         g.fire("PLAYER_UPDATE_RESTING")                                          # travel: not heard
         [m] = g.moments()                                                        # once, though two entries match
         self.assertEqual(m["kind"], "quest.turnin")
-        self.assertEqual(m["me"]["name"], "Wuxian Forever")
-        self.assertEqual(m["me"]["level"], 8)
-        self.assertIs(m["me"]["combat"], False)
+        self.assertNotIn("me", m)                                                # the player is the facet me now
 
     def test_bad_topics_are_refused(self):
         g = self.game()
         ok, err = g.try_call("kit.app.open", g.open_args(topics=["combat", "loot"]))
         self.assertFalse(ok)
-        self.assertIn("game:loot: a game source is a topic (combat, aura, growth, quest, travel, guild, guide)", err)
+        self.assertIn("game:loot: a game source is a topic (combat, aura, growth, quest, travel, guild)", err)
         self.assertEqual(g.active(), [])
         self.assertNotIn("probe", [x["id"] for x in g.call("kit.apps")])
         answer = g.listen(topics=["guild.join"])                                 # a kind turns its topic on
@@ -187,7 +183,7 @@ class Source(GameTest):
         g = self.game()
         g.lua.execute(b"__heard = {} WuxianKit.Game:On('*', function(item) __heard[#__heard + 1] = item.kind end)")
         g.listen()
-        self.assertEqual(len(g.active()), 7)
+        self.assertEqual(len(g.active()), 6)
         g.s.ns[b"Switch"](b"game", False)
         self.assertEqual(g.active(), [])
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
@@ -196,7 +192,7 @@ class Source(GameTest):
         self.assertEqual(g.registered("quest"), [])
         self.assertNotIn("probe", [x["id"] for x in g.call("kit.apps")])         # the app stopped (a temporary one goes)
         g.s.ns[b"Switch"](b"game", True)                                       # on again: the subscriber hears again
-        self.assertEqual(len(g.active()), 7)
+        self.assertEqual(len(g.active()), 6)
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         self.assertEqual(py(g.lua.eval(b"__heard")), ["quest.turnin"])
         self.assertEqual(g.moments(), [])
@@ -215,7 +211,7 @@ class Subscribers(GameTest):
             __t2 = WuxianKit.Game:On('travel', function(item) table.insert(__got.topic, item.kind) end)
             __t3 = WuxianKit.Game:On('*', function(item) table.insert(__got.all, item.kind) item.data.id = 0 end)
         """)
-        self.assertEqual(g.active(), ["aura", "combat", "growth", "guide", "guild", "quest", "travel"])
+        self.assertEqual(g.active(), ["aura", "combat", "growth", "guild", "quest", "travel"])
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         g.lua.execute(b"__resting = true function IsResting() return __resting end")
         g.fire("PLAYER_UPDATE_RESTING")
@@ -252,7 +248,7 @@ class Subscribers(GameTest):
 class Laziness(GameTest):
     def test_nothing_registered_while_nobody_hears(self):
         g = self.game()
-        for topic in ("combat", "aura", "growth", "quest", "guild", "guide", "travel"):
+        for topic in ("combat", "aura", "growth", "quest", "guild", "travel"):
             self.assertEqual(g.registered(topic), [], topic)
         g.listen(topics=["combat", "aura"])
         combat = g.registered("combat")
