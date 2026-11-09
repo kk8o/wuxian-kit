@@ -7,7 +7,11 @@ in their folders. Both go into --out (dist\ in this repo by default; for a relea
 that is already in the catalog with another file is refused: a published file never changes (the site caches it for
 good), so a change needs a new version.
 
-  python tools\package.py [--out <folder>] [--notes-zh "..."] [--notes-en "..."] [--min-app 0.9.7] [--replace]
+--addon packs another addon of this repo the same way (WuxianKit_Guides: the guide adapters, released on their own):
+its zip, and its entry with the extensions it brings (read in the test client with it loaded beside WuxianKit).
+
+  python tools\package.py [--addon WuxianKit_Guides] [--out <folder>] [--notes-zh "..."] [--notes-en "..."]
+                           [--min-app 0.9.7] [--replace]
 """
 import argparse
 import datetime
@@ -36,8 +40,8 @@ def toc_fields(path):
     return out
 
 
-def files():
-    for p in sorted(ADDON.rglob("*")):
+def files(addon=ADDON):
+    for p in sorted(addon.rglob("*")):
         if p.is_file() and not any(s in p.as_posix() for s in SKIP):
             yield p
 
@@ -51,13 +55,13 @@ def contents(p):
     return data.replace(b"\r\n", b"\n") if p.suffix.lower() in TEXT else data
 
 
-def pack():
+def pack(addon=ADDON):
     """the zip's bytes: WuxianKit/... with fixed times and LF text, so the same files make the same zip on any checkout
     (the compression is the Python's zlib: check a release against the catalog, not by rebuilding it elsewhere)"""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-        for p in files():
-            info = zipfile.ZipInfo("WuxianKit/" + p.relative_to(ADDON).as_posix(), date_time=(2026, 1, 1, 0, 0, 0))
+        for p in files(addon):
+            info = zipfile.ZipInfo(addon.name + "/" + p.relative_to(addon).as_posix(), date_time=(2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(info, contents(p))
     return buf.getvalue()
@@ -69,15 +73,17 @@ class Checks:
             raise SystemExit(f"the addon does not load in the test client: {msg or value}")
 
 
-def manifest(locale):
+def manifest(locale, addon=ADDON):
     from kitmock import Session, py
-    s = Session(Checks(), locale=locale)
+    s = Session(Checks(), locale=locale, fixtures=() if addon == ADDON else (addon.name,))
     s.login()
     s.run(1)
     return py(s.lua.eval(b"WuxianKit:Manifest()"))
 
 
-def skills():
+def skills(addon=ADDON):
+    if addon != ADDON:
+        return []                                  # (another addon's: none yet)
     out = []
     # the core's first, then the extensions', then the apps' (an app's skills are its own: app, not extension)
     for p in (sorted(ADDON.glob("skills/*.md")) + sorted(ADDON.glob("Extensions/*/skills/*.md"))
@@ -100,24 +106,26 @@ def skills():
     return out
 
 
-def entry(toc, data, name, notes, min_app):
-    zh, en = manifest("zhCN"), manifest("enUS")
+def entry(toc, data, name, notes, min_app, addon=ADDON):
+    zh, en = manifest("zhCN", addon), manifest("enUS", addon)
     titles = {e["id"]: e["title"] for e in zh["extensions"]}
     exts = []
     for e in en["extensions"]:
-        if e["id"] == "kit" or not e.get("builtin"):
+        if addon == ADDON and (e["id"] == "kit" or not e.get("builtin")):
+            continue
+        if addon != ADDON and e.get("addon") != addon.name:
             continue
         exts.append({"id": e["id"], "title": {"zh": titles.get(e["id"], e["title"]), "en": e["title"]},
                      "tools": len([c for c in e.get("capabilities") or [] if c["id"] not in ("kit.manifest", "kit.revision")]),
                      "events": len(e.get("events") or [])})
     plain = lambda t: re.sub(r"\s*\(WuxianKit\)$", "", t)
     return {
-        "id": toc.get("X-Wuxian-ID", "wuxiankit"), "folder": "WuxianKit", "version": toc["Version"],
+        "id": toc.get("X-Wuxian-ID", addon.name.lower()), "folder": addon.name, "version": toc["Version"],
         "title": {"zh": plain(toc.get("Title-zhCN", "")), "en": plain(toc.get("Title", ""))},
         "summary": {"zh": toc.get("Notes-zhCN", ""), "en": toc.get("Notes", "")},
         "file": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         "min_app": min_app, "protocol": en.get("protocol"),
-        "extensions": exts, "skills": skills(),
+        "extensions": exts, "skills": skills(addon),
         "notes": notes, "released": datetime.date.today().isoformat(),
         "homepage": toc.get("X-Website", "https://wuxianwow.com/workshop/extensions"),
     }
@@ -125,28 +133,32 @@ def entry(toc, data, name, notes, min_app):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--addon", default="WuxianKit", help="the addon folder in this repo (WuxianKit_Guides)")
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--notes-zh", default="")
     ap.add_argument("--notes-en", default="")
     ap.add_argument("--min-app", default="0.9.7")
     ap.add_argument("--replace", action="store_true", help="replace the same version (only one not uploaded yet)")
     a = ap.parse_args()
-    toc = toc_fields(ADDON / "WuxianKit.toc")
-    data = pack()
-    name = f"WuxianKit-{toc['Version']}.zip"
+    addon = REPO / a.addon
+    if not (addon / f"{a.addon}.toc").exists():
+        raise SystemExit(f"no addon {a.addon} in {REPO}")
+    toc = toc_fields(addon / f"{a.addon}.toc")
+    data = pack(addon)
+    name = f"{a.addon}-{toc['Version']}.zip"
     a.out.mkdir(parents=True, exist_ok=True)
     catalog_path = a.out / "extensions.json"
     try:
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         catalog = {"format": 1, "addons": []}
-    new = entry(toc, data, name, {"zh": a.notes_zh, "en": a.notes_en}, a.min_app)
+    new = entry(toc, data, name, {"zh": a.notes_zh, "en": a.notes_en}, a.min_app, addon)
     old = next((e for e in catalog.get("addons", []) if e.get("id") == new["id"]), None)
     if old and old.get("version") == new["version"] and old.get("sha256") != new["sha256"] and not a.replace:
-        raise SystemExit(f"{name} is in the catalog with other contents: give WuxianKit a new version")
+        raise SystemExit(f"{name} is in the catalog with other contents: give {a.addon} a new version")
     there = a.out / name
     if there.exists() and there.read_bytes() != data and not a.replace:
-        raise SystemExit(f"{there} is there with other contents: give WuxianKit a new version (or --replace one never "
+        raise SystemExit(f"{there} is there with other contents: give {a.addon} a new version (or --replace one never "
                          "uploaded)")
     there.write_bytes(data)
     catalog["addons"] = [e for e in catalog.get("addons", []) if e.get("id") != new["id"]] + [new]
