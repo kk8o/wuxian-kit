@@ -3,7 +3,6 @@
 -- the client keeps secret on purpose (health and power are secret to addons on this client); a value that comes back
 -- secret (in combat, an encounter, a PvP match) is left out. sense.guild never reads public or officer notes.
 local Kit = WuxianKit
-local issecret = issecretvalue or function() return false end
 
 local L = Kit:Words {
 	zhCN = { TITLE = "角色信息", CHARACTER = "角色", POSITION = "位置", BAGS = "背包", QUESTS = "任务日志",
@@ -17,8 +16,7 @@ local sense = Kit:Extension("sense", { title = L"TITLE", version = Kit.VERSION, 
 
 -- a value, or nil when the client keeps it secret
 local function V(v)
-	if issecret(v) then return nil end
-	return v
+	return Kit:Value(v)
 end
 
 -- a player's name as other players address them, what a whisper (chat.send) takes: whole where this client gives a
