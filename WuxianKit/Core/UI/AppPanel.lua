@@ -1,14 +1,20 @@
 -- The app card (0.6): WuxianKit:AppPanel(id, parent, width) draws app `id` in another addon's window, the same card the
 -- window's 应用 page shows (UI.AppCard, on the canvas being drawn): its state, one line of the first that holds (no
 -- 无限工坊 link, its extension off, its check()'s reason, running: the agent here until, last heard from, said today;
--- else ready), 交给 AI (the copy box with its start line: any AI client with 无限工坊's MCP tools starts from it, Claude
--- Code too), stop, its controls, and its options (the
+-- else ready), its main button as its driver says, stop, its controls, and its options (the
 -- core's 活跃度 / 免打扰时段 when it has pace) with the window's controls. Returns a frame (its height set by its
 -- content) with :Refresh(), or nil when there is no such app. Cards and the window's app page redraw on kit.app,
 -- kit.option, kit.changed and app.<id>, and every few seconds while they show. The zhCN font has no arrows, squares or
 -- check marks: the state is told by the text's colour. See ARCHITECTURE.md section 10.
--- The ns functions it reads are Apps.lua's (package K2): ns.AppList, ns.App, ns.AppStatus, ns.AppStop,
--- ns.AppOptionList, ns.SetAppOption, ns.AppControls, ns.ForgetApp, ns.CONTROL_WORDS; and Kit:AppControl.
+-- The main button, while it does not run: a prompt's app 交给 AI (the copy box with its start line: any AI client with
+-- 无限工坊's MCP tools starts from it, Claude Code too); a program's 开始 (ns.AppLaunch: 无限工坊 starts the program)
+-- when 无限工坊 declared it can (launch) and runs, 启动中… (not to be clicked) once asked, 开始 not to be clicked and
+-- "needs 无限工坊 running" when it does not run, none and "driven by a local program" without launch. A temporary app
+-- (an agent's, kept in memory only) has no 交给 AI; the window's page marks it.
+-- The ns functions it reads are Apps.lua's (package K2): ns.AppList (with driver, launch, temp, launching),
+-- ns.App, ns.AppStatus, ns.AppStop, ns.AppOptionList, ns.SetAppOption, ns.AppControls, ns.ForgetApp, ns.AppLaunch,
+-- ns.WorkshopOnline, ns.CONTROL_WORDS; and Kit:AppControl. One that is not there counts as none (no launch; 无限工坊
+-- running as the link says).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
 local C = UI.Skin.C
@@ -35,7 +41,8 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- what the window and the slash command read of the apps
 
--- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, on, ends, present, prompt, start }
+-- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, on, ends, present, prompt, start,
+-- driver ("prompt", "program" or nil), launch, temp, launching }
 function UI.Apps()
 	local out = {}
 	local list = Call(ns.AppList)
@@ -45,7 +52,9 @@ function UI.Apps()
 			if a.by == "agent" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
 			out[#out + 1] = { id = a.id, title = title ~= nil and title ~= "" and ns.Text(title) or a.id, by = a.by,
 				addon = a.addon, on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
-				start = type(a.start) == "string" and a.start ~= "" and a.start or nil }
+				start = type(a.start) == "string" and a.start ~= "" and a.start or nil,
+				driver = type(a.driver) == "string" and a.driver or nil, launch = a.launch == true,
+				temp = a.temp == true, launching = a.launching == true }
 		end
 	end
 	return out
@@ -76,9 +85,11 @@ function UI.AppControlList(id)
 	return out
 end
 
--- the words /wk <app> takes, as the player types them: Chinese ones in Chinese, else the commands
+-- the words /wk <app> takes, as the player types them: Chinese ones in Chinese, else the commands (a program's app: 开始
+-- or start first)
 function UI.AppWordList(id)
-	local words = {}
+	local words, e = {}, Entry(id)
+	if e and e.driver == "program" then words[1] = A.LAUNCH_WORD end
 	for _, c in ipairs(UI.AppControlList(id)) do words[#words + 1] = ns.Lang() == "zhCN" and c.label or c.cmd end
 	return table.concat(words, L.SEP)
 end
@@ -86,16 +97,48 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- the card
 
--- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready
-local function State(id, app, st, by)
+-- whether 无限工坊 runs: ns.WorkshopOnline, else the link (Kit:AgentOnline)
+local function WorkshopOnline()
+	if type(ns.WorkshopOnline) == "function" then
+		local ok, on = pcall(ns.WorkshopOnline)
+		if not ok then geterrorhandler()(on) end
+		return ok and on and true or false
+	end
+	return Kit:AgentOnline() and true or false
+end
+
+-- what is known of app id: the object, its row of ns.AppList (UI.Apps), its status, who declared it, and for a
+-- program's app how it starts from the game: "on" (it runs), "none" (no launch: 无限工坊 has not said it can start it),
+-- "offline" (无限工坊 does not run), "launching" (asked, not started yet), "ready"; nil for the others
+local function Facts(id)
+	local app = Call(ns.App, id)
+	if not app then return nil end
+	local entry = Entry(id) or {}
+	local st = Call(ns.AppStatus, id)
+	st = type(st) == "table" and st or {}
+	local launch
+	if (entry.driver or st.driver) == "program" then
+		if st.on then
+			launch = "on"
+		elseif not (entry.launch or st.launch == true) then
+			launch = "none"
+		elseif not WorkshopOnline() then
+			launch = "offline"
+		else
+			launch = entry.launching and "launching" or "ready"
+		end
+	end
+	return app, entry, st, st.by or entry.by, launch
+end
+
+-- why the app cannot start now, as the player reads it, or nil; and when that is its extension being off, the
+-- extension (nil when it is not there) and its id
+local function Blocked(app, st, by)
 	local decl = Decl(app)
-	if not Kit:AgentOnline() then return A.NO_LINK, C.gold, A.NO_LINK_HINT end
 	local extId = decl.extension
 	local ext = type(extId) == "string" and ns.extensions[extId] or nil
 	if st.extension == false or (type(extId) == "string" and not (ext and ext.active)) then
-		local name = ext and ns.T(ext.title) or ns.Escape(extId or "?")
-		return A.EXT_OFF:format(name), C.gold, A.EXT_OFF_HINT,
-			ext and { A.OPEN_EXT, false, function() Kit:Window(extId) end } or nil
+		return A.EXT_OFF:format(ext and ns.T(ext.title) or ns.Escape(extId or "?")), ext, extId or "?"
 	end
 	local why = st.blocked or st.check
 	if why == nil and type(decl.check) == "function" then   -- not in the status: its check asked here
@@ -104,8 +147,19 @@ local function State(id, app, st, by)
 	end
 	if why ~= nil and why ~= false and why ~= "" then
 		why = ns.T(why)
-		return by == "agent" and ns.Escape(why) or ns.Text(why), C.muted
+		return by == "agent" and ns.Escape(why) or ns.Text(why)
 	end
+end
+
+-- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready.
+-- launch: how a program's app starts (Facts), nil for the others
+local function State(app, st, by, launch)
+	if not Kit:AgentOnline() or launch == "offline" then return A.NO_LINK, C.gold, A.NO_LINK_HINT end
+	local why, ext, extId = Blocked(app, st, by)
+	if extId then
+		return why, C.gold, A.EXT_OFF_HINT, ext and { A.OPEN_EXT, false, function() Kit:Window(extId) end } or nil
+	end
+	if why then return why, C.muted end
 	if st.on then
 		local now, parts = time(), {}
 		if st.present == false then
@@ -126,7 +180,9 @@ local function State(id, app, st, by)
 		parts[3] = A.SAID:format(tonumber(st.said) or 0)
 		return table.concat(parts, " · "), st.present == false and C.gold or C.ok
 	end
-	return A.READY, C.sky, nil, nil, true
+	if launch == "none" then return A.IDLE, C.muted end
+	if launch == "launching" then return A.ASKED, C.sky end
+	return launch and A.READY_PROGRAM or A.READY, C.sky, nil, nil, true
 end
 
 -- the options' names in order: the object's optionOrder when it keeps one, else the core's first, then by order, name
@@ -183,20 +239,25 @@ end
 -- app id's card on the canvas being drawn (the window's page, or a panel); extra: more buttons for the row
 -- ({ label, primary, fn })
 function UI.AppCard(id, extra)
-	local app = Call(ns.App, id)
+	local app, entry, st, by, launch = Facts(id)
 	if not app then return end
-	local decl, entry = Decl(app), Entry(id) or {}
-	local st = Call(ns.AppStatus, id)
-	st = type(st) == "table" and st or {}
-	local by = st.by or entry.by
-	local text, color, hint, button, ready = State(id, app, st, by)
+	local text, color, hint, button, ready = State(app, st, by, launch)
+	if launch == "none" then                                -- a program's: why there is no 开始, when there is none
+		hint = A.BY_PROGRAM_HINT
+	elseif launch == "offline" then
+		hint = A.NEED_WORKSHOP
+	end
 	CV.Put(0, color, text)
 	if hint then CV.Put(0, C.muted, hint) end
 	local row = {}
 	local start = st.start or entry.start
 	if type(start) ~= "string" or start == "" then start = nil end
 	if button then row[#row + 1] = button end
-	if not st.on and start then
+	if launch == "launching" then
+		row[#row + 1] = { A.LAUNCHING, false, nil, 70, true }
+	elseif launch == "ready" or launch == "offline" then  -- 开始, to be clicked only when it is ready
+		row[#row + 1] = { A.LAUNCH, ready == true, function() ns.Act("app.launch", id) end, 70, ready ~= true }
+	elseif not launch and not st.on and start and not (entry.temp or st.temp == true) then
 		local title = entry.title or ns.Escape(id)
 		row[#row + 1] = { A.HAND, ready, function() Hand(title, start) end, 70 }
 	end
@@ -260,6 +321,34 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- what the card's buttons do; redrawing
 
+-- a program's app started from the game (the card's 开始, /wk <app> 开始): ns.AppLaunch asks 无限工坊 to start its
+-- program. nil for an app that is not a program's; else true or false, and the line for the player
+function UI.AppLaunch(id)
+	local app, entry, st, by, launch = Facts(id)
+	if not launch then return nil end
+	local name = A.NAME:format(entry.title or ns.Escape(id))
+	if launch == "on" then return false, A.RUNNING:format(name) end
+	if launch == "none" or type(ns.AppLaunch) ~= "function" then return false, A.NO_LAUNCH:format(name) end
+	if launch == "offline" then return false, A.CANNOT:format(name, A.NEED_WORKSHOP) end
+	if launch == "launching" then return false, A.STARTING:format(name) end
+	local why = Blocked(app, st, by)
+	if why then return false, A.CANNOT:format(name, why) end
+	local ok, done, reason = pcall(ns.AppLaunch, id)
+	if not ok then
+		geterrorhandler()(done)
+		return false, A.CANNOT_PLAIN:format(name)
+	end
+	if done then return true, A.LAUNCH_SENT:format(name) end
+	if reason == nil or reason == "" then return false, A.CANNOT_PLAIN:format(name) end
+	return false, A.CANNOT:format(name, ns.Escape(ns.T(reason)))
+end
+
+ns.AddAction("app.launch", function(id)
+	local ok, line = UI.AppLaunch(id)
+	if ok == false then ns.Say(line) end                  -- started: the card says so (启动中…)
+	UI.Refresh()
+	return ok and true or false
+end)
 ns.AddAction("app.stop", function(id)
 	if not Kit:AppControl(id, "stop") then Call(ns.AppStop, id, "player") end   -- with stop among its controls, the app hears it
 	UI.Refresh()

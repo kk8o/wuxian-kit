@@ -116,7 +116,7 @@ class Core(unittest.TestCase):
         self.assertIn("Proposal #1 done", s.chat())
         history = py(s.g("WuxianKitDB"))["history"]
         self.assertEqual(history[0]["steps"][0]["snap"], {"name": "nameplateShowAll", "value": "0"})
-        w = self.window(s)                                                 # the core's page: what ran, with Undo
+        w = self.window(s, "kit")                                          # the core's page: what ran, with Undo
         self.assertIn("#1", "\n".join(texts(w[b"body"])))
         click(next(b for b in self.buttons(w) if b[b"label"][b"text"] == b"Undo"))
         self.assertEqual(self.cvar(s, "nameplateShowAll"), "0")
@@ -277,8 +277,8 @@ class Core(unittest.TestCase):
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
-                         ["核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "游戏动态", "图鉴",
-                          "公会聊天"])                                  # the apps after the extensions
+                         ["公会聊天", "核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "游戏动态",
+                          "图鉴"])                                      # the apps first, then the extensions
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
                          ("执行", "拒绝"))
@@ -596,7 +596,7 @@ class Core(unittest.TestCase):
         self.assertFalse(self.call(s2, "kit.history"))
         self.assertIn(f"no proposal {p['id']} in the history",
                       self.fails(s2, f"WuxianKit:Call('kit.undo', {{ id = {p['id']} }})"))
-        self.assertIn("None", texts(self.window(s2)[b"body"]))
+        self.assertIn("None", texts(self.window(s2, "kit")[b"body"]))
         s3 = s2.reload()
         s3.login()
         self.assertEqual([h["id"] for h in self.call(s3, "kit.history")], [p["id"]])
