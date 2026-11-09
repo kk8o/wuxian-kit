@@ -98,7 +98,7 @@ demo:Scope("settings", L"SCOPE")
 复制框与接入：
 
 - `WuxianKit:Copy(text, { title, hint, how, done })`：一个只读的复制框，文字已选中、输入焦点在框里，改了内容就恢复原文并重新选中；最下一行是 `how`（不写就是「Ctrl+C 复制」），玩家按 Ctrl+C 后显示「已复制」并在片刻后收起，调 `done()`；Esc、Enter、关闭按钮关闭。无限的客户端不允许插件写剪贴板（`CopyToClipboard` 受限），要复制给玩家的文字都用它。同一时间只有一个复制框，新的替换旧的。
-- `info.prompt`：只记下扩展的主技能，扩展页不再有按钮。要让玩家交给 AI 的，声明成应用（第 10 节）：应用卡片上的「交给 AI」复制启动语，Claude Code 里一样能用；斜杠命令 `/mcp__wuxian__<prompt>` 由无限工坊 App 提示。
+- `info.prompt`：只记下扩展的主技能，扩展页不再有按钮。要让玩家交给 AI 的，声明成应用（第 10 节）：应用卡片上的「交给 AI」复制启动语，任何接了无限工坊 MCP 的 Agent 都能用。
 - `WuxianKit:Requires(version)`：扩展框架的版本不低于 `version`（`"0.5.0"`）时为真。可选依赖扩展框架的插件用它判断新接口在不在。
 
 声明会发出的事件：
