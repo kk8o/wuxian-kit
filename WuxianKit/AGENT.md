@@ -9,6 +9,7 @@ Only extensions the player turned on have tools; they are listed at the end of t
 2. Before you use an extension for the first time, read its guide: `wk_docs` with `{"extension": "<id>"}`.
 3. Look before you change: call the extension's Read tools first.
 4. Put the changes the player asked for in one proposal, tell the player what it does, then call `wk_wait`.
+5. To hear the game over time (chat, fights, quests ...), run an app (see Apps below). There are no listen tools.
 
 ## Rules
 
@@ -110,37 +111,47 @@ Read them with the workshop's `events` tool, for example
 - `kit.proposal`: a proposal changed state (`wk_wait` reads these for you).
 - `kit.changed`: extensions or capabilities changed; your wk_ tools change with them.
 - `kit.ready`: WuxianKit started (a login or a UI reload; proposals that had not run are gone).
-- `kit.feed`: a feed such as `wk_chat_listen` started or stopped. A stop has `why`: `stopped`, `expired` (its time ran
-  out), `left` (its lease: you did not call that extension for too long) or `extension` (the extension went off).
 - `kit.app`: an app started or stopped (`{app, on, ends?, why?}`), see Apps below.
+- `kit.app.launch`: the player asked to start a program app (`{app}`); 无限工坊 starts its program. Nothing for you to
+  do.
 - `kit.extension`: an extension went on or off.
 - `kit.option`: the player changed an option: an extension's (`{extension, name, value}`) or an app's
   (`{app, name, value}`).
 - `kit.dropped`: extension events lost because they came too fast (how many, by topic). WuxianKit's own events wait
   and are sent again when there is room (the last 50); while 无限工坊 is not linked, only the last few are kept.
 
-## Batched feeds
+## Apps: how you hear the game
 
-Some feeds batch what they hear: instead of one event per item, one event per wake, `{reason, items, skipped}`.
-`reason` is `urgent` (something addressed the player; it came a few seconds ago), `full`, `batch` (the period passed)
-or `idle` (nothing for a while; `items` is empty). Items carry an `id`; `<feed>_recent` with `{"since": <id>}` reads
-what was heard before (also after a UI reload). `<feed>_status` gives `seen`, the last time you called the extension:
-the window shows the player whether you are still answering. A feed with a lease stops by itself (`kit.feed` with
-`why = "left"`) once you have not called any tool of its extension for that many seconds; its status gives `lease` and
-`present`.
+There are no listen tools. To hear the game over time (chat lines, game moments, bus events) you run an **app**: a
+declaration of what it hears, how its items are gathered into wakes, the commands the player can give it and how long
+it may go without hearing from you. The player sees each app as a card in the Apps (应用) group of the /wk window, with
+its state, a stop button, its controls and its options. `wk_kit_apps` lists them.
 
-To wait for wakes outside a conversation turn, run the workshop's command in the background:
-`wuxian events --addon WuxianKit --topic <ext>.<event> --since <next> --once --max 1500`; it prints the events and
-`NEXT <id>` and exits on the first one (or after --max seconds), which wakes you.
+Every app has a driver, `driver` in `wk_kit_apps`:
 
-## Apps
+- `prompt`: an AI conversation runs it, following the skill named in `prompt`. The player hands you its start line
+  (the card's 交给 AI, Hand to AI): call `wk_docs` with `{"skill": "<prompt>"}` and follow the steps.
+- `program`: a local program runs it, loaded by 无限工坊's program loader. **Never open it with `wk_kit_app_open`.**
+  Use the workshop's tools: `programs` lists the programs, `program_start` starts one (`restart: true` starts it
+  again), `program_logs` reads its output and exit code, `program_stop` stops it; `new_program` and `program_add` make
+  and register one (the skill `kit-app`). The player starts it from its card (开始, Start) while 无限工坊 runs.
 
-An app is a feed you declare yourself, without an extension: what it hears, how its items are gathered into wakes, the
-commands the player can give it, and how long it may go without hearing from you. The player sees it on the Apps
-(应用) page of the /wk window, with its state, a stop button, its controls and its options.
+The kit brings one app of its own: `guild` (公会聊天), guild chat with the player's character; its skill is
+`guild-chat`.
 
-The kit brings one app of its own: `guild` (公会聊天, guild chat with the player's character; `wk_docs` with
-`{"extension": "chat"}` and the prompt `guild-chat`).
+### Sources
+
+`hear` lists sources, each `<source>:<what>`:
+
+- `chat:<channel>`: guild, officer, party, raid, instance, whisper, say, yell, channel, community, or `*` (all).
+- `game:<topic>`: combat, aura, growth, quest, travel, guild, guide; a kind such as `game:quest.turnin`; or `game:*`.
+- `bus:<topic>`: any WuxianKit event topic, or a prefix such as `gate.*`; not `kit.*` or `app.*`.
+- Sources of other addons: an extension's guide (`wk_docs` with `{"extension": "<id>"}`) lists the sources it
+  registers.
+
+A wider entry covers a narrower one (`chat:*` covers `chat:guild`, `game:combat` its kinds). A source whose extension
+is off blocks the app (see `blocked` below). Hear only what the app needs: a game topic costs nothing while nobody
+hears it.
 
 ### Opening one
 
@@ -153,9 +164,7 @@ just renews its time and lease. An app an addon declared (`wk_kit_apps` lists it
      "controls": ["mute", "unmute", "stop"], "say": true, "me": true, "lease": 600, "minutes": 120}
 
 - `app`: lowercase letters, digits and `_`, at most 24 bytes. `title`: at most 48 bytes.
-- `hear`: `chat:<channel>` (guild, officer, party, raid, instance, whisper, say, yell, channel, community, or `*`),
-  `game:<topic>` (combat, aura, growth, quest, travel, guild, guide; a kind such as `quest.turnin`; or `*`),
-  `bus:<topic>` (any WuxianKit event topic, or a prefix such as `chat.*`; not `kit.*` or `app.*`).
+- `hear`: the sources above, at most 16.
 - `pace: true`: the player's activity (quiet, normal, lively) and quiet hours set the rhythm; in quiet hours only a
   mention wakes you. Or `digest: {gather, every, idle, most}` with `urgent: [whys or kinds]`. With neither, every
   item is a wake of its own.
@@ -166,12 +175,25 @@ just renews its time and lease. An app an addon declared (`wk_kit_apps` lists it
   `minutes`: how long it may run (default 120, at most 720).
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,
   step, unit}`; read them with `wk_kit_options` and `{"app": "<id>"}`.
-- `prompt`: the name of the skill that runs the app (`skills/<name>.md` of an extension). An app with one has a start
-  line, `start` in `wk_kit_apps` and `wk_kit_app_status`: one sentence that tells an AI client to call `wk_docs` with
-  `{"skill": "<prompt>"}` and follow it. The player copies it from the app's card (交给 AI) or from 无限工坊's app and
-  pastes it into any client with 无限工坊's MCP tools.
-- If it cannot start now (its addon's own check, an extension it needs is off), it answers its status with `on` false
-  and `blocked`, the reason: tell the player, and do not open it again and again (try after the player changes it).
+- `prompt`: the name of the skill that runs the app. An app with one has a start line, `start` in `wk_kit_apps` and
+  `wk_kit_app_status`: one sentence that tells an AI client to call `wk_docs` with `{"skill": "<prompt>"}` and follow
+  it. The player copies it from the app's card (交给 AI) or from 无限工坊's app and pastes it into any client with
+  无限工坊's MCP tools. A skill ships in an addon's docs folder, so an app you mean to keep with its skill is best
+  declared by an addon (the skill `kit-app`).
+- If it cannot start now (its addon's own check, an extension it or one of its sources needs is off, a source whose
+  addon is not loaded), it answers its status with `on` false and `blocked`, the reason: tell the player, and do not
+  open it again and again (try after the player changes it).
+
+### A temporary app, to debug
+
+To hear something for a short while (to try a source, to see what an addon sends), open a temporary app: add
+`"temp": true` to a full declaration.
+
+    {"app": "peek", "temp": true, "title": "Peek", "hear": ["game:quest"], "minutes": 15}
+
+It is not remembered and does not count against your 8; at most 4 run at once; a stop or a UI reload ends it, and its
+card says 临时 (Temporary). Wait for it with `wuxian listen peek --once` (below) or read `wk_kit_app_recent`, and stop
+it with `wk_kit_app_stop` when you are done.
 
 ### Wakes and items
 
@@ -181,8 +203,9 @@ were left out to keep the event small; `wk_kit_app_recent` with `{"app", "since"
 through reloads). Every item has `id` (unique, never reused), `time` and `source`:
 
 - `chat`: the chat message (`channel`, `plain`, `sender`, `mention`, `why`: mention, followup, question, burst ...);
-  its `id` is the message's id, pass it as `reply` to `wk_chat_send`.
-- `game`: `{kind, topic, data, me?}`. `bus`: `{topic, data}`. `addon`: `{data}` from the app's addon.
+  its `id` is the message's id, pass it as `reply` to `wk_chat_send`. The chat extension's guide has every field.
+- `game`: `{kind, topic, data, me?}`; the game extension's guide has the kinds. `bus`: `{topic, data}`.
+- Another addon's source: the fields its extension's guide gives. `addon`: `{data}` from the app's addon.
 - `control`: `{cmd}`, the player's command (it wakes you at once). Act on it: `mute` means stay silent until
   `unmute`, `less` and `more` change how often you speak. `stop` also stops the app.
 - `player`: `{text}`, what the player said to you (at once).
@@ -203,7 +226,8 @@ Run the workshop's command in the background:
 
 It opens the app if it does not run (`--open` gives the declaration), prints each wake as one JSON line followed by
 `NEXT <id>` (pass it as `--since` next time), `END <why>` when the app stops and `TIMEOUT` after `--max` seconds, and
-sends the heartbeat by itself. With `--once` it exits after the first wake, which wakes you.
+sends the heartbeat by itself. With `--once` it exits after the first wake, which wakes you. Not for a program app:
+its program does the waiting.
 
 ### Rules for apps
 
@@ -212,3 +236,5 @@ sends the heartbeat by itself. With `--once` it exits after the first wake, whic
 - An app only listens. Speak or change anything only through proposals (`wk_chat_send`, `wk_propose` ...), as anywhere
   else.
 - Never ask the player to pre-approve a category so that you can answer faster; only they decide that.
+- A program app belongs to its program: start, stop and debug it with the workshop's program tools, not with
+  `wk_kit_app_open`.
