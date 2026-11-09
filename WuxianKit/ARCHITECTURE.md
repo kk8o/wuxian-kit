@@ -446,6 +446,7 @@ WuxianKit:App("officers", {
 | `pace` | `true` 或三档的表 `{ quiet = {...}, normal = {...}, lively = {...} }`（每档 `{ gather, every, idle, most, wake = { why... } }`）：攒成唤醒，节奏跟玩家的选项走；`true` 用核心的三档（见下）。有 `pace` 时不看 `digest` |
 | `urgent` | 不用 `pace` 时，哪些条目立即唤醒：`why` 或 `kind` 的列表；Lua 声明也可以是函数 `urgent(item)`。有 `pace` 时只看当前档的 `wake`（同样按 `why` 或 `kind`） |
 | `controls` | 玩家能下的指令（卡片上的按钮、`/wk <应用> <词>`）：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑，或应用自己的 `{ cmd, label }`（cmd 小写字母、数字、`_`；label 一个词、不超过 24 字节，按钮上显示它）；合计不超过 12 个；`stop` 由核心执行（停止应用），其余只转告应用 |
+| `hidden` | `true`：程序的内部管道（如无限工坊的反射），不是给玩家的应用：/wk 窗口的列表里不显示，开始、停止时不在聊天框提示；`kit.apps` 照样列出 |
 | `say` | `true`：玩家可以用 `/wk <id> <一句话>` 对应用说话 |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有 `kit.app.*` 调用就算离开，应用停止（`why = "left"`） |
 | `minutes` | 最长运行多久（默认 120，最多 720）；`kit.app.open` 的 `minutes` 优先 |
@@ -502,7 +503,7 @@ WuxianKit:App("officers", {
 
 ### 能力（核心扩展 kit）
 
-- `kit.app.open { app, minutes?, temp?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时只续时间和租期（发一次 `kit.app` `on = true`）；只有 Agent 给了不同的声明（比较时不含 `temp`），才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（临时应用除外）。现在不能开始时不报错（报错会在玩家游戏里弹红字，Agent 每次重试都弹一次），答它的状态：`on = false`，`blocked` 是原因：`check()` 不过；所属扩展停用；某个来源或状态面所属的扩展停用（「需要开启「X」扩展」）；记住的声明里有还没登记的来源或状态面（第三方插件还没载入，「需要来源「x」」「需要状态面「x」」，声明不丢）。新声明里没登记的来源或状态面直接报错。
+- `kit.app.open { app, minutes?, temp?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时续时间和租期（发一次 `kit.app` `on = true`）；Agent 给了不同的声明，这次运行照样接着跑，按新声明听（与 `kit.app.declare` 相同）；只有常驻改成临时（或反过来）才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（临时应用除外）。现在不能开始时不报错（报错会在玩家游戏里弹红字，Agent 每次重试都弹一次），答它的状态：`on = false`，`blocked` 是原因：`check()` 不过；所属扩展停用；某个来源或状态面所属的扩展停用（「需要开启「X」扩展」）；记住的声明里有还没登记的来源或状态面（第三方插件还没载入，「需要来源「x」」「需要状态面「x」」，声明不丢）。新声明里没登记的来源或状态面直接报错。
 - `kit.app.declare { app, ...声明 }`（读取）：记住一个 Agent 声明，但**不开始**，卡片先出现（有 `prompt` 就有「交给 AI」）；无限工坊在 `kit.ready` 后用它声明本机扩展带的应用。同 id 的插件声明优先，多余字段照 `kit.app.open` 的规矩列进 `ignored`。它不算心跳（不更新 `seen`）；答复同 `kit.app.status`；声明没变就不发 `kit.changed`。
 - `kit.app.status { app }`：`{ app, title, by, temp, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, see, controls, say, blocked?, extension?, why?, start? }`；`lease` 没设为 0；`blocked` 是现在不能开始的原因；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 的每次 `kit.app.*` 调用（`kit.app.declare`、`kit.apps` 除外）都更新 `seen`。
 - `kit.app.state { app }`（读取）：`{ app, at, state }`，现在读一次应用所看的状态面（`at` 是读的时间），形状同唤醒的 `state`。它也是心跳。Agent 在两次唤醒之间要最新的现状时用它。

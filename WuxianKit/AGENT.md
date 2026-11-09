@@ -187,6 +187,8 @@ just renews its time and lease. An app an addon declared (`wk_kit_apps` lists it
   test, pause, resume, stop, or the app's own `{"cmd": "brief", "label": "任务播报"}` (cmd: lowercase letters, digits,
   `_`; label: one word, at most 24 bytes; at most 12 controls in all). `say: true`: the player can talk to you with
   `/wk <app> <words>`.
+- `hidden: true`: plumbing of a program (such as 无限工坊's reactions), not an app for the player: left out of the
+  /wk window's list and no chat line when it starts or stops; `wk_kit_apps` still lists it.
 - `lease`: seconds without a `wk_kit_app_*` call of yours before the app stops (default 600, at least 60, 0 none).
   `minutes`: how long it may run (default 120, at most 720).
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,

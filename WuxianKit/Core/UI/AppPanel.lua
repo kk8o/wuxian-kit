@@ -44,7 +44,7 @@ function UI.Apps()
 	local out = {}
 	local list = Call(ns.AppList)
 	for _, a in ipairs(type(list) == "table" and list or {}) do
-		if type(a) == "table" and type(a.id) == "string" then
+		if type(a) == "table" and type(a.id) == "string" and not a.hidden then   -- (plumbing: not drawn)
 			local title = a.title
 			if a.by == "agent" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
 			out[#out + 1] = { id = a.id, title = title ~= nil and title ~= "" and ns.Text(title) or a.id, by = a.by,

@@ -37,9 +37,12 @@ class WindowApps(unittest.TestCase):
         came from and its card; an agent's has remove; one gone, the first app's page; a new app shows once kit.app
         tells of it"""
         s = self.setup()
+        s.lua.execute(b"__add('pipe', { by = 'agent', temp = true, hidden = true, decl = { title = 'Pipe' }, "
+                      b"status = { app = 'pipe', on = true } })")
         w = self.window(s)
         heads = texts(w[b"list"])
         self.assertEqual(heads[0], "Apps")
+        self.assertNotIn("Pipe", [b[b"label"][b"text"].decode() for b in shown(w[b"items"])])   # hidden
         self.assertLess(heads.index("Apps"), heads.index("Built-in"))
         voice, bot = self.item(w, "Voice"), self.item(w, "Bot")
         self.assertEqual((voice[b"state"][b"text"], bot[b"state"][b"text"]), (b"On", b"Off"))

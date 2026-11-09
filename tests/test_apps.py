@@ -129,7 +129,7 @@ class Basics(AppCase):
         self.assertEqual((st["on"], st["ends"], st["title"]), (True, now + 300, "Notes"))
         self.assertNotIn("why", st)
 
-    def test_reopen_goes_on_and_a_new_declaration_replaces(self):
+    def test_reopen_goes_on_and_a_new_declaration_too(self):
         s = self.start()
         decl = "{ app = 'r', hear = { 'bus:demo.*' }, digest = { every = false } }"
         self.agent(s, "kit.app.open", decl)
@@ -140,12 +140,23 @@ class Basics(AppCase):
         st = self.agent(s, "kit.app.open", decl)                         # the same declaration: goes on too
         self.assertEqual(st["heard"], 1)
         self.assertEqual([e["on"] for e in self.events(s, "kit.app")], [True, True, True])
-        st = self.agent(s, "kit.app.open", "{ app = 'r', hear = { 'bus:other.*' } }")   # changed: replaced
-        self.assertEqual(st["heard"], 0)
-        self.assertEqual(self.events(s, "kit.app")[-2:], [{"app": "r", "on": False, "why": "replaced"},
-                                                          {"app": "r", "on": True, "ends": st["ends"]}])
+        st = self.agent(s, "kit.app.open", "{ app = 'r', hear = { 'bus:other.*' } }")   # changed: goes on, hears that
+        self.assertEqual(st["heard"], 1)
+        self.assertEqual([e["on"] for e in self.events(s, "kit.app")], [True, True, True, True])
         s.lua.execute(b"WuxianKit:Emit('demo.b', 2) WuxianKit:Emit('other.c', 3)")
-        self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'r' }")["heard"], 1)
+        self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'r' }")["heard"], 2)
+
+    def test_hidden(self):
+        """hidden: listed by kit.apps (hidden true), no chat line when it starts or stops"""
+        s = self.start()
+        s.lines.clear()
+        self.agent(s, "kit.app.open", "{ app = 'pipe', title = 'Pipe', hear = { 'bus:demo.*' }, temp = true, "
+                                      "hidden = true, lease = 0 }")
+        self.assertEqual([a.get("hidden") for a in self.agent(s, "kit.apps", "{}") if a["id"] == "pipe"], [True])
+        self.agent(s, "kit.app.stop", "{ app = 'pipe' }")
+        self.assertEqual(s.chat(), "")
+        self.agent(s, "kit.app.open", "{ app = 'seen', hear = { 'bus:demo.*' }, temp = true, lease = 0 }")
+        self.assertIn("seen", s.chat())
 
     def test_validation(self):
         s = self.start()

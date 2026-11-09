@@ -417,6 +417,7 @@ local function Options(t, agent, paced)
 end
 
 local DECL_FIELDS = { title = true, hear = true, see = true, digest = true, pace = true, urgent = true, controls = true,
+	hidden = true,
 	say = true, lease = true, minutes = true, options = true, prompt = true }
 
 local function CheckId(id)
@@ -501,6 +502,7 @@ local function Normalize(id, d, agent, kept)
 		end
 	end
 	n.say = Bool(d.say, "say") or false
+	n.hidden = Bool(d.hidden, "hidden") or nil              -- plumbing: not in the window's list, no chat lines
 	local lease = LeaseOf(d.lease, "lease")
 	if lease == nil then lease = LEASE end
 	n.lease = lease or nil
@@ -843,7 +845,9 @@ local function Stop(app, why, quiet)
 	rec.run = nil
 	rec.last = { who = s.who, why = why }
 	Unsubscribe(app)
-	if not quiet and STOP_WORDS[why] then ns.Say(W[STOP_WORDS[why]]:format(ns.Escape(Title(app)))) end
+	if not quiet and not app.decl.hidden and STOP_WORDS[why] then
+		ns.Say(W[STOP_WORDS[why]]:format(ns.Escape(Title(app))))
+	end
 	Kit:Emit("kit.app", { app = app.id, on = false, why = why })
 	if app.temp and why ~= "replaced" then Drop(app) end
 	return true
@@ -919,9 +923,9 @@ local function Blocked(app)
 	end
 end
 
--- starts the app's run; one running goes on with the new time and lease (kit.app on = true again, no stop), unless
--- replace (a new declaration): then it ends (why "replaced") and a new run starts
-local function Start(app, minutes, lease, agent, replace)
+-- starts the app's run; one running goes on with the new time and lease (kit.app on = true again, no stop), and with
+-- what its declaration now says
+local function Start(app, minutes, lease, agent)
 	local why = Blocked(app)
 	if why then Fail("app %s cannot start: %s", app.id, why) end
 	local rec = Record(app)
@@ -930,7 +934,7 @@ local function Start(app, minutes, lease, agent, replace)
 	local old = Owned(app)
 	if old and (tonumber(old.ends) or 0) <= now then
 		Stop(app, "expired")
-	elseif old and not replace then
+	elseif old then
 		old.ends, old.lease = now + math.floor(minutes * 60), lease or nil
 		if agent then old.seen = now end
 		Retune(app, old)
@@ -938,15 +942,13 @@ local function Start(app, minutes, lease, agent, replace)
 		Kit:Emit("kit.app", { app = app.id, on = true, ends = old.ends })
 		Ticking()
 		return old
-	elseif old then
-		Stop(app, "replaced", true)
 	end
 	local s = { who = Me(), started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0,
 		wakes = 0, buffer = {}, options = { digest = {} }, seen = agent and now or nil }
 	rec.run = s
 	Retune(app, s)
 	Subscribe(app)
-	ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends)))
+	if not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends))) end
 	Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends })
 	Ticking()
 	return s
@@ -1159,7 +1161,7 @@ function ns.AppList()
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
 			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt, start = StartLine(app),
 			extension = app.decl.extension, blocked = not s and Blocked(app) or nil, temp = app.temp == true,
-			see = #app.decl.see > 0 and Copy(app.decl.see) or nil }
+			see = #app.decl.see > 0 and Copy(app.decl.see) or nil, hidden = app.decl.hidden }
 	end
 	return out
 end
@@ -1255,10 +1257,10 @@ local kit = Kit:Extension("kit")
 
 local OPEN_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
 	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	see = "table?", options = "table?", prompt = "string?", temp = "boolean?" }
+	see = "table?", options = "table?", prompt = "string?", temp = "boolean?", hidden = "boolean?" }
 local DECLARE_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
 	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	see = "table?", options = "table?", prompt = "string?" }
+	see = "table?", options = "table?", prompt = "string?", hidden = "boolean?" }
 
 -- the hear entries the sources take, from the sources registered now
 local function HearDoc()
@@ -1285,7 +1287,7 @@ end
 local function Open(_, a, opts)
 	local agent = type(opts) == "table" and opts.source == "agent"
 	CheckId(a.app)
-	local app, ignored, replace = apps[a.app], nil, false
+	local app, ignored = apps[a.app], nil
 	local given = Given(a)
 	if app and app.by == "addon" then
 		if a.temp ~= nil then
@@ -1294,7 +1296,11 @@ local function Open(_, a, opts)
 		end
 		ignored = #given > 0 and given or nil
 	elseif #given > 0 then
-		app, replace = Declare(a, a.temp == true)
+		local changed
+		app, changed = Declare(a, a.temp == true)
+		if changed and Run(app) then                        -- it goes on, heard as the new declaration says
+			Unsubscribe(app)
+		end
 	elseif not app then
 		Fail("no app %s: the first kit.app.open of an app gives its declaration (title, hear, ...); kit.apps lists "
 			.. "the apps there are", a.app)
@@ -1311,7 +1317,7 @@ local function Open(_, a, opts)
 		if app.temp and not Run(app) then Drop(app) end     -- a temporary app is there only while it runs
 		return out
 	end
-	local ok, err = pcall(Start, app, minutes, lease or nil, agent, replace)
+	local ok, err = pcall(Start, app, minutes, lease or nil, agent)
 	if not ok then
 		if app.temp and not Run(app) then Drop(app) end
 		error(err, 0)
@@ -1324,8 +1330,9 @@ end
 -- kit.app.open, its doc made from the sources and facets registered: declared again whenever one is
 local function DeclareOpen()
 	kit:See("app.open", { title = "kit.app.open", args = OPEN_ARGS, run = Open,
-		doc = "starts an app; one already running goes on with the new minutes and lease (a changed declaration ends "
-			.. "that run instead, kit.app why \"replaced\", and starts a new one); answers its status as kit.app.status; "
+		doc = "starts an app; one already running goes on with the new minutes and lease, and with what a changed "
+			.. "declaration says (a kept app declared temporary, or the other way, starts a new run: kit.app why "
+			.. "\"replaced\"); answers its status as kit.app.status; "
 			.. "when it cannot start now (its check, an extension off, a source missing) it does not start and the status "
 			.. "says why: blocked (on false). The first time, give its declaration (it is remembered: later just {app}; at "
 			.. "most 8 kept): app (id: lowercase letters, digits, _, at most 24 bytes), title (at most 48 bytes), hear (at "
@@ -1339,7 +1346,8 @@ local function DeclareOpen()
 			.. "<words>), see (at most 8 states each wake carries as state {name = the state at that wake}; kit.app.state "
 			.. "reads them at once: " .. SeeDoc() .. "), lease (seconds without a kit.app.* call before it stops, "
 			.. "default 600, 0 none, at least 60), "
-			.. "minutes (default 120, at most 720), options (at most 8 the player sets: name -> {kind "
+			.. "minutes (default 120, at most 720), hidden (true: plumbing of a program, such as 无限工坊's reactions: "
+			.. "not in the /wk window's list and no chat line when it starts or stops; kit.apps still lists it), options (at most 8 the player sets: name -> {kind "
 			.. "boolean|text|number|choice|list, title, default, hint, choices [{value, label}], min, max, step, unit}), "
 			.. "prompt (the name of the skill an AI client follows to drive it). temp = true with a "
 			.. "declaration: a temporary app, to listen for a while (as when debugging): not remembered, not one of the "
