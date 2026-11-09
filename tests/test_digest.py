@@ -87,7 +87,7 @@ class Digest(unittest.TestCase):
         s2.lua.eval(b"__p:Push({})")
         self.assertEqual(self.call(s2, "dg.plain.recent", "{ since = 52 }")["items"][0]["id"], 53)
 
-        s3 = s2.reload()                                                # another character starts afresh
+        s3 = s2.reload()                                                # another character starts the ring afresh
         s3.lua.execute(b"__guid = 'Player-1-00000002'")
         s3 = self.start(s3)
         recent = self.call(s3, "dg.plain.recent", "{ since = 53 }")
@@ -95,7 +95,7 @@ class Digest(unittest.TestCase):
         self.assertEqual(recent["next"], 53)                            # (since, when it has none)
         self.call(s3, "dg.plain")
         s3.lua.eval(b"__p:Push({})")
-        self.assertEqual(self.call(s3, "dg.plain.recent")["items"][0]["id"], 1)
+        self.assertEqual(self.call(s3, "dg.plain.recent")["items"][0]["id"], 54)   # the core's one counter goes on
 
     def test_urgent_full_and_batch(self):
         s = self.start()
