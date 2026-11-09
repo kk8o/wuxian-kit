@@ -194,14 +194,12 @@ class Source(GameTest):
         self.assertEqual(g.moments(), [])
         self.assertEqual(py(g.lua.eval(b"__heard")) or [], [])
         self.assertEqual(g.registered("quest"), [])
-        status = g.call("kit.app.status", "{ app = 'probe' }")                   # the app runs on, hearing nothing
-        self.assertTrue(status["on"])
-        g.s.ns[b"Switch"](b"game", True)                                       # on again: both hear again
+        self.assertNotIn("probe", [x["id"] for x in g.call("kit.apps")])         # the app stopped (a temporary one goes)
+        g.s.ns[b"Switch"](b"game", True)                                       # on again: the subscriber hears again
         self.assertEqual(len(g.active()), 7)
         g.fire("QUEST_TURNED_IN", 3001, 0, 0)
         self.assertEqual(py(g.lua.eval(b"__heard")), ["quest.turnin"])
-        self.assertEqual(len(g.moments()), 1)
-        g.stop()
+        self.assertEqual(g.moments(), [])
         g.s.ns[b"Switch"](b"game", False)                                       # off: a new app is blocked
         answer = g.listen()
         self.assertEqual((answer["on"], answer["blocked"]), (False, "Needs the Game events extension on"))

@@ -1379,7 +1379,13 @@ Kit:On("kit.extension", function(_, e)
 	if type(e) ~= "table" or e.on ~= false then return end
 	for _, id in ipairs(Ids()) do
 		local app = apps[id]
-		if app and app.decl.extension == e.id then Stop(app, "extension") end
+		local hears = false                              -- one of its sources is that extension's: it would hear nothing
+		for _, entry in ipairs(app and app.decl.hear or {}) do
+			local name = Split(entry)
+			local src = name and ns.sources[name]
+			if src and src.ext.id == e.id then hears = true end
+		end
+		if app and (app.decl.extension == e.id or hears) then Stop(app, "extension") end
 	end
 end)
 

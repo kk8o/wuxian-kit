@@ -82,10 +82,11 @@ class Sources(unittest.TestCase):
                       self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'radio:rock' } })"))
         self.assertIn("pop:x: no source pop (the sources: bus, chat, game, radio)",
                       self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'pop:x' } })"))
-        s.ns.Switch(b"rx", False)                                        # its extension off: nothing more heard
+        s.ns.Switch(b"rx", False)                                        # its extension off: the app stops
+        st = self.agent(s, "kit.app.status", "{ app = 'mix' }")
+        self.assertEqual((st["on"], st["why"]), (False, "extension"))
         s.lua.execute(b"__radio('jazz', { tune = 'Blue' })")
         self.assertEqual(len(self.items(s, "mix")), 4)
-        self.agent(s, "kit.app.stop", "{ app = 'mix' }")
         st = self.agent(s, "kit.app.open", "{ app = 'mix' }")             # and a new run cannot start
         self.assertEqual((st["on"], st["blocked"]), (False, "Needs the Radio extension on"))
 
