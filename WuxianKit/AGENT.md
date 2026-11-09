@@ -183,8 +183,10 @@ just renews its time and lease. An app an addon declared (`wk_kit_apps` lists it
 - `pace: true`: the player's activity (quiet, normal, lively) and quiet hours set the rhythm; in quiet hours only a
   mention wakes you. Or `digest: {gather, every, idle, most}` with `urgent: [whys or kinds]`. With neither, every
   item is a wake of its own.
-- `controls`: the player's commands, from mute, unmute, less, more, test, pause, resume, stop. `say: true`: the
-  player can talk to you with `/wk <app> <words>`.
+- `controls`: the player's commands, buttons on the app's card and `/wk <app> <word>`: from mute, unmute, less, more,
+  test, pause, resume, stop, or the app's own `{"cmd": "brief", "label": "任务播报"}` (cmd: lowercase letters, digits,
+  `_`; label: one word, at most 24 bytes; at most 12 controls in all). `say: true`: the player can talk to you with
+  `/wk <app> <words>`.
 - `lease`: seconds without a `wk_kit_app_*` call of yours before the app stops (default 600, at least 60, 0 none).
   `minutes`: how long it may run (default 120, at most 720).
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,
@@ -223,7 +225,8 @@ keeps the last 100, through reloads). Every item has `id` (unique, never reused)
   `{topic, data}`.
 - Another addon's source: the fields its extension's guide gives. `addon`: `{data}` from the app's addon.
 - `control`: `{cmd}`, the player's command (it wakes you at once). Act on it: `mute` means stay silent until
-  `unmute`, `less` and `more` change how often you speak. `stop` also stops the app.
+  `unmute`, `less` and `more` change how often you speak. `stop` also stops the app. One of the app's own comes
+  as its `cmd`.
 - `player`: `{text}`, what the player said to you (at once).
 
 ### Heartbeat, lease and stopping

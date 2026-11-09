@@ -674,19 +674,17 @@ ns.AddAction("button", function(id, i)
 	return ok
 end)
 
--- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (ns.CONTROL_WORDS) the
--- command; else the player's words, when it takes them; else what it takes
+-- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (ns.CONTROL_WORDS, or the
+-- label or cmd of one of its own) the command; else the player's words, when it takes them; else what it takes
 local function AppCommand(id, rest)
 	if rest == "" then return Kit:Window("app:" .. id) end
 	local name = A.NAME:format(UI.AppTitle(id))
 	local word = rest:match("^(%S+)")
 	local cmd = ns.CONTROL_WORDS[word:lower()] or ns.CONTROL_WORDS[word]
-	if cmd then
-		for _, c in ipairs(UI.AppControlList(id)) do
-			if c.cmd == cmd then
-				if Kit:AppControl(id, cmd) then return ns.Say(A.SENT:format(name, c.label)) end
-				return ns.Say(A.NOT_RUNNING:format(name))
-			end
+	for _, c in ipairs(UI.AppControlList(id)) do
+		if c.cmd == cmd or (not cmd and not A.CONTROL[c.cmd] and (c.cmd == word:lower() or c.label == ns.Escape(word))) then
+			if Kit:AppControl(id, c.cmd) then return ns.Say(A.SENT:format(name, c.label)) end
+			return ns.Say(A.NOT_RUNNING:format(name))
 		end
 	end
 	if Kit:AppSay(id, rest) then return ns.Say(A.SAID_TO:format(name)) end

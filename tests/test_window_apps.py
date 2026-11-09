@@ -151,6 +151,12 @@ class WindowApps(unittest.TestCase):
         self.assertIn("Passed on to Voice", self.slash(s, "voice how are you"))
         self.assertEqual(log(s)[-1], "say voice how are you")
         self.assertIn("Bot takes no commands", self.slash(s, "bot hello"))
+        s.lua.execute(b"__add('helper', { decl = { title = 'Helper' }, controls = { 'mute', 'brief' }, "
+                      b"status = { app = 'helper', on = true } })")
+        self.assertIn("Told Helper: xbrief", self.slash(s, "helper xbrief"))      # an own control, by its label
+        self.assertEqual(log(s)[-1], "control helper brief")
+        self.assertIn("Told Helper: xbrief", self.slash(s, "helper brief"))       # or its cmd
+        self.assertIn("Helper takes: mute, brief", self.slash(s, "helper dance"))
         w = s.g("WuxianKitWindow")
         self.assertIsNone(w)
         self.slash(s, "bot")

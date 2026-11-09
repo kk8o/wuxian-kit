@@ -164,6 +164,13 @@ class Basics(AppCase):
                 ("{ app = 'a', driver = 'prompt', prompt = 'a' }", "no argument driver"),
                 ("{ app = 'a', hear = 'chat:guild' }", "is a table"),
                 ("{ app = 'a', controls = { 'dance' } }", "controls: dance is not one of"),
+                ("{ app = 'a', controls = { { cmd = 'mute', label = 'M' } } }", "controls[1].cmd: a word of the app's own"),
+                ("{ app = 'a', controls = { { cmd = 'Brief', label = 'B' } } }", "controls[1].cmd: a word of the app's own"),
+                ("{ app = 'a', controls = { { cmd = 'brief' } } }", "controls[1].label: the button's text"),
+                ("{ app = 'a', controls = { { cmd = 'brief', label = 'two words' } } }", "one word without spaces"),
+                ("{ app = 'a', controls = { 'mute', 'unmute', 'less', 'more', 'test', 'pause', 'resume', 'stop', "
+                 "{ cmd = 'a1', label = 'a' }, { cmd = 'a2', label = 'b' }, { cmd = 'a3', label = 'c' }, "
+                 "{ cmd = 'a4', label = 'd' }, { cmd = 'a5', label = 'e' } } }", "controls is a list of at most 12"),
                 ("{ app = 'a', urgent = { 'Big Deal' } }", "is not a word"),
                 ("{ app = 'a', pace = { fast = {} } }", "pace: no field fast"),
                 ("{ app = 'a', pace = { normal = { every = 0 } } }", "pace.normal.every is a number of at least 1"),
@@ -443,6 +450,21 @@ class Wakes(AppCase):
         s.lua.execute(b"WuxianKit:AppControl('w', 'test')")
         self.assertEqual(self.wakes(s, "w")[-1]["reason"], "item")              # no digest: an item
         self.assertEqual(py(s.ns.AppControls(b"nothing")), {})
+
+    def test_controls_of_the_apps_own(self):
+        """{cmd, label}: a button of the app's own, told as {cmd}; the label (or the cmd) names it too"""
+        s = self.start(locale="zhCN")
+        self.agent(s, "kit.app.open", "{ app = 'v', controls = { 'test', { cmd = 'brief', label = '任务播报' }, 'stop' }, "
+                                      "hear = { 'bus:demo.*' } }")
+        self.assertEqual([(c["cmd"], c["label"]) for c in py(s.ns.AppControls(b"v"))],
+                         [("test", "试音"), ("brief", "任务播报"), ("stop", "停止")])
+        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'brief')"), True)
+        self.assertEqual(self.wakes(s, "v")[-1]["items"][-1]["cmd"], "brief")
+        self.assertIs(s.lua.eval("WuxianKit:AppControl('v', '任务播报')".encode()), True)   # its label
+        self.assertEqual(self.wakes(s, "v")[-1]["items"][-1]["cmd"], "brief")
+        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'dance')"), False)
+        status = self.agent(s, "kit.app.status", "{ app = 'v' }")
+        self.assertEqual(status["controls"], ["test", "brief", "stop"])
 
     def test_control_labels_in_chinese(self):
         s = self.start(locale="zhCN")

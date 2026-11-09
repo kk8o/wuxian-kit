@@ -445,7 +445,7 @@ WuxianKit:App("officers", {
 | `digest` | `false` / 不写：每个条目到了就发（`reason = "item"`）；一张表 `{ gather, every, idle, most }`：攒成唤醒（见「唤醒」） |
 | `pace` | `true` 或三档的表 `{ quiet = {...}, normal = {...}, lively = {...} }`（每档 `{ gather, every, idle, most, wake = { why... } }`）：攒成唤醒，节奏跟玩家的选项走；`true` 用核心的三档（见下）。有 `pace` 时不看 `digest` |
 | `urgent` | 不用 `pace` 时，哪些条目立即唤醒：`why` 或 `kind` 的列表；Lua 声明也可以是函数 `urgent(item)`。有 `pace` 时只看当前档的 `wake`（同样按 `why` 或 `kind`） |
-| `controls` | 玩家能下的指令：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑；`stop` 由核心执行（停止应用），其余只转告应用 |
+| `controls` | 玩家能下的指令（卡片上的按钮、`/wk <应用> <词>`）：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑，或应用自己的 `{ cmd, label }`（cmd 小写字母、数字、`_`；label 一个词、不超过 24 字节，按钮上显示它）；合计不超过 12 个；`stop` 由核心执行（停止应用），其余只转告应用 |
 | `say` | `true`：玩家可以用 `/wk <id> <一句话>` 对应用说话 |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有 `kit.app.*` 调用就算离开，应用停止（`why = "left"`） |
 | `minutes` | 最长运行多久（默认 120，最多 720）；`kit.app.open` 的 `minutes` 优先 |
@@ -531,7 +531,7 @@ WuxianKit:App("officers", {
 - `/wk` 窗口的分组顺序：应用、系统扩展、自定义扩展。
 - 卡片的主按钮：没运行时，有 `prompt` →「交给 AI」，没有 → 没有主按钮。运行中：停止、指令按钮。临时应用标「临时」，没有「交给 AI」。
 - 卡片的来源行：插件 X / Agent 声明。
-- `/wk <id>` 打开应用页；`/wk <id> <词>`：词（如「静音」「少说」「停止」）换成指令且在它的 `controls` 里，就是指令；否则 `say = true` 时当作对应用说的话；都不行就提示它接受的指令。
+- `/wk <id>` 打开应用页；`/wk <id> <词>`：词（如「静音」「少说」「停止」，或应用自己那个指令的 label、cmd）换成指令且在它的 `controls` 里，就是指令；否则 `say = true` 时当作对应用说的话；都不行就提示它接受的指令。
 
 ### 运行状态与存储
 

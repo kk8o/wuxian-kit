@@ -15,7 +15,8 @@
 --   app:Get(name)                        one of its options (as ext:Get)
 --   app:Running()                        its run while it runs ({ ends, started, ... }), else nil
 --   app:Push(data) -> boolean            an item of its own ({ source = "addon", data }) while it runs
---   WuxianKit:AppControl(id, cmd) -> boolean   the player's command (one of the app's controls; "stop" stops it too)
+--   WuxianKit:AppControl(id, cmd) -> boolean   the player's command (one of the app's controls, by its cmd, a word of
+--                                        ns.CONTROL_WORDS or its own label; "stop" stops it too)
 --   WuxianKit:AppSay(id, text) -> boolean      the player's words to the app (decl.say)
 --   WuxianKit:AppPanel(id, parent, width)      (UI/AppPanel.lua, K2) the app's card in another addon's window
 --
@@ -37,7 +38,7 @@
 --   ns.AppStop(id, why)           stops it ("player" from the window)
 --   ns.AppOptionList(id)          its options as kit.options answers ({ [name] = { title, kind, value, ... } })
 --   ns.SetAppOption(id, name, v)  the player set one: true and the value kept, or false
---   ns.AppControls(id)            { { cmd, label } } in its declared order
+--   ns.AppControls(id)            { { cmd, label } } in its declared order (label: the core's word, or the app's own)
 --   ns.ForgetApp(id)              the player removes an app an agent declared
 --   ns.CONTROL_WORDS              word (English and Chinese) -> cmd, for /wk <app> <word>
 -- ns.Changed("app", id) tells it when an app is declared or removed.
@@ -84,6 +85,7 @@ local AGENT_MOST, TEMP_MOST, OPTIONS_MOST, CHOICES_MOST, HEAR_MOST, SEE_MOST, LI
 local RING, MINUTES, MINUTES_MOST, LEASE, LEASE_MOST, SAY_MAX = 100, 120, 720, 600, 43200, 255
 
 local CONTROL_ORDER = { "mute", "unmute", "less", "more", "test", "pause", "resume", "stop" }
+local CONTROLS_MOST = 12                                -- the core's and an app's own ({cmd, label}) together
 local CONTROLS = {}
 for _, c in ipairs(CONTROL_ORDER) do CONTROLS[c] = true end
 local OPTION_KINDS = { boolean = true, text = true, number = true, choice = true, list = true }
@@ -466,15 +468,35 @@ local function Normalize(id, d, agent, kept)
 	elseif d.urgent ~= nil then
 		n.urgentSet = Set(Words(d.urgent, "urgent", agent))
 	end
-	n.controls = {}
+	n.controls, n.labels = {}, {}
 	if d.controls ~= nil then
-		if not IsList(d.controls) then Fail("controls is a list (of %s)", table.concat(CONTROL_ORDER, ", ")) end
+		if not IsList(d.controls) or #d.controls > CONTROLS_MOST then
+			Fail("controls is a list of at most %d: %s, or {cmd, label} of the app's own", CONTROLS_MOST,
+				table.concat(CONTROL_ORDER, ", "))
+		end
 		local seen = {}
-		for _, c in ipairs(d.controls) do
-			if not CONTROLS[c] then Fail("controls: %s is not one of %s", ns.Text(c), table.concat(CONTROL_ORDER, ", ")) end
-			if not seen[c] then
-				seen[c] = true
-				n.controls[#n.controls + 1] = c
+		for i, c in ipairs(d.controls) do
+			local cmd, label = c, nil
+			if type(c) == "table" then                       -- the app's own: a button with its label, told as {cmd}
+				cmd = c.cmd
+				if type(cmd) ~= "string" or #cmd > ID_MAX or not cmd:match("^[a-z][a-z0-9_]*$") or CONTROLS[cmd]
+					or ns.CONTROL_WORDS[cmd] then
+					Fail("controls[%d].cmd: a word of the app's own (lowercase letters, digits, _, at most %d bytes), not "
+						.. "one of %s", i, ID_MAX, table.concat(CONTROL_ORDER, ", "))
+				end
+				label = Text(c.label, ("controls[%d].label"):format(i), LABEL_MAX, agent)
+				if label == nil or (type(label) == "string" and not label:match("^%S+$")) then
+					Fail("controls[%d].label: the button's text, one word without spaces (/wk <app> <label> gives it), at "
+						.. "most %d bytes", i, LABEL_MAX)
+				end
+			elseif not CONTROLS[c] then
+				Fail("controls: %s is not one of %s (or {cmd, label} of the app's own)", ns.Text(c),
+					table.concat(CONTROL_ORDER, ", "))
+			end
+			if not seen[cmd] then
+				seen[cmd] = true
+				n.controls[#n.controls + 1] = cmd
+				n.labels[cmd] = label
 			end
 		end
 	end
@@ -1096,9 +1118,20 @@ function App:Push(data)
 	return Deliver(self, "addon", { data = data })
 end
 
+-- cmd: one of the app's controls by its cmd, a word of ns.CONTROL_WORDS, or the label of one of its own
+local function ControlOf(app, word)
+	if type(word) ~= "string" then return word end
+	local cmd = ns.CONTROL_WORDS[word] or ns.CONTROL_WORDS[word:lower()]
+	if cmd then return cmd end
+	for c, label in pairs(app.decl.labels or {}) do
+		if c == word:lower() or ns.T(label) == word then return c end
+	end
+	return word
+end
+
 function Kit:AppControl(id, cmd)
 	local app = apps[id]
-	cmd = ns.CONTROL_WORDS[cmd] or cmd
+	cmd = app and ControlOf(app, cmd) or cmd
 	if not app or not Set(app.decl.controls)[cmd] or not Run(app) then return false end
 	Deliver(app, "control", { cmd = cmd }, true)
 	if cmd == "stop" then Stop(app, "player") end
@@ -1197,7 +1230,9 @@ end
 function ns.AppControls(id)
 	local app = apps[id]
 	local out = {}
-	for _, cmd in ipairs(app and app.decl.controls or {}) do out[#out + 1] = { cmd = cmd, label = W.CONTROL[cmd] } end
+	for _, cmd in ipairs(app and app.decl.controls or {}) do
+		out[#out + 1] = { cmd = cmd, label = W.CONTROL[cmd] or app.decl.labels and app.decl.labels[cmd] }
+	end
 	return out
 end
 
@@ -1298,7 +1333,9 @@ local function DeclareOpen()
 			.. "quiet|normal|lively and quiet hours set the rhythm; or {quiet, normal, lively} of {gather, every, idle, "
 			.. "most, wake = [whys]}), digest ({gather, every, idle, most}: gathered into wakes; none: each item is a "
 			.. "wake), urgent ([whys or kinds] that wake within gather seconds, without pace), controls (the player's "
-			.. "commands: mute, unmute, less, more, test, pause, resume, stop), say (the player may talk to you: /wk <app> "
+			.. "commands, buttons on its card and /wk <app> <word>: mute, unmute, less, more, test, pause, resume, stop; "
+			.. "or one of the app's own, {cmd, label} (label one word, at most 24 bytes): at most 12, each told as a "
+			.. "control item {cmd}), say (the player may talk to you: /wk <app> "
 			.. "<words>), see (at most 8 states each wake carries as state {name = the state at that wake}; kit.app.state "
 			.. "reads them at once: " .. SeeDoc() .. "), lease (seconds without a kit.app.* call before it stops, "
 			.. "default 600, 0 none, at least 60), "
