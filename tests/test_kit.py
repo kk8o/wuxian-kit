@@ -313,7 +313,8 @@ class Core(unittest.TestCase):
         cvar = next(c for c in ext["tune"]["capabilities"] if c["id"] == "tune.cvar.set")
         self.assertEqual((cvar["kind"], cvar["title"], cvar["args"]["name"]), ("do", "Client settings", "string"))
         self.assertEqual([v["topic"] for v in ext["kit"]["events"]], ["kit.proposal", "kit.extension", "kit.dropped",
-                                                                     "kit.changed", "kit.ready", "kit.feed", "kit.option"])
+                                                                     "kit.changed", "kit.ready", "kit.feed", "kit.option",
+                                                                     "kit.app"])
         self.assertEqual([v["topic"] for v in ext["gate"]["events"]], ["gate.result"])
         message = ext["chat"]["events"][0]
         self.assertEqual((message["topic"], message["data"]["sender"]), ("chat.message", "string"))
@@ -436,7 +437,8 @@ class Core(unittest.TestCase):
         click(self.checks(w)["Enabled"])
         self.assertIn('Disabled: Chat', s.chat())
         self.assertIn("no capability chat.send", self.fails(s, "WuxianKit:Call('chat.send', { channel = 'guild', text = 'x' })"))
-        self.assertEqual(self.events(s, "kit.feed")[-1], {"extension": "chat", "feed": "listen", "on": False})
+        self.assertEqual(self.events(s, "kit.feed")[-1], {"extension": "chat", "feed": "listen", "on": False,
+                                                          "why": "extension"})
         exts = {e["id"]: e["state"] for e in self.call(s, "kit.extensions")}
         self.assertEqual(exts["chat"], "off")
         s2 = s.reload()
@@ -607,7 +609,8 @@ class Core(unittest.TestCase):
         s = self.start()
         self.call(s, "chat.listen", "{ channels = { 'guild' }, minutes = 1 }")
         s.run(66)
-        self.assertEqual(self.events(s, "kit.feed")[-1], {"extension": "chat", "feed": "listen", "on": False})
+        self.assertEqual(self.events(s, "kit.feed")[-1], {"extension": "chat", "feed": "listen", "on": False,
+                                                          "why": "expired"})
         self.assertIn("Listen to channels: stopped", s.chat())
         self.call(s, "chat.listen", "{ channels = { 'guild' } }")
         s2 = s.reload()
