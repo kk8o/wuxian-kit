@@ -86,7 +86,7 @@ class Declare(FacetCase):
         self.assertEqual((st["on"], st["see"]), (True, ["me", "group"]))
         self.assertEqual(next(a for a in self.agent(s, "kit.apps") if a["id"] == "v")["see"], ["me", "group"])
         self.assertNotIn("see", next(a for a in self.agent(s, "kit.apps") if a["id"] == "guild"))   # none: not listed
-        st = self.agent(s, "kit.app.declare", "{ app = 'p', driver = 'program', see = { 'me' } }")
+        st = self.agent(s, "kit.app.declare", "{ app = 'p', see = { 'me' } }")
         self.assertEqual(st["see"], ["me"])
 
     def test_a_remembered_declaration_waits_for_its_facet(self):

@@ -130,8 +130,8 @@ kit:See("manifest", { title = L"MANIFEST",
 		.. "title, version, addon, builtin, state, docs (the folder under Interface\\AddOns of its AGENT.md and skills/), "
 		.. "capabilities, events, sources [{name, title, doc, values}] (what apps can hear of it), facets [{name, title, "
 		.. "doc, fields}] (what apps can see of it)}], the capabilities and events of those that are on, apps [{id, title, "
-		.. "by, addon, topic, hear, see, prompt, start, extension, driver (prompt or program), docs (an addon's app: the "
-		.. "folder of its skills/), launch, temp}]. For 无限工坊's app",
+		.. "by, addon, topic, hear, see, prompt, start, extension, docs (an addon's app: the folder of its skills/), "
+		.. "temp}]. For 无限工坊's app",
 	run = function() return Kit:Manifest() end })
 kit:See("revision", { title = L"REVISION", doc = "the manifest's revision: {revision}; it changes whenever the manifest does",
 	run = function() return { revision = Kit:Manifest().revision } end })

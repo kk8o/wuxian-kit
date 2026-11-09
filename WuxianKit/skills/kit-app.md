@@ -2,8 +2,8 @@
 name: kit-app
 title: Write an AI app
 title-zh: 写一个 AI 应用
-description: Make an AI app that hears the game through WuxianKit (a chat helper, a commentator, a local companion): an addon's declaration with a skill an AI conversation follows, a local program 无限工坊 loads, or a temporary app to debug; then run it, act through proposals and stop it
-description-zh: 做一个经扩展框架听游戏的 AI 应用（聊天助手、解说、本机陪玩）：插件声明加一份 AI 对话照做的技能、由无限工坊加载的本机程序，或调试用的临时应用；再运行、经提案行动、停止
+description: Make an AI app that hears the game through WuxianKit (a chat helper, a commentator, a voice companion): an addon's declaration with a skill an AI conversation follows, an app a local extension of 无限工坊 brings, or a temporary app to debug; then run it, act through proposals and stop it
+description-zh: 做一个经扩展框架听游戏的 AI 应用（聊天助手、解说、语音陪玩）：插件声明加一份 AI 对话照做的技能、无限工坊本机扩展带的应用，或调试用的临时应用；再运行、经提案行动、停止
 arguments: app, goal?
 needs: shell
 ---
@@ -12,13 +12,13 @@ Make the AI app {{app}}. What it should do: {{goal}}
 1. Read first: section 10 (Apps) of `ARCHITECTURE.md` in the WuxianKit folder (`Interface\AddOns\WuxianKit`; the
    workshop's `status` tool gives the AddOns folder), section 5 for the sources and facets, section 11 for the game
    topics and section 13 for the quest guide. Call `wk_docs` once. Follow them; do not invent fields.
-2. Choose how the app is made, with the player:
-   - **An addon's declaration** (step 4): an AI conversation drives it (`driver = "prompt"`) by following a skill
-     that ships next to the declaration. The player hands it to an AI from its card (交给 AI, Hand to AI). For an app
-     to keep and share.
-   - **A program app** (step 5): a local program drives it (`driver = "program"`) on its own, outside any
-     conversation: a voice companion, a bot with its own model. 无限工坊 loads the program; the card's 开始 (Start)
-     starts it.
+2. Choose how the app is made, with the player. An agent drives every app, following the skill its `prompt` names;
+   the player hands it to an AI from its card (交给 AI, Hand to AI).
+   - **An addon's declaration** (step 4): the declaration and its skill ship in an addon. For an app to keep and
+     share.
+   - **A local extension's app** (step 5): when the app needs something done on this computer (a voice, a model, a
+     file): a local extension of 无限工坊 gives those tools and brings the app and its skill; 无限工坊 declares the app
+     in the game.
    - **A temporary app** (step 6): to try sources or debug, for some minutes. Nothing is kept.
    An app needs an extension only when it must hear, see or do something no source, facet or tool gives: a value no
    Read tool reads, a change no tool makes, items only an addon sees. Then write that part first with the skill
@@ -44,11 +44,11 @@ Make the AI app {{app}}. What it should do: {{goal}}
      gone and stops (default 600, at least 60). `minutes`: its longest run (default 120, at most 720).
    - `options`: at most 8 settings the player sets on its card (`{kind, title, default, ...}` as extension options);
      read them with `wk_kit_options` and `{"app": "<id>"}`.
-4. An addon's declaration (driver `prompt`):
+4. An addon's declaration:
    - Give the app a folder of its own in the addon, such as `Apps/<Name>/`, apart from any extension code. In it,
      `App.lua`:
 
-         WuxianKit:App("<id>", { title = "...", driver = "prompt", prompt = "<skill>", docs = "Apps/<Name>",
+         WuxianKit:App("<id>", { title = "...", prompt = "<skill>", docs = "Apps/<Name>",
            addon = "<Addon>", hear = { ... }, pace = true, controls = { "mute", "unmute", "stop" }, ... })
 
      `docs` is the folder, relative to the addon's. Lua may add `check` (why it cannot start now), `enrich(item)`
@@ -61,30 +61,22 @@ Make the AI app {{app}}. What it should do: {{goal}}
    - The `.toc`: `App.lua` after the addon's other files; `## Dependencies: WuxianKit`, or `## OptionalDeps: WuxianKit`
      with the declaration inside `if WuxianKit then ... end`.
    - The workshop's `check` on the addon until it reports no errors. A new file needs a full restart of the game.
-     Then `wk_kit_apps` lists the app with `driver: "prompt"` and its start line (`start`), and its card shows 交给 AI.
+     Then `wk_kit_apps` lists the app with its start line (`start`), and its card shows 交给 AI.
    - Try it: follow the skill yourself (step 7), and fix the skill where it was unclear.
-5. A program app (driver `program`), with the workshop's program tools:
-   - `new_program` with `{"path": "<folder>", "id": "<id>", "title": "<title>"}` makes the folder's
-     `wuxian-program.json`, a `main.py` that uses the SDK and a copy of the SDK (`wuxiankit.py`), and registers it
-     (`"app": false` for a program without an app). `program_add` with `{"path": "<folder>"}` registers one that
-     exists.
-   - `wuxian-program.json`: `id`, `title`, `run` (the command line; a first word with `/` or `\` is relative to the
-     folder), optional `cwd` and `env`, and `app`: the declaration of step 3 without `app`, `title` and `driver`.
-   - `main.py`: `for wake in Client().app(*program_app()):` (both from `wuxiankit`) yields the wakes; the SDK opens
-     the app, sends the heartbeat, opens it again after a UI reload and backs off while the game is away. Act with
-     `client.call("chat.send", {...})` and `client.wait(id)`; honor `control` items; end when the app ends.
-   - The loop: `program_start` with `{"id": "<id>"}`; `program_logs` with `{"id": "<id>", "since": <n>}` reads its
-     output and, once it exited, the exit code (not 0: it failed); fix the code; `program_start` with
-     `{"id": "<id>", "restart": true}`; again until it works. `programs` lists every program and its state.
-     `program_stop` with `{"id": "<id>"}` stops it (the app first, then the process).
-   - Never open a program's app with `wk_kit_app_open`: the program does. `wk_kit_apps` shows it with
-     `driver: "program"`; once the game has the declaration from 无限工坊, its card shows 开始 and the player can start
-     it there.
+5. A local extension's app, with the workshop's tools for local extensions (`extension_guide` reads how to write
+   one):
+   - `new_extension` makes the folder with its manifest `wuxian-extension.json`; write the capabilities the app needs
+     (such as `say` for a voice), and `extension_load` until `extension_check` reports no errors.
+   - The manifest's `apps`: the declaration of step 3 with `app`, `title` and `prompt` (no `temp`). The skill goes in
+     the extension's `skills/<prompt>.md`, with the same front matter as in step 4; its steps open the app, wait as in
+     step 7 and call the extension's `wk_<extension>_<capability>` tools.
+   - At each UI load 无限工坊 declares the app in the game (`kit.app.declare`): `wk_kit_apps` lists it with its
+     start line and its card shows 交给 AI. Try it by following the skill yourself (step 7).
 6. A temporary app: `wk_kit_app_open` with the whole declaration and `"temp": true`. It is not remembered, at most 4
    run at once, and a stop or a UI reload ends it. Wait for it as in step 7, or read `wk_kit_app_recent` with
    `{"app": "<id>", "since": 0}` after making the thing happen in the game; then `wk_kit_app_stop`. A temporary app
-   that proved useful becomes an addon's declaration or a program.
-7. Running an app in a conversation (an addon's declaration through its skill, or a temporary app):
+   that proved useful becomes an addon's declaration or a local extension's app.
+7. Running an app in a conversation (through its skill, or a temporary app):
    - `wk_kit_app_open` answers the app's status (`on`, `ends`, `lease`, ...). If `on` is false, `blocked` says why
      (an extension off, its check): tell the player and do not open it again and again.
    - Wait for wakes in the background: run the workshop's command `wuxian listen <id> --once` in the background (from
@@ -106,5 +98,5 @@ Make the AI app {{app}}. What it should do: {{goal}}
    - Stop it with `wk_kit_app_stop` and `{"app": "<id>"}` when the player asks or the work is done; otherwise the
      lease stops it once you no longer answer.
 
-Report how the app is made (its files, or its program folder), the declaration, what it heard and did, and how it
+Report how the app is made (its files, or its local extension's folder), the declaration, what it heard and did, and how it
 ended.

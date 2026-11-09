@@ -1,7 +1,7 @@
 """The window's apps (0.6, Core/UI/Window.lua) under Lua 5.1 in the mock client, over Apps.lua's ns functions faked as in
 test_app_panel: the group 应用 first, before the extensions, with each app's state, the window first open on the first
 app's page, an app's page (where it came from, its card; remove for an agent's; a temporary one marked), redrawn when
-apps change; /wk <app> [words] (its controls, its words, what it takes, its page, 开始 for a program's), /wk help; and
+apps change; /wk <app> [words] (its controls, its words, what it takes, its page), /wk help; and
 the core's page drawing the core's own options (称呼, 0.6)."""
 import unittest
 
@@ -94,66 +94,35 @@ class WindowApps(unittest.TestCase):
         bare.g("SlashCmdList")[b"WUXIANKIT"](b"")
         self.assertEqual(texts(bare.g("WuxianKitWindow")[b"body"])[0], "Core")
 
-    def test_a_program_apps_page(self):
-        """a program's app: its page says it is a local program's, its card 开始 (to ns.AppLaunch), its item 启动中 once
-        asked; a temporary app's capsule says so"""
+    def test_an_agents_apps_page(self):
+        """an app an agent declared without a prompt: its page says an agent declared it, no main button (no 开始), its
+        item on or off; a temporary app's capsule says so; /wk <app> 开始|start is words like any other"""
         s = self.setup()
-        s.lua.execute(b"__add('buddy', { by = 'agent', launch = true, decl = { title = 'Buddy', driver = 'program' } }) "
+        s.lua.execute(b"__add('buddy', { by = 'agent', launch = true, controls = { 'mute', 'stop' }, "
+                      b"decl = { title = 'Buddy', driver = 'program' } }) "
                       b"__add('peek', { by = 'agent', decl = { title = 'Peek', prompt = 'peek-run' }, temp = true, "
                       b"status = { app = 'peek', on = true, said = 0 } })")
         w = self.window(s, "buddy")
-        self.assertEqual(texts(w[b"body"])[:3], ["Buddy", "Local program", "Ready to start"])
+        self.assertEqual(texts(w[b"body"])[:3], ["Buddy", "Declared by an agent", "Ready to connect an agent"])
         self.assertEqual(w[b"pill"][b"text"][b"text"], b"App")
-        self.assertEqual(labels(w), ["Start", "Remove"])
-        click(button(w, "Start"))
-        s.run(0.1)
-        self.assertEqual(log(s), ["launch buddy"])
-        self.assertEqual(labels(w), ["Starting…", "Remove"])
-        self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"], b"Starting")
+        self.assertEqual(labels(w), ["Remove"])
+        self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"], b"Off")
         click(self.item(w, "Peek"))
         self.assertEqual(texts(w[b"body"])[:2], ["Peek", "Declared by an agent"])
         self.assertEqual(w[b"pill"][b"text"][b"text"], b"Temporary")
         self.assertEqual(labels(w), ["Stop", "Remove"])
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
         self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "临时")
-        self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"].decode(), "启动中")
+        self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"].decode(), "未运行")
         click(self.item(w, "Buddy"))
-        self.assertEqual(texts(w[b"body"])[1:3], ["本机程序", "已请求无限工坊启动"])
+        self.assertEqual(texts(w[b"body"])[1:3], ["Agent 声明", "可以接入 Agent"])
         self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "应用")
-
-    def test_start_from_the_slash_command(self):
-        """/wk <app> 开始|start: a program's app to ns.AppLaunch, what came of it in the chat (asked; already running;
-        starting; no launch; 无限工坊 not running; its check's reason; a refusal's reason); another app's as before;
-        /wk help lists 开始 among a program's words"""
-        s = self.setup()
-        s.lua.execute(b"__add('buddy', { by = 'agent', decl = { title = 'Buddy', driver = 'program' }, launch = true, "
-                      b"controls = { 'mute', 'stop' } })")
-        self.assertIn("Asked Wuxian Workshop to start Buddy", self.slash(s, "buddy start"))
-        self.assertEqual(log(s), ["launch buddy"])
-        self.assertIn("Buddy is starting", self.slash(s, "buddy START"))
-        s.lua.execute(b"__apps.buddy.launching = false __apps.buddy.status.on = true")
-        self.assertIn("Buddy is already running", self.slash(s, "buddy start"))
-        s.lua.execute(b"__apps.buddy.status.on = false __workshop = false")
-        self.assertIn("Buddy cannot start: Needs Wuxian Workshop running", self.slash(s, "buddy start"))
-        s.lua.execute(b"__workshop = true __apps.buddy.launch = false")
-        self.assertIn("Buddy is driven by a local program; start it in Wuxian Workshop", self.slash(s, "buddy start"))
-        s.lua.execute(b"__apps.buddy.launch = true __apps.buddy.status.blocked = 'No guild'")
-        self.assertIn("Buddy cannot start: No guild", self.slash(s, "buddy start"))
-        s.lua.execute(b"__apps.buddy.status.blocked = nil __refuse = '|cffNot|r registered'")
-        self.assertIn("Buddy cannot start: ||cffNot||r registered", self.slash(s, "buddy start"))
-        self.assertEqual(log(s), ["launch buddy"] * 2)
-        s.lua.execute(b"__refuse = ''")
-        self.assertIn("Buddy cannot start", self.slash(s, "buddy start"))
-        s.lua.execute(b"__refuse = nil")
-        self.assertIn("Voice takes: mute, unmute, stop", self.slash(s, "voice start"))   # not a program's
-        self.assertIn("Bot takes no commands", self.slash(s, "bot start"))
-        self.assertIn("/wk buddy: Buddy · start, mute, stop", self.slash(s, "help"))
-        self.assertIn("Buddy takes: start, mute, stop", self.slash(s, "buddy sing"))
+        s.lua.execute(b"__ns.SetLanguage('enUS')")
+        self.assertIn("Buddy takes: mute, stop", self.slash(s, "buddy start"))
+        self.assertIn("/wk buddy: Buddy · mute, stop", self.slash(s, "help"))
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
-        self.assertIn("已请求无限工坊启动「Buddy」", self.slash(s, "buddy 开始"))
-        self.assertIn("/wk buddy：Buddy · 开始、静音、停止", self.slash(s, "help"))
-        s.lua.execute(b"__apps.buddy.launching = false __workshop = false")
-        self.assertIn("「Buddy」无法开始：需要无限工坊在运行", self.slash(s, "buddy 开始"))
+        self.assertIn("「Buddy」的指令：静音、停止", self.slash(s, "buddy 开始"))
+        self.assertEqual(log(s), ["say buddy start", "say buddy 开始"])            # words, as any (it takes none)
 
     def test_the_page_ticks(self):
         """an app's page is drawn again every few seconds while the window shows it"""

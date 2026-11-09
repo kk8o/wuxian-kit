@@ -1,7 +1,6 @@
-"""Apps and their drivers (the layered kit): driver (prompt, program) and docs in the declaration, kit.app.declare (kept
-without starting, no heartbeat, launch), kit.app.launch and ns.AppLaunch (only while 无限工坊 is linked; launching
-until the app starts or 30 s pass), ns.WorkshopOnline, and temporary apps (kit.app.open temp = true: not kept, at most
-4, not one of the 8, gone once stopped or reloaded)."""
+"""Declarations (the layered kit): docs in the declaration, no driver or launch (an agent drives every app),
+kit.app.declare (kept without starting, no heartbeat; 无限工坊 declares a local extension's apps so), and temporary apps
+(kit.app.open temp = true: not kept, at most 4, not one of the 8, gone once stopped or reloaded)."""
 import unittest
 
 from kitmock import Session, lupa, py
@@ -9,7 +8,7 @@ from test_standalone import bridge
 
 
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
-class Programs(unittest.TestCase):
+class Declared(unittest.TestCase):
     def start(self, s=None, online=True, **kw):
         if s is None:
             kw.setdefault("saved", {"WoWBridge": bridge("0.9.7", online=True)})
@@ -38,31 +37,42 @@ class Programs(unittest.TestCase):
     def listed(self, s, app):
         return next((a for a in self.agent(s, "kit.apps") if a["id"] == app), None)
 
-    def launch(self, s, app):
-        got = s.ns.AppLaunch(app.encode())
-        ok, why = got if isinstance(got, tuple) else (got, None)          # (lupa: one value, not a tuple)
-        return ok, why.decode() if isinstance(why, bytes) else why
-
-    def test_the_driver(self):
+    def test_docs_and_no_driver(self):
         s = self.start()
-        self.assertEqual(self.agent(s, "kit.app.open", "{ app = 'p', prompt = 'p-skill' }")["driver"], "prompt")
-        self.assertEqual(self.agent(s, "kit.app.declare", "{ app = 'g', driver = 'program', hear = { 'game:combat' } }")
-                         ["driver"], "program")
-        self.assertNotIn("driver", self.agent(s, "kit.app.open", "{ app = 'n', title = 'N' }"))   # neither: none
-        self.assertIn('driver "prompt" goes with prompt', self.fails(s, "kit.app.open", "{ app = 'x', driver = 'prompt' }"))
+        st = self.agent(s, "kit.app.open", "{ app = 'p', prompt = 'p-skill' }")
+        self.assertEqual(st["start"].count("p-skill"), 1)
+        for gone in ("driver", "launch", "launching"):                          # an agent drives every app
+            self.assertNotIn(gone, st)
+            self.assertNotIn(gone, self.listed(s, "p"))
+        self.assertIn("no argument driver", self.fails(s, "kit.app.open", "{ app = 'x', driver = 'prompt' }"))
+        self.assertIn("no argument driver", self.fails(s, "kit.app.declare", "{ app = 'x', driver = 'program' }"))
+        self.assertIn("no argument launch", self.fails(s, "kit.app.declare", "{ app = 'x', launch = true }"))
+        self.assertIsNone(self.listed(s, "x"))
         self.assertIn("no argument docs", self.fails(s, "kit.app.open", "{ app = 'x', docs = 'Apps/X' }"))   # addons only
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', docs = '\\\\Apps\\\\Ad\\\\', driver = 'program' })")
         ad = next(a for a in py(s.lua.eval(b"WuxianKit:Manifest()"))["apps"] if a["id"] == "ad")
-        self.assertEqual((ad["docs"], ad["driver"], ad["launch"], ad["temp"]), ("WxAd/Apps/Ad", "program", False, False))
+        self.assertEqual((ad["docs"], ad["temp"]), ("WxAd/Apps/Ad", False))
+        self.assertNotIn("driver", ad)                                         # an addon's Lua: an unknown field, unread
+        self.assertNotIn("launch", ad)
         guild = next(a for a in py(s.lua.eval(b"WuxianKit:Manifest()"))["apps"] if a["id"] == "guild")
-        self.assertEqual((guild["docs"], guild["driver"]), ("WuxianKit/Apps/Guild", "prompt"))
+        self.assertEqual(guild["docs"], "WuxianKit/Apps/Guild")
+
+    def test_a_remembered_declaration_with_a_driver_is_dropped(self):
+        s = self.start()
+        self.agent(s, "kit.app.declare", "{ app = 'old', title = 'Old', hear = { 'game:combat' } }")
+        s.lua.execute(b"WuxianKitDB.apps.old.decl.driver = 'program'")         # kept by a kit before 0.6's release
+        s2 = self.start(s.reload())
+        self.assertIsNone(self.listed(s2, "old"))
+        self.assertIsNone(s2.lua.eval(b"WuxianKitDB.apps.old.decl"))
 
     def test_declare_keeps_without_starting_and_is_no_heartbeat(self):
         s = self.start()
         rev = py(s.lua.eval(b"WuxianKit:Manifest()"))["revision"]
-        decl = "{ app = 'comp', title = 'Companion', driver = 'program', hear = { 'game:combat' }, see = { 'me' }, lease = 60 }"
+        decl = ("{ app = 'comp', title = 'Companion', prompt = 'companion', hear = { 'game:combat' }, see = { 'me' }, "
+                "lease = 60 }")
         st = self.agent(s, "kit.app.declare", decl)
-        self.assertEqual((st["on"], st["by"], st["driver"], st["launch"], st["lease"]), (False, "agent", "program", False, 60))
+        self.assertEqual((st["on"], st["by"], st["lease"]), (False, "agent", 60))
+        self.assertIn("companion", st["start"])                                # its card: 交给 AI
         self.assertNotIn("seen", st)
         self.assertEqual(self.events(s, "kit.app"), [])                        # not started
         self.assertIsNotNone(s.lua.eval(b"WuxianKitDB.apps.comp.decl"))        # kept
@@ -75,13 +85,13 @@ class Programs(unittest.TestCase):
         self.assertEqual(len(self.events(s, "kit.changed")), changed)
         self.assertIn("no app ghost: kit.app.declare gives", self.fails(s, "kit.app.declare", "{ app = 'ghost' }"))
 
-        st = self.agent(s, "kit.app.open", "{ app = 'comp' }")                 # the program starts it
+        st = self.agent(s, "kit.app.open", "{ app = 'comp' }")                 # the agent opens it
         self.assertEqual((st["on"], st["seen"]), (True, s.lua.eval(b"time()")))
         s.run(50)
-        self.agent(s, "kit.app.declare", "{ app = 'comp', launch = true }")    # no heartbeat
+        self.agent(s, "kit.app.declare", "{ app = 'comp' }")                   # no heartbeat
         s.run(15)
         st = self.agent(s, "kit.app.declare", "{ app = 'comp' }")
-        self.assertEqual((st["on"], st["why"], st["launch"]), (False, "left", True))
+        self.assertEqual((st["on"], st["why"]), (False, "left"))
 
     def test_declare_while_running_hears_the_new_declaration(self):
         s = self.start()
@@ -95,46 +105,8 @@ class Programs(unittest.TestCase):
 
     def test_declare_an_addons_app(self):
         s = self.start()
-        st = self.agent(s, "kit.app.declare", "{ app = 'guild', title = 'Mine', hear = { 'bus:x' }, launch = true }")
-        self.assertEqual((st["title"], st["by"], st["ignored"], st["launch"]), ("Guild chat", "addon", ["hear", "title"], True))
-        self.assertIs(self.listed(s, "guild")["launch"], True)
-
-    def test_launch(self):
-        s = self.start(online=False)
-        self.agent(s, "kit.app.declare", "{ app = 'comp', title = 'Companion', driver = 'program', "
-                                         "hear = { 'game:combat' }, lease = 0 }")
-        self.assertEqual(self.launch(s, "comp"), (False, "Driven by a program on this computer"))   # no launch
-        self.assertEqual(self.launch(s, "nope"), (False, "No app nope"))
-        self.agent(s, "kit.app.declare", "{ app = 'comp', launch = true }")
-        self.assertIs(s.ns.WorkshopOnline(), False)
-        self.assertEqual(self.launch(s, "comp"), (False, "Needs 无限工坊 running"))
-        self.assertEqual(self.events(s, "kit.app.launch"), [])
-        s.lua.execute(b"__online = true")
-        self.assertIs(s.ns.WorkshopOnline(), True)
-        before = s.lua.eval(b"__ns_changes")
-        self.assertEqual(self.launch(s, "comp"), (True, None))
-        self.assertEqual(self.events(s, "kit.app.launch"), [{"app": "comp"}])
-        self.assertGreater(s.lua.eval(b"__ns_changes"), before)                # the window hears launching start
-        self.assertIs(self.listed(s, "comp")["launching"], True)
-        self.assertEqual(self.launch(s, "comp"), (False, "Starting…"))
-        s.run(31)
-        self.assertIs(self.listed(s, "comp")["launching"], False)              # 30 s and no start: over
-        self.assertEqual(self.launch(s, "comp"), (True, None))
-        self.agent(s, "kit.app.open", "{ app = 'comp' }")                      # the program started it
-        self.assertIs(self.listed(s, "comp")["launching"], False)
-        self.assertEqual(self.launch(s, "comp"), (False, "Already running"))
-        self.assertEqual(len(self.events(s, "kit.app.launch")), 2)
-        s.run(31)                                                              # the old timer clears nothing new
-        self.agent(s, "kit.app.stop", "{ app = 'comp' }")
-        s.ns.Switch(b"game", False)                                           # blocked: refused with its reason
-        self.assertEqual(self.launch(s, "comp"), (False, "Needs the Game events extension on"))
-        s.ns.Switch(b"game", True)
-        self.agent(s, "kit.app.declare", "{ app = 'comp', launch = false }")
-        self.assertEqual(self.launch(s, "comp"), (False, "Driven by a program on this computer"))
-        self.agent(s, "kit.app.declare", "{ app = 'comp', launch = true }")
-        s2 = self.start(s.reload())                                            # launch is in memory: declared again
-        self.assertIs(self.listed(s2, "comp")["launch"], False)
-        self.assertEqual(self.listed(s2, "comp")["driver"], "program")
+        st = self.agent(s, "kit.app.declare", "{ app = 'guild', title = 'Mine', hear = { 'bus:x' } }")
+        self.assertEqual((st["title"], st["by"], st["ignored"]), ("Guild chat", "addon", ["hear", "title"]))
 
     def test_temporary_apps(self):
         s = self.start()

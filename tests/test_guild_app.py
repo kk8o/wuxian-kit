@@ -1,5 +1,5 @@
 """The kit's own app guild (公会聊天, Apps/Guild/App.lua, ARCHITECTURE section 10) under Lua 5.1 in the mock client:
-the declaration loads, kit.apps and the manifest list it (addon WuxianKit, prompt guild-chat, driver prompt, docs
+the declaration loads, kit.apps and the manifest list it (addon WuxianKit, prompt guild-chat, docs
 WuxianKit/Apps/Guild), it does not start outside a guild, it hears guild chat (with why and id) and the guild's joins
 through the real chat and game sources, its options come in order, its skill is found in its docs folder and packaged
 as the app's, and a second Kit:App("guild") by another addon (an older WuxianGuild) replaces it without an error."""
@@ -84,18 +84,16 @@ class GuildApp(unittest.TestCase):
                           True, 600, 120))
         self.assertEqual(sorted(app["pace"]), ["lively", "normal", "quiet"])
         self.assertNotIn("enrich", app)
-        self.assertEqual((app["driver"], app["docs"]), ("prompt", "Apps/Guild"))
+        self.assertEqual(app["docs"], "Apps/Guild")
         self.assertEqual(self.agent(s, "kit.apps"), [{"id": "guild", "title": "Guild chat", "by": "addon",
                                                       "addon": "WuxianKit", "on": False, "present": False,
                                                       "prompt": "guild-chat", "start": START_EN, "extension": "chat",
-                                                      "driver": "prompt", "launch": False, "temp": False,
-                                                      "launching": False}])
+                                                      "temp": False}])
         m = py(s.lua.eval(b"WuxianKit:Manifest()"))
         self.assertEqual(m["apps"], [{"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit",
                                       "topic": "app.guild", "hear": ["chat:guild", "game:guild"], "see": {},
                                       "prompt": "guild-chat", "start": START_EN, "extension": "chat",
-                                      "driver": "prompt", "docs": "WuxianKit/Apps/Guild", "launch": False,
-                                      "temp": False}])
+                                      "docs": "WuxianKit/Apps/Guild", "temp": False}])
         zh = self.start(locale="zhCN")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["title"], "公会聊天")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["start"],
