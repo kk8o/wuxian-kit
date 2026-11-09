@@ -141,6 +141,8 @@ end
 function Region:SetVerticalScroll(v) self.scrollTop = v end
 function Region:GetVerticalScroll() return self.scrollTop or 0 end
 function Region:StopMovingOrSizing() end
+function Region:SetHyperlinksEnabled(v) self.hyperlinks = v and true or false end
+function Region:SetMouseMotionEnabled(v) self.motion = v and true or false end
 function Region:GetObjectType() return self.kind end
 function Region:GetName() return self.__name end
 -- a click: nothing on a disabled button; a check button turns over first (as in the client)
@@ -165,6 +167,14 @@ function __fire(event, ...)
 	for _, f in ipairs(frames) do
 		if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
 	end
+end
+-- the tooltip: what it was asked to show ({ owner, link, shown })
+GameTooltip = setmetatable({ kind = "GameTooltip", shown = false, scripts = {}, events = {} }, Region)
+function GameTooltip:SetOwner(owner) self.owner, self.link = owner, nil end
+function GameTooltip:GetOwner() return self.owner end
+function GameTooltip:SetHyperlink(link)
+	if type(link) ~= "string" or not link:find("^%a+:") then error("bad link") end
+	self.link = link
 end
 DEFAULT_CHAT_FRAME = { AddMessage = function(_, msg) py.chat(msg) end }
 SlashCmdList = {}

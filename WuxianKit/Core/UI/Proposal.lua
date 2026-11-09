@@ -2,9 +2,11 @@
 -- it, when it expires; Run, Decline, and Next when more wait. Run stays off before the proposal's `after` time and while a
 -- step is not ready (chat lockdown...); in combat it says a Do waits for the end of it. When another proposal takes the
 -- place of the one shown (it ran, was declined or expired), Run (and /wk yes) waits SETTLE seconds: a click meant for
--- the one before never runs one the player has not seen.
+-- the one before never runs one the player has not seen. A step whose preview has tokens (its spec's links = true: the
+-- lines it escaped, step.linked) shows the client's links for them, linkified when drawn (every second: an item loaded
+-- meanwhile becomes its link), and the player can hover them for their tooltip.
 local _, ns = ...
-local L, UI = ns.L, ns.UI
+local Kit, L, UI = ns.Kit, ns.L, ns.UI
 local S, C = UI.Skin, UI.Skin.C
 
 local W, MAX_LINES, SETTLE = 400, 16, 1
@@ -34,6 +36,7 @@ local function Frame()
 	if f then return f end
 	f = S.Panel("WuxianKitProposal", W, 120, "proposal")
 	f.pool, f.used = {}, 0
+	S.Hyperlinks(f)
 	f.run = S.Button(f, L.RUN, true, function() if shown and not UI.Settling() then ns.Act("run", shown) end end)
 	f.decline = S.Button(f, L.DECLINE, false, function() if shown then ns.Act("decline", shown) end end)
 	f.next = S.Button(f, L.NEXT, false, function()
@@ -87,9 +90,10 @@ function UI.DrawProposal()
 		if lines >= MAX_LINES then break end
 		Line(("[%s] %s"):format(L.KIND[s.cap.kind] or s.cap.kind, ns.T(s.cap.title)), C.gold)
 		lines = lines + 1
-		for _, text in ipairs(s.preview) do
+		for i, text in ipairs(s.preview) do
 			if lines >= MAX_LINES then break end
-			Line(text, C.fg, 12)
+			local raw = s.linked and s.linked[i]
+			Line(raw and (Kit:Linkify(raw)) or text, C.fg, 12)
 			lines = lines + 1
 		end
 	end

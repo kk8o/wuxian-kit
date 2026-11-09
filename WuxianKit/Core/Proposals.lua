@@ -69,7 +69,10 @@ end
 
 -- the preview of a step: its lines (the spec's preview: a line or a list of them; its title without one; plain: each
 -- line made safe, for another player's proposal), and what the core knows by itself (unless the spec says notes =
--- false): a Do it cannot undo, a change that waits for a reload
+-- false): a Do it cannot undo, a change that waits for a reload. With links = true the spec's lines may hold
+-- {kind:id:name} tokens (in text it escaped): the preview has them as [name] (what callers, the bus, the agent and the
+-- history read), and a second list, linked, the spec's lines as they are, which the window draws with the client's
+-- links (WuxianKit:Linkify, when it draws: an item loaded meanwhile shows as its link)
 -- whether a step takes effect after a reload: reload = true, or reload(self, args) for one that depends on its args
 function ns.Reloads(cap, args)
 	local r = cap.spec.reload
@@ -95,10 +98,15 @@ local function Lines(cap, args, plain)
 	if plain then
 		for i, line in ipairs(out) do out[i] = Safe(line) end
 	end
-	if spec.notes == false then return out end
+	local linked                          -- links = true: the lines with their tokens, for the window to linkify
+	if spec.links then
+		linked = {}
+		for i, line in ipairs(out) do linked[i], out[i] = line, Kit:Unlink(line) end
+	end
+	if spec.notes == false then return out, linked end
 	if cap.kind == "do" and not cap.undoable then out[#out + 1] = "|cff9c9ea6" .. L.NO_UNDO .. "|r" end
 	if ns.Reloads(cap, args) then out[#out + 1] = "|cff9c9ea6" .. L.RELOAD_NOTE .. "|r" end
-	return out
+	return out, linked
 end
 
 -- a step's args as callers and the agent see them: a long text shortened (a layout's share string is thousands of
@@ -524,7 +532,9 @@ function ns.Propose(list, opts)
 			if not ok or why then error(("%s: %s"):format(s.cap.id, ns.Text(why)), 0) end
 		end
 		if #list > 1 and Alone(s) then error(("%s: it goes in a proposal of its own"):format(s.cap.id), 0) end
-		p.steps[i] = { cap = s.cap, args = s.args, preview = Lines(s.cap, s.args, plain), scope = ns.ScopeOf(s.cap, s.args) }
+		local preview, linked = Lines(s.cap, s.args, plain)
+		p.steps[i] = { cap = s.cap, args = s.args, preview = preview, linked = linked,
+			scope = ns.ScopeOf(s.cap, s.args) }
 	end
 	local db = ns.db
 	p.id = db and tonumber(db.nextId) or 1

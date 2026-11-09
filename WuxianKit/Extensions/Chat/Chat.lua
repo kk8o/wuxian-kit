@@ -11,13 +11,14 @@
 -- Mythic+ run, a PvP match) the text is secret and nothing is heard.
 -- The player's names (WuxianKit.Chat.Names()): the whole name (two parts with a space on this client), each part of
 -- at least two characters, and the option aliases ("what others call me"); Latin letters match in any case.
--- chat.send: {item:<id>:<name>} and {spell:<id>:<name>} become the game's links when it is sent ({quest:<id>:<name>} its
--- name: this client gives no link for a quest outside the log); at most 255 bytes once the links are in; no | and no line
--- breaks. Say, yell and custom channels go only from the player's click itself (the client allows them only from a click
--- or key), so they have no scope the player could pre-approve and each is a proposal of its own (never a later step of
--- a longer one); guild, officer, party, raid, instance and whisper have scopes, and each a <channel>.reply scope: a
--- message with `reply` = the id of a message heard in the same channel in the last 180 s that named the player (for a
--- whisper: to its sender) falls under it.
+-- chat.send: tokens {kind:id:name} become the client's links when it is sent (WuxianKit:Linkify: item, spell, recipe,
+-- achievement, currency, quest; [name] where the client gives none, as for a quest not in the player's log); the
+-- proposal asks for the items' data and its window shows the links; at most 255 bytes once the links are in; no | and
+-- no line breaks. Say, yell and custom channels go only from the player's click itself (the client allows them only
+-- from a click or key), so they have no scope the player could pre-approve and each is a proposal of its own (never a
+-- later step of a longer one); guild, officer, party, raid, instance and whisper have scopes, and each a <channel>.reply
+-- scope: a message with `reply` = the id of a message heard in the same channel in the last 180 s that named the player
+-- (for a whisper: to its sender) falls under it.
 -- WuxianKit.Chat, for other addons: Read(event, ...) -> a chat.message or nil, Mentions(text), Message(id), Names(),
 -- On(channel | "*", fn(msg)) -> token and Off(token): every message read while the extension is on, each once.
 local _, ns = ...                      -- a built-in file: the core's own table (ns.BumpId, ns.Safe)
@@ -73,7 +74,7 @@ local HEARD = { "guild", "officer", "party", "raid", "instance", "whisper", "say
 local SEND = { guild = "GUILD", officer = "OFFICER", party = "PARTY", raid = "RAID", instance = "INSTANCE_CHAT",
 	whisper = "WHISPER", say = "SAY", yell = "YELL", channel = "CHANNEL" }
 local GRANTABLE = { "guild", "officer", "party", "raid", "instance", "whisper" }
-local MAX_BYTES, TOKEN = 255, "{(%a+):(%d+):?([^}]*)}"
+local MAX_BYTES = 255
 local RING = 200                       -- messages read, kept in memory for Message(id) and replies
 local REPLY_SECONDS = 180              -- a reply answers a message at most this old
 local YIELD_SECONDS = 8                -- after the player's own message in a channel, the agent's waits this long
@@ -429,32 +430,6 @@ chat:Feed("listen", { title = L"LISTEN", event = "message", keep = 100,
 ------------------------------------------------------------------------------------------------------------------------
 -- sending
 
--- a token's link: an item's or a spell's, or nil (an item the client does not know yet is asked for, so that it is
--- there by the time the player clicks)
-local function LinkFor(kind, id)
-	if kind == "item" then
-		local _, link = C_Item.GetItemInfo(id)
-		if not link and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
-		return link
-	elseif kind == "spell" then
-		local ok, link = pcall(C_Spell.GetSpellLink, id)
-		return ok and link or nil
-	end
-end
-
-local function Resolve(text)
-	text = text:gsub(TOKEN, function(kind, id, name)
-		return LinkFor(kind, tonumber(id)) or ("[" .. (name ~= "" and name or id) .. "]")
-	end)
-	return text
-end
-
--- what the player reads: the tokens as [name]
-local function Shown(text)
-	text = text:gsub(TOKEN, function(_, id, name) return "[" .. (name ~= "" and name or id) .. "]" end)
-	return text
-end
-
 -- whether a message with reply answers a heard message under the channel's reply scope: same channel, recent, it
 -- named the player, not theirs, and a whisper goes back to its sender
 local function ValidReply(a)
@@ -517,8 +492,9 @@ chat:Say("send", { title = L"SEND",
 		reply = "number?", stale = "number?" },
 	doc = "proposes a chat message in `channel`. It is sent when the player clicks Run, or at once if they "
 		.. "pre-approved that channel (guild, officer, party, raid, instance or whisper; never say, yell or channel). "
-		.. "text: one line without |, at most 255 bytes once links are in; {item:<id>:<name>} and {spell:<id>:<name>} "
-		.. "become links, {quest:<id>:<name>} the name in brackets. target: for whisper the player's whole name, as "
+		.. "text: one line without |, at most 255 bytes once links are in; {kind:<id>:<name>} becomes the game's link "
+		.. "(kinds item, spell, recipe, achievement, currency, quest; a quest only when it is in the player's log, an "
+		.. "achievement shows the player's own progress; else [name]). target: for whisper the player's whole name, as "
 		.. "sense.character, sense.group and chat.listen give it (both parts where a name has two, \"Name Surname\"; "
 		.. "Name-Realm from another realm), for channel the channel number. reply: the id of the chat.message this "
 		.. "answers; one in the same channel, at most 180 s old, that named the player (mention), not theirs (a whisper: "
@@ -535,7 +511,8 @@ chat:Say("send", { title = L"SEND",
 	check = function(_, a)
 		if a.text == "" then return "text is empty" end
 		if a.text:find("[|\r\n]") then return "text has a | or a line break (links go as {item:<id>:<name>})" end
-		if #Shown(a.text) > MAX_BYTES then return ("text is %d bytes, more than %d"):format(#Shown(a.text), MAX_BYTES) end
+		local shown = #Kit:Unlink(a.text)
+		if shown > MAX_BYTES then return ("text is %d bytes, more than %d"):format(shown, MAX_BYTES) end
 		if (a.channel == "whisper" or a.channel == "channel") and not a.target then
 			return ("a %s needs target"):format(a.channel)
 		end
@@ -546,10 +523,11 @@ chat:Say("send", { title = L"SEND",
 		local why = Stale(a)
 		if why then return why end
 	end,
+	links = true,                                             -- the preview keeps the tokens: the window links them
 	preview = function(_, a)
-		Resolve(a.text)                                       -- asks the client for the items it does not know yet
+		Kit:Preload(a.text)                                   -- asks the client for the items it has not loaded yet
 		local where = L.CHANNEL[a.channel] or a.channel
-		local line = L.LINE:format(a.target and L.TO:format(where, Kit:Escape(a.target)) or where, Kit:Escape(Shown(a.text)))
+		local line = L.LINE:format(a.target and L.TO:format(where, Kit:Escape(a.target)) or where, Kit:Escape(a.text))
 		local m = a.reply and byId[a.reply]
 		if not m then return line end
 		return { line, MUTED:format(L.REPLY_TO:format(Kit:Escape(m.sender or "?"))) }
@@ -565,7 +543,7 @@ chat:Say("send", { title = L"SEND",
 		if t and GetTime() - t < YIELD_SECONDS then return L.YIELD_WAIT end
 	end,
 	apply = function(_, a)
-		local text = Resolve(a.text)
+		local text = Kit:Linkify(a.text)
 		if #text > MAX_BYTES then error(("the message is %d bytes with its links, more than %d"):format(#text, MAX_BYTES), 0) end
 		local target = a.target
 		if a.channel == "channel" then target = tonumber(target) or target end

@@ -127,16 +127,107 @@ function Kit:Clean(text)
 	return text ~= "" and text or nil
 end
 
--- WuxianKit:Links(text): the links in game text, in order: { { kind ("item", "spell", "quest", "achievement" ...),
--- id (the first number of the link's data, or nil), name (its text without brackets) } }
+-- game links, both ways: WuxianKit:Links reads the links in game text as { kind, id, name }; an agent writes the same
+-- as a token {kind:id:name} in a text it hands in (chat.send, guide.note, guide.tour, guide.highlight), and
+-- WuxianKit:Linkify puts the client's own link in its place. Only links the client gives: never a |H code built here,
+-- so nothing in a token can draw more than the client's link for that id. The kinds and the client's call for each:
+--   item         C_Item.GetItemInfo(id): once the item's data is loaded (asked for when it is not: nil now)
+--   spell        C_Spell.GetSpellLink(id): any spell (mounts and professions are spells too)
+--   recipe       C_TradeSkillUI.GetRecipeLink(recipe spell id): learned or not; its link is |Henchant:
+--   achievement  GetAchievementLink(id): it carries the player's own progress
+--   currency     C_CurrencyInfo.GetCurrencyLink(id)
+--   quest        GetQuestLink(quest id): only a quest in the player's log
+-- A token the client gives no link for (an unknown kind, an id it does not know, a quest not in the log, an item not
+-- loaded yet) shows as [name] ([id] without a name), and is no error.
+
+-- a token: {kind:id:name}, the name optional ({item:2589})
+local TOKEN = "{(%a+):(%d+):?([^}]*)}"
+
+-- a link's type in game text -> its kind, where they differ; a token may say either
+local LINK_KIND = { enchant = "recipe" }
+
+local function ItemLink(id)
+	local _, link = C_Item.GetItemInfo(id)
+	if not link and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+	return link
+end
+
+-- kind -> fn(id): the client's link (globals looked up when called)
+local LINKERS = {
+	item = ItemLink,
+	spell = function(id) return C_Spell.GetSpellLink(id) end,
+	recipe = function(id) return C_TradeSkillUI.GetRecipeLink(id) end,
+	achievement = function(id) return GetAchievementLink(id) end,
+	currency = function(id) return C_CurrencyInfo.GetCurrencyLink(id) end,
+	quest = function(id) return GetQuestLink(id) end,
+}
+
+local function Kind(kind)
+	if type(kind) ~= "string" then return nil end
+	kind = kind:lower()
+	return LINK_KIND[kind] or kind
+end
+
+-- WuxianKit:Links(text): the links in game text, in order: { { kind (item, spell, recipe, achievement, currency, quest,
+-- or the link's own type for others: trade, talent ...), id (the first number of the link's data, or nil), name (its
+-- text without brackets) } }; a kind and id from here make a token for WuxianKit:Linkify
 function Kit:Links(text)
 	local out = {}
 	text = Kit:Value(text)
 	if type(text) ~= "string" then return out end
 	for kind, data, name in text:gmatch("|H(%a+):([^|]*)|h%[(.-)%]|h") do
-		out[#out + 1] = { kind = kind, id = tonumber(data:match("^(%-?%d+)")), name = name }
+		out[#out + 1] = { kind = LINK_KIND[kind] or kind, id = tonumber(data:match("^(%-?%d+)")), name = name }
 	end
 	return out
+end
+
+-- WuxianKit:Link(kind, id): the client's link for it, or nil (a kind it has no link for, an id it does not know, an
+-- item whose data is not loaded yet: asked for, so it is there a moment later)
+function Kit:Link(kind, id)
+	local get = LINKERS[Kind(kind) or ""]
+	id = tonumber(id)
+	if not get or not ns.Finite(id) or id <= 0 or id ~= math.floor(id) then return nil end
+	local ok, link = pcall(get, id)
+	link = ok and Kit:Value(link) or nil
+	if type(link) ~= "string" or not link:find("|H", 1, true) then return nil end
+	return link
+end
+
+local function Bracketed(id, name)
+	return "[" .. (name ~= "" and name or id) .. "]"
+end
+
+-- WuxianKit:Linkify(text): text with each {kind:id:name} the client's link, or [name] where it gives none; and how many
+-- links it put in. Nothing else in text changes: text from outside is escaped first (WuxianKit:Escape), then linkified,
+-- so that only the client's links take effect
+function Kit:Linkify(text)
+	if type(text) ~= "string" or Kit:Value(text) == nil then return text, 0 end
+	local n = 0
+	text = text:gsub(TOKEN, function(kind, id, name)
+		local link = Kit:Link(kind, id)
+		if not link then return Bracketed(id, name) end
+		n = n + 1
+		return link
+	end)
+	return text, n
+end
+
+-- WuxianKit:Unlink(text): text with each {kind:id:name} as [name] ([id] without a name), as the player reads it in
+-- plain text: for counting, a plain preview, the agent's copy
+function Kit:Unlink(text)
+	if type(text) ~= "string" or Kit:Value(text) == nil then return text end
+	return (text:gsub(TOKEN, function(_, id, name) return Bracketed(id, name) end))
+end
+
+-- WuxianKit:Preload(text): asks the client for the items of text's tokens it has not loaded, so that their links are
+-- there by the time they are shown or sent; how many it is still loading
+function Kit:Preload(text)
+	if type(text) ~= "string" or Kit:Value(text) == nil then return 0 end
+	local n = 0
+	for kind, id in text:gmatch(TOKEN) do
+		if Kind(kind) == "item" and not Kit:Link("item", id) then n = n + 1 end
+	end
+	return n
 end
 
 local CLASSIFICATIONS = { normal = true, elite = true, rare = true, rareelite = true, worldboss = true, trivial = true,

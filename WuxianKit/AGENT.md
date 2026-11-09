@@ -85,7 +85,22 @@ Prefer it to several single proposals. Example:
 - `wk_kit_options` with `{"extension": "<id>"}` reads the player's options for an extension (read only: only the
   player changes them, in the /wk window or the addon's own window).
 - Turning an extension off declines its proposals that have not run.
-- Titles and texts you send show as plain text in the game: color, link and texture codes do not work.
+- Titles and texts you send show as plain text in the game: color, link and texture codes do not work. For a link,
+  write a token (see Links in texts).
+
+## Links in texts
+
+Texts you hand in for the player or other players to read (`wk_chat_send`, `wk_guide_note`, `wk_guide_tour`,
+`wk_guide_highlight`) take tokens `{kind:<id>:<name>}`, such as `{item:2589:亚麻布}`. The game puts its own link in
+their place; the player can hover it for the tooltip, and other players see it in chat.
+
+- Kinds: `item`, `spell` (mounts and professions are spells too), `recipe` (the recipe's spell id), `achievement`,
+  `currency`, `quest`. Take ids from the 无限图鉴 tools or from a chat message's `links` (the same kinds and ids).
+- A quest becomes a link only when it is in the player's own quest log. An achievement's link shows the player's own
+  progress.
+- Where the game has no link (another kind, an unknown id, a quest not in the log), the token shows as `[name]`. No
+  error: write the name the player should read.
+- Only the game's links work: every other `|` code in your text is shown as it is.
 
 ## Events
 

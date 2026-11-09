@@ -66,6 +66,32 @@ function S.Text(parent, color, small)
 	return fs
 end
 
+-- links in a frame's texts (the client's own: WuxianKit:Linkify) show their tooltip while the mouse is on them.
+-- S.Hyperlinks(f, hover): on for f. A frame that takes the mouse anyway (a panel) leaves hover out; one that takes no
+-- mouse of its own (the guide's note, a highlight's label) hears it only while it shows a link: hover true or false,
+-- each time it draws (only the mouse's motion: clicks go through to what is under it)
+local function LinkEnter(self, link)
+	if not GameTooltip then return end
+	GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+	if pcall(GameTooltip.SetHyperlink, GameTooltip, link) then
+		GameTooltip:Show()
+		if GameTooltip.Raise then GameTooltip:Raise() end   -- above a frame in the tooltip strata (the guide's note)
+	else
+		GameTooltip:Hide()
+	end
+end
+
+local function LinkLeave(self)
+	if GameTooltip and GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+end
+
+function S.Hyperlinks(f, hover)
+	if f.SetHyperlinksEnabled then f:SetHyperlinksEnabled(true) end
+	if hover ~= nil and f.SetMouseMotionEnabled then f:SetMouseMotionEnabled(hover and true or false) end
+	f:SetScript("OnHyperlinkEnter", LinkEnter)
+	f:SetScript("OnHyperlinkLeave", LinkLeave)
+end
+
 -- a dark panel with a hairline round it, movable by dragging; its place kept in WuxianKitDB.pos[key]
 function S.Panel(name, w, h, key)
 	local f = CreateFrame("Frame", name, UIParent)

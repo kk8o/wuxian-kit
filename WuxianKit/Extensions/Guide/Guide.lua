@@ -6,6 +6,9 @@
 -- (CharacterMicroButton) or a path from one (PlayerFrame.healthbar); a forbidden one is refused. What is protected
 -- (casting, using an item, placing an action) an addon cannot do: the agent points at it here, and the player does it.
 -- Highlights and notes go after `seconds` (30, at most 600), a tour when it ends or is closed.
+-- The agent's texts (a highlight's, a note's text and title, a tour's steps and title) are escaped first, then their
+-- {kind:id:name} tokens become the client's links (WuxianKit:Linkify), which the player can hover for the tooltip; an
+-- item the client loads meanwhile becomes its link where it shows.
 local Kit = WuxianKit
 local S, C = Kit.Skin, Kit.Skin.C
 
@@ -28,8 +31,16 @@ local pinned                              -- the map pin the guide put: { map, x
 
 local function Seconds(s) return math.max(1, math.min(tonumber(s) or SECONDS, MOST)) end
 
--- the agent's words as the guide shows them: | doubled (no color, texture or link of theirs takes effect), lines kept
+-- the agent's words as the guide keeps them: | doubled (no color, texture or link of theirs takes effect), lines kept;
+-- their tokens are linkified only when drawn (Put)
 local function Clean(s) return s and (tostring(s):gsub("|", "||")) or nil end
+
+-- an escaped text drawn on a font string with the client's links for its tokens; how many links it has
+local function Put(fs, raw)
+	local text, n = Kit:Linkify(raw or "")
+	fs:SetText(text)
+	return n
+end
 
 -- a frame by its global name or a path from one, or nil and why
 local function Target(path)
@@ -84,9 +95,20 @@ local function Mark()
 	S.Fill(m.box.bg, C.panel, 0.92)
 	m.text = S.Text(m.box, C.fg)
 	m.text:SetPoint("CENTER")
+	S.Hyperlinks(m.box, false)
 	m:SetScript("OnUpdate", Pulse)
 	marks[#marks + 1] = m
 	return m
+end
+
+-- a highlight's label drawn (again: an item loaded meanwhile): its size follows its text
+local function Label(m)
+	m.text:SetWidth(0)                                    -- its own width first, then at most 304 and wrapped
+	local links = Put(m.text, m.raw)
+	local w = math.min(304, m.text:GetStringWidth())
+	m.text:SetWidth(math.max(1, w))
+	m.box:SetSize(w + 16, m.text:GetStringHeight() + 10)
+	S.Hyperlinks(m.box, links > 0)
 end
 
 local function Highlight(target, text, seconds)
@@ -94,13 +116,10 @@ local function Highlight(target, text, seconds)
 	m:ClearAllPoints()
 	m:SetPoint("TOPLEFT", target, "TOPLEFT", -PAD, PAD)
 	m:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", PAD, -PAD)
-	m.text:SetWidth(0)                                    -- its own width first, then at most 304 and wrapped
-	m.text:SetText(text or "")
-	local w = math.min(304, m.text:GetStringWidth())
-	m.text:SetWidth(math.max(1, w))
+	m.raw = text
+	Label(m)
 	m.box:ClearAllPoints()
 	if Low(target) then m.box:SetPoint("BOTTOM", m, "TOP", 0, 6) else m.box:SetPoint("TOP", m, "BOTTOM", 0, -6) end
-	m.box:SetSize(w + 16, m.text:GetStringHeight() + 10)
 	m.box:SetShown(text ~= nil and text ~= "")
 	m.ends = seconds and GetTime() + seconds or nil
 	m:Show()
@@ -128,6 +147,7 @@ local function Note()
 	note.text = S.Text(note, C.fg)
 	note.text:SetPoint("TOPLEFT", 12, -32)
 	note.text:SetWidth(296)
+	S.Hyperlinks(note, false)
 	note.ok = S.Button(note, L.OK, false, function() Close() end)
 	note.ok:SetPoint("BOTTOMRIGHT", -10, 10)
 	note.next = S.Button(note, L.NEXT, true, function() Next() end)
@@ -139,11 +159,17 @@ local function Note()
 	return note
 end
 
+-- the note's title and text drawn (again: an item loaded meanwhile)
+local function Texts(n)
+	local links = Put(n.title, n.raw.title or L.TITLE) + Put(n.text, n.raw.text)
+	n:SetHeight(math.max(90, n.text:GetStringHeight() + 72))
+	S.Hyperlinks(n, links > 0)
+end
+
 local function Show(text, target, title, seconds, stepping)
 	local n = Note()
-	n.title:SetText(title or L.TITLE)
-	n.text:SetText(text)
-	n:SetHeight(math.max(90, n.text:GetStringHeight() + 72))
+	n.raw = { title = title, text = text }
+	Texts(n)
 	n:ClearAllPoints()
 	if not target then
 		n:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
@@ -201,6 +227,16 @@ function Clear()
 	for _, m in ipairs(marks) do m:Hide() end
 end
 
+-- an item's data came: what shows draws its texts again, so that an item token becomes its link (not for an item the
+-- client does not know: drawing again would ask for it again, and again)
+guide:On("GET_ITEM_INFO_RECEIVED", function(_, _, _, success)
+	if success == false then return end
+	if note and note:IsShown() and note.raw then Texts(note) end
+	for _, m in ipairs(marks) do
+		if m:IsShown() and m.raw then Label(m) end
+	end
+end)
+
 ------------------------------------------------------------------------------------------------------------------------
 -- what it can do
 
@@ -220,7 +256,8 @@ guide:Event("tour", { doc = "a tour's progress: a step shown, the tour done or c
 guide:Point("highlight", { title = L"HIGHLIGHT", args = { frame = "string", text = "string?", seconds = "number?" },
 	doc = "a glowing frame round a part of the UI (frame: its global name or a path from one, e.g. CharacterMicroButton, "
 		.. "PlayerFrame.healthbar), text under it, for seconds (30, at most 600); answers {frame, shown}: shown = false, the "
-		.. "frame is hidden (ask the player to open its window first)",
+		.. "frame is hidden (ask the player to open its window first); text takes {kind:<id>:<name>} links as "
+		.. "guide.note",
 	run = function(_, a)
 		local target, why = Target(a.frame)
 		if not target then error(why, 0) end
@@ -230,7 +267,8 @@ guide:Point("highlight", { title = L"HIGHLIGHT", args = { frame = "string", text
 
 guide:Point("note", { title = L"NOTE", args = { text = "string", frame = "string?", title = "string?", seconds = "number?" },
 	doc = "a note for the player, under a frame (as for guide.highlight) or mid-screen, with a title; for seconds (30, at "
-		.. "most 600) or until they click it away",
+		.. "most 600) or until they click it away; text and title take {kind:<id>:<name>} links (item, spell, recipe, "
+		.. "achievement, currency, quest) as chat.send: the player can hover them",
 	run = function(_, a)
 		local target
 		if a.frame then
@@ -261,7 +299,8 @@ guide:Point("waypoint", { title = L"WAYPOINT", args = { x = "number", y = "numbe
 
 guide:Point("tour", { title = L"TOUR", args = { steps = "table", title = "string?" },
 	doc = "notes one after another, steps [{text, frame?}] (a frame is highlighted for its step), up to 20; the player "
-		.. "clicks Next; the event guide.tour {step, of, state: shown, done, closed} says where it is",
+		.. "clicks Next; the event guide.tour {step, of, state: shown, done, closed} says where it is; texts take "
+		.. "{kind:<id>:<name>} links as guide.note",
 	run = function(_, a)
 		if #a.steps == 0 or #a.steps > 20 then error("steps: 1 to 20 of {text, frame?}", 0) end
 		local steps = {}
@@ -288,5 +327,5 @@ guide:Point("clear", { title = L"CLEAR",
 	end })
 
 guide:Status(function()
-	if tour then return L.TOURING:format(tour.title or L.TITLE, tour.at, #tour.steps) end
+	if tour then return L.TOURING:format(tour.title and Kit:Unlink(tour.title) or L.TITLE, tour.at, #tour.steps) end
 end)

@@ -40,7 +40,10 @@ Extension id `chat`. Listens to chat channels and sends messages for the player.
   "text": "..."}`, the player's whole name as `wk_sense_character`, `wk_sense_group` and a heard message's `sender` give
   it: both parts where the client gives a name two ("Name Surname"), `Name-Realm` for a player of another realm. A name
   the server does not find is answered in the player's chat, not here.
-- `text`: one line, no `|`, at most 255 bytes. `{item:<id>:<name>}` and `{spell:<id>:<name>}` become links.
+- `text`: one line, no `|`, at most 255 bytes once the links are in. Tokens `{kind:<id>:<name>}` become the game's links
+  when it is sent (item, spell, recipe, achievement, currency, quest; a quest only when it is in the player's log, an
+  achievement with the player's progress; else `[name]`): see Links in texts in WuxianKit's guide (`wk_docs` with `{}`).
+  The player sees them as links in the proposal, too.
 - The player clicks 执行 (Run) to send it. If they pre-approved that channel (guild, officer, party, raid, instance or
   whisper), it is sent at once, without a click.
 - say, yell and channel always need the player's click and must be a proposal of their own (not a `wk_propose` step).

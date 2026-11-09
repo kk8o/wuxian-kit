@@ -133,6 +133,8 @@ demo:Event("changed", { doc = "the volume changed", data = { volume = "number" }
 
 预览、标签、格式化里凡是来自参数的内容，都要经 `WuxianKit:Escape(text)` 转义（`|` 变成 `||`，换行变成空格），外来文字里的颜色、图标、链接代码就不会生效。Setting 的默认显示已经转义；自己写 `preview`、`label`、`format` 时自己转义。
 
+Agent 交来、给玩家看的文字（`chat.send`、`guide.note`、`guide.tour`、`guide.highlight`）可以写链接记号 `{kind:id:name}`：先转义，再换成客户端给的链接，玩家可以悬停看提示（第 12 节）。
+
 发送和更改类还可以有：
 
 | 字段 | 作用 |
@@ -146,6 +148,7 @@ demo:Event("changed", { doc = "the volume changed", data = { volume = "number" }
 | `combat = true` | 战斗中也可以执行的更改 |
 | `reload = true` | 重载界面后才生效，预览会自动注明 |
 | `notes = false` | 不要核心自动加注（「不可撤销」「重载后生效」） |
+| `links = true` | 预览行里可以有链接记号（来自参数的部分照样先转义）：调用方、总线、Agent 和执行记录读到的是 `[name]`，弹窗画的时候换成客户端的链接（第 12 节） |
 | `alone` | 这一步必须单独成为一个提案（`true`，或 `function(self, args)`），例如发到公开频道的消息：它要在玩家点击的那一刻发出 |
 
 ## 5. 两种模式
@@ -268,7 +271,7 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
 
 ## 9. 公共接口与约定
 
-公共表 `WuxianKit`：`Extension`、`Words`、`Call`、`Propose`、`Proposal`、`Proposals`、`Capabilities`、`Capability`、`Manifest`、`Granted`、`On`、`Off`、`Emit`、`Escape`（转义外来文字）、`AgentOnline`、`Window`（打开扩展框架窗口，可指定扩展或应用：`app:<id>`，同名时扩展优先）、`Comm`（插件消息）、`Skin`（窗口样式）、`Copy`（复制框）、`OptionsPanel`（在别的窗口里画选项）、`Requires`（版本判断）、`Chat`（聊天扩展给别的插件用的解析：`Read`、`Mentions`、`Message`、`Names`、`On`、`Off`，见 `Extensions/Chat/AGENT.md`）、`Game`（游戏动态，第 11 节）、`App`、`AppControl`、`AppSay`、`AppPanel`（应用，第 10 节）、`Value`、`Clean`、`Links`、`Unit`、`Pattern`、`NewId`、`Me`（第 12 节）、`VERSION`。
+公共表 `WuxianKit`：`Extension`、`Words`、`Call`、`Propose`、`Proposal`、`Proposals`、`Capabilities`、`Capability`、`Manifest`、`Granted`、`On`、`Off`、`Emit`、`Escape`（转义外来文字）、`AgentOnline`、`Window`（打开扩展框架窗口，可指定扩展或应用：`app:<id>`，同名时扩展优先）、`Comm`（插件消息）、`Skin`（窗口样式）、`Copy`（复制框）、`OptionsPanel`（在别的窗口里画选项）、`Requires`（版本判断）、`Chat`（聊天扩展给别的插件用的解析：`Read`、`Mentions`、`Message`、`Names`、`On`、`Off`，见 `Extensions/Chat/AGENT.md`）、`Game`（游戏动态，第 11 节）、`App`、`AppControl`、`AppSay`、`AppPanel`（应用，第 10 节）、`Value`、`Clean`、`Links`、`Link`、`Linkify`、`Unlink`、`Preload`、`Unit`、`Pattern`、`NewId`、`Me`（第 12 节）、`VERSION`。
 
 - 不模拟输入、不读内存、不注入代码。施法、使用物品、选择目标、摆动作条这类受保护操作，插件做不到，用指引类指给玩家。
 - 机密值不读：读到的值是机密值时跳过。
@@ -404,12 +407,36 @@ Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Runn
 |---|---|
 | `WuxianKit:Value(v)` | 机密值或读不到给 nil，其余原样 |
 | `WuxianKit:Clean(text)` | 游戏文字变成一行纯文字：去颜色、贴图、图集，链接留文字（`[名字]`），换行和连续空白变一个空格；空了给 nil |
-| `WuxianKit:Links(text)` | 文字里的链接：`[{ kind, id, name }]` |
+| `WuxianKit:Links(text)` | 文字里的链接：`[{ kind, id, name }]`，kind 与下面的链接记号一致（`enchant` 读作 `recipe`） |
+| `WuxianKit:Link(kind, id)` | 客户端给的链接，给不出时为 nil；物品数据还没载入时先请求，这次为 nil |
+| `WuxianKit:Linkify(text)` | 文字里的每个 `{kind:id:name}` 换成客户端的链接，给不出的写成 `[name]`（没写名字就是 `[id]`）；第二个返回值是换上的链接数 |
+| `WuxianKit:Unlink(text)` | 记号都写成 `[name]`：数字节、纯文字预览、给 Agent 的副本 |
+| `WuxianKit:Preload(text)` | 请求记号里还没载入的物品，链接在显示、发送时就有了；返回还在载入的个数 |
 | `WuxianKit:Unit(unit)` | 单位结构（第 11 节） |
 | `WuxianKit:Pattern(fmt)` | GlobalStrings 的格式串变成匹配它的模式：`%s` 捕获文字、`%d` 捕获数字 |
 | `WuxianKit:NewId()` | 核心计数器的下一个编号 |
 | `WuxianKit:Me()` | `{ name, nickname, level, class, classToken, zone, subzone, combat }` |
 | `ext:Char()` | 本角色的存储 |
+
+### 链接记号
+
+Agent 在交来的文字里写 `{kind:id:name}`（名字可以省略：`{item:2589}`），`Linkify` 换成客户端给的链接；`Links` 把游戏文字里的链接读成同样的 kind 和 id，两个方向一套写法。
+
+| kind | 客户端接口（实测 1.60.1） | 链接类型 | 说明 |
+|---|---|---|---|
+| `item` | `C_Item.GetItemInfo(id)` | `item` | 物品数据载入后才有；没载入时 `C_Item.RequestLoadItemDataByID` 请求，过一会儿才有 |
+| `spell` | `C_Spell.GetSpellLink(id)` | `spell` | 任何法术；坐骑、专业也是法术（458 棕马、2550 烹饪 (初级)） |
+| `recipe` | `C_TradeSkillUI.GetRecipeLink(配方法术 id)` | `enchant` | 没学会的配方也有（2538 烹饪：烧烤狼肉）；记号也可以写 `enchant` |
+| `achievement` | `GetAchievementLink(id)` | `achievement` | 链接带玩家自己的 GUID 和进度，别人看到的是这位玩家的进度 |
+| `currency` | `C_CurrencyInfo.GetCurrencyLink(id)` | `currency` | 3402 商人青睐；客户端没有的编号给 nil |
+| `quest` | `GetQuestLink(任务 id)` | `quest` | 只有玩家任务日志里的任务，其余给 nil |
+
+- 只用客户端给的链接，核心不拼 `|H` 代码：一个记号最多换出那个编号在客户端里的链接。
+- 给不出链接（不认识的 kind、客户端不认识的编号、不在日志里的任务、还没载入的物品）就写成 `[name]`，不算错。
+- 外来文字先转义（`WuxianKit:Escape`，或保留换行的 `|` 加倍），再 `Linkify`：除了客户端的链接，别的代码都不生效。
+- 这个客户端没有地下城手册（`EJ_GetNumTiers()` 为 0），没有副本、首领链接；NPC、地区、头衔没有链接类型；地图标记要用玩家自己的路标，不做。
+- 用在：`chat.send`（发送时换，255 字节按换好链接后算；提出提案时先请求物品）；提案弹窗（`links = true` 的预览，每秒重画时换，物品载入后就成了链接）；`guide.note` 的文字和标题、`guide.tour` 的步骤和标题、`guide.highlight` 的文字（物品载入后重画）。
+- 悬停提示：`WuxianKit.Skin.Hyperlinks(frame, hover)` 给自己的窗口打开链接和 `GameTooltip` 提示；本身不接鼠标的框体传 `hover`（有链接时才接鼠标移动，点击照样穿过）。
 
 核心选项 `nickname`「称呼」（文本，AI 应用怎么叫玩家；空的就叫角色名），在 `/wk` 的核心页设置。`kit.me`（读取）：`{ name, nickname, aliases }`，`aliases` 是聊天扩展的 `Chat.Names()`（完整角色名、它的各段和「别人怎么叫我」；聊天扩展关着时为空）。
 
@@ -447,4 +474,5 @@ Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Runn
 | 租期 `lease` | 消费方走了 Feed 还在跑 |
 | 聊天的 `why`、`Chat:On` | 公会助手自己判断点名、接话、提问、话题正热 |
 | `Value`、`Clean`、`Links`、`Unit`、`Pattern`、`NewId`、`Me`、`ext:Char`、称呼 | 两个应用各写一份 |
+| 链接记号 `Link`、`Linkify`、`Unlink`、`Preload` | 只有 `chat.send` 换物品和法术，弹窗和指引里看不到链接 |
 | 工坊 `wuxian listen`、`sdk/python/wuxiankit.py` | 陪玩自写长轮询客户端；公会技能里手写等待循环 |

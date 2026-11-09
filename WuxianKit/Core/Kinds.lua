@@ -13,8 +13,9 @@
 -- a Do that may run in combat, settled(self, args, result) -> true once the game shows what apply asked for (the
 -- client does some things a moment later: a macro, a talent loadout, gear; asked every 0.1 s for settleTime, 5 s, or
 -- the step fails), reload = true for a change that takes effect after a reload, notes = false for a Do whose preview
--- needs no word from the core (it cannot be undone, a reload). run(self, args, opts) gets the call's options too
--- (source, title, ttl, after).
+-- needs no word from the core (it cannot be undone, a reload), links = true for a preview whose lines hold
+-- {kind:id:name} tokens (the window shows the client's links for them, see Proposals.lua). run(self, args, opts) gets
+-- the call's options too (source, title, ttl, after).
 --   ext:Setting(name, spec)  a value the game keeps: <name>.get (See) and <name>.set (Do) from get / set
 --   ext:Feed(name, spec)     game events heard for a while: <name> (start), <name>.stop, <name>.status (See), and the
 --                            bus event <ext>.<spec.event> for each item it reads (with keep: <name>.recent; with digest:

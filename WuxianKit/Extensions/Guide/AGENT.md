@@ -14,3 +14,5 @@ Use it for what no addon may do (casting, using items, placing action bar button
   Next. Follow it with `events` (topic `guide.tour`: state shown, done or closed).
 - `wk_guide_clear`: removes everything the guide shows, and its own map pin.
 - Keep texts short and name the button or menu. Texts show as plain text (`|` codes do not work); line breaks are kept.
+- Texts and titles take link tokens `{kind:<id>:<name>}` (such as `{item:2589:亚麻布}`): the player can hover the link for
+  its tooltip. See Links in texts in WuxianKit's guide (`wk_docs` with `{}`).
