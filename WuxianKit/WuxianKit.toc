@@ -50,4 +50,6 @@ Extensions\Game\Travel.lua
 Extensions\Game\Guild.lua
 Extensions\Game\Guide.lua
 Extensions\Codex\Codex.lua
+Extensions\Route\Route.lua
+Extensions\Route\Native.lua
 Apps\Guild\App.lua

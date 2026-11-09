@@ -834,6 +834,91 @@ SettingsPanel = {
 """
 
 
+# the quest guide (Extensions/Route, WuxianKit_Guides): what the game's own tracking reads, run after a Session's start
+# (session.lua.execute(ROUTE.encode())). __track(id) super-tracks a quest, __watched the watch list, __waypoints[id] =
+# { map, x, y } (0-1) the next waypoint, __turnin(id) turns one in as the client does (out of the log, flagged done,
+# QUEST_TURNED_IN), __objective(id, j, have) moves an objective (QUEST_LOG_UPDATE); objectives get the client's type
+ROUTE = r"""
+__superQuest, __watched, __waypoints, __turnedIn = 0, {}, {}, {}
+C_SuperTrack.GetSuperTrackedQuestID = function() return __superQuest end
+function __track(id)
+	__superQuest = id or 0
+	__fire("SUPER_TRACKING_CHANGED")
+end
+local function Quest(id)
+	for i, q in ipairs(__quests) do
+		if q.questID == id then return q, i end
+	end
+end
+C_QuestLog.GetNumQuestWatches = function() return #__watched end
+C_QuestLog.GetQuestIDForQuestWatchIndex = function(i) return __watched[i] end
+C_QuestLog.GetNextWaypoint = function(id)
+	local w = __waypoints[id]
+	if w then return w[1], w[2], w[3] end
+end
+C_QuestLog.IsQuestFlaggedCompleted = function(id) return __turnedIn[id] == true end
+C_QuestLog.GetTitleForQuestID = function(id)
+	local q = Quest(id)
+	return q and q.title or nil
+end
+C_QuestLog.GetLogIndexForQuestID = function(id)
+	local _, i = Quest(id)
+	return i
+end
+function __turnin(id)
+	local _, i = Quest(id)
+	if i then table.remove(__quests, i) end
+	__turnedIn[id] = true
+	for j, w in ipairs(__watched) do
+		if w == id then table.remove(__watched, j) break end
+	end
+	if __superQuest == id then __superQuest = 0 end
+	__fire("QUEST_TURNED_IN", id, 100, 0)
+	__fire("QUEST_LOG_UPDATE")
+end
+function __objective(id, j, have)
+	local o = Quest(id).objectives[j]
+	o.numFulfilled = have
+	o.finished = have >= o.numRequired
+	o.text = ("%s: %d/%d"):format(o.name or "?", have, o.numRequired)
+	__fire("QUEST_LOG_UPDATE")
+end
+__quests[2].objectives[1].type, __quests[2].objectives[1].name = "item", "Peacebloom"
+C_Item.GetItemNameByID = function(id) return __items[id] and __items[id].name end
+__bags = {}
+C_Item.GetItemCount = function(id) return __bags[id] or 0 end
+"""
+
+# RestedXP as WuxianKit_Guides reads it (RestedXP v4.11.29, as measured): LibStub's AceEvent-3.0 (RegisterMessage(obj,
+# message, fn), fn(message, args...) on __send; UnregisterMessage once __unregisters() ran) and AceAddon-3.0 (GetAddon
+# ("RXPGuides") is __rxp, whose currentGuide is RestedXP's own); RXP_INSTALLED puts RXPGuides in the installed list,
+# loaded
+RXP = r"""
+__msgs = {}
+local AceEvent = {}
+function AceEvent.RegisterMessage(obj, msg, fn)
+	__msgs[msg] = __msgs[msg] or {}
+	table.insert(__msgs[msg], fn)
+end
+function __unregisters()
+	AceEvent.UnregisterMessage = function(obj, msg) __msgs[msg] = nil end
+end
+function __send(msg, ...)
+	for _, fn in ipairs(__msgs[msg] or {}) do fn(msg, ...) end
+end
+__rxp = {}
+local AceAddon = { GetAddon = function(self, name, silent) if name == "RXPGuides" then return __rxp end end }
+function LibStub(name, silent)
+	if name == "AceEvent-3.0" then return AceEvent end
+	if name == "AceAddon-3.0" then return AceAddon end
+	if not silent then error("no " .. name) end
+end
+"""
+RXP_INSTALLED = r"""
+__installed[#__installed + 1] = { name = "RXPGuides", title = "RestedXP Guides", meta = {}, loaded = true }
+"""
+
+
 def toc(folder):
     """(the ## fields of an addon's .toc, the Lua files it loads in order as paths)"""
     meta, files = {}, []
@@ -869,6 +954,12 @@ def run_files(test, lua, folder, ns=None):
     return ns
 
 
+def addon_dir(name):
+    """an addon of this repo beside WuxianKit (WuxianKit_Guides), else a fixture in tests/fixtures/"""
+    own = REPO / name
+    return own if (own / f"{name}.toc").exists() else FIXTURES / name
+
+
 class Session:
     """one UI session: WuxianKit and the given fixtures installed (fixtures not loaded until LoadAddOn), the saved
     variables as Lua table literals {global: literal}"""
@@ -886,14 +977,14 @@ class Session:
         for name, literal in (saved or {}).items():
             lua.execute(name.encode() + b" = " + literal)
         self.saved = saved or {}
-        folders = [KIT_DIR] + [FIXTURES / f for f in self.fixtures]
+        folders = [KIT_DIR] + [addon_dir(f) for f in self.fixtures]
         install(lua, folders, loaded=("WuxianKit",), disabled=self.disabled)
         self.ns = run_files(test, lua, KIT_DIR)        # the core's private table, for tests of its insides
         self.loaded.append("WuxianKit")
 
     def load_addon(self, name):
         name = name.decode() if isinstance(name, bytes) else name
-        run_files(self.test, self.lua, FIXTURES / name)
+        run_files(self.test, self.lua, addon_dir(name))
         self.loaded.append(name)
 
     def g(self, name):
@@ -964,6 +1055,6 @@ def py(v):
     return v.decode() if isinstance(v, bytes) else v
 
 
-__all__ = ["BASE", "KIT", "Session", "toc", "install", "run_files", "texts", "click", "type_into", "py", "lupa", "KIT_DIR",
+__all__ = ["BASE", "KIT", "ROUTE", "RXP", "RXP_INSTALLED", "addon_dir", "Session", "toc", "install", "run_files", "texts", "click", "type_into", "py", "lupa", "KIT_DIR",
            "FIXTURES",
            "shutil", "tempfile"]

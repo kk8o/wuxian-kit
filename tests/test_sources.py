@@ -52,7 +52,7 @@ class Sources(unittest.TestCase):
 
     def test_the_registry(self):
         s = self.start(before=RADIO)
-        self.assertEqual(py(s.ns.sourceOrder), ["bus", "chat", "game", "radio"])
+        self.assertEqual(py(s.ns.sourceOrder), ["bus", "chat", "game", "route", "radio"])
         self.assertIn("other: the source radio is extension rx's",
                       self.fails(s, "WuxianKit:Extension('other'):Source('radio', { on = print, off = print })"))
         for code, why in (("WuxianKit:Extension('other'):Source('Bad', { on = print, off = print })", "lowercase"),
@@ -80,7 +80,7 @@ class Sources(unittest.TestCase):
         self.assertEqual(got, [("radio", "So What"), ("chat", "hello"), ("game", "quest.turnin"), ("bus", "demo.ping")])
         self.assertIn("radio:rock: a station is jazz or news",
                       self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'radio:rock' } })"))
-        self.assertIn("pop:x: no source pop (the sources: bus, chat, game, radio)",
+        self.assertIn("pop:x: no source pop (the sources: bus, chat, game, radio, route)",
                       self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'pop:x' } })"))
         s.ns.Switch(b"rx", False)                                        # its extension off: the app stops
         st = self.agent(s, "kit.app.status", "{ app = 'mix' }")

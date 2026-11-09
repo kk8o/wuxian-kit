@@ -68,6 +68,7 @@ class Core(unittest.TestCase):
         self.assertEqual({k: (e["state"], e.get("builtin")) for k, e in exts.items()},
                          {"kit": ("on", True), "tune": ("on", True), "chat": ("on", True), "gate": ("on", True), "data": ("on", True),
                           "guide": ("on", True), "sense": ("on", True), "game": ("on", True), "codex": ("on", True),
+                          "route": ("on", True),
                           "demo": ("on", None)})
         self.assertEqual((exts["demo"]["addon"], exts["demo"]["version"]), ("WxDemo", "1.2.3"))
         caps = {c["id"]: c for c in py(s.lua.eval(b"WuxianKit:Capabilities()"))}
@@ -278,7 +279,7 @@ class Core(unittest.TestCase):
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
                          ["公会聊天", "核心", "调校", "聊天", "远程", "数据", "指引", "角色信息", "游戏动态",
-                          "图鉴"])                                      # the apps first, then the extensions
+                          "图鉴", "任务指引"])                                      # the apps first, then the extensions
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
                          ("执行", "拒绝"))
@@ -320,7 +321,8 @@ class Core(unittest.TestCase):
         self.assertEqual([v["topic"] for v in ext["gate"]["events"]], ["gate.result"])
         self.assertEqual((len(ext["chat"]["events"]), len(ext["game"]["events"])), (0, 0))   # what they tell, apps hear
         sources = {e["id"]: [x["name"] for x in e.get("sources") or []] for e in m["extensions"]}
-        self.assertEqual({k: v for k, v in sources.items() if v}, {"kit": ["bus"], "chat": ["chat"], "game": ["game"]})
+        self.assertEqual({k: v for k, v in sources.items() if v}, {"kit": ["bus"], "chat": ["chat"], "game": ["game"],
+                                                                  "route": ["route"]})
         chat_source = ext["chat"]["sources"][0]
         self.assertEqual((chat_source["title"], chat_source["values"][:3]), ("Chat", ["*", "guild", "officer"]))
         self.assertIn("chat:<channel>", chat_source["doc"])
@@ -430,7 +432,7 @@ class Core(unittest.TestCase):
         self.assertEqual(self.call(s, "tune.cvar.set", "{ name = 'graphicsQuality', value = 2 }")["state"], "pending")
         public = py(s.lua.eval(b"(function() local out = {} for k in pairs(WuxianKit) do out[#out + 1] = k end "
                                b"table.sort(out) return out end)()"))
-        self.assertEqual(public, sorted(["AgentOnline", "App", "AppControl", "AppPanel", "AppSay", "Call", "Capabilities", "Capability", "Chat", "Check", "Clean", "Comm", "Copy", "Emit", "Escape", "Extension", "Game", "Granted", "Link", "Linkify", "Links", "Manifest", "Me", "NewId", "Off", "On", "OptionsPanel", "Pattern", "Preload", "Proposal", "Proposals", "Propose", "Requires", "Skin", "Unit", "Unlink", "VERSION", "Value", "Window", "Words"]))
+        self.assertEqual(public, sorted(["AgentOnline", "App", "AppControl", "AppPanel", "AppSay", "Call", "Capabilities", "Capability", "Chat", "Check", "Clean", "Comm", "Copy", "Emit", "Escape", "Extension", "Game", "Granted", "Link", "Linkify", "Links", "Manifest", "Me", "NewId", "Off", "On", "OptionsPanel", "Pattern", "Preload", "Proposal", "Proposals", "Propose", "Requires", "Route", "Skin", "Unit", "Unlink", "VERSION", "Value", "Window", "Words"]))
         s.lua.execute(b"WuxianKitDB = { grants = { ['tune.settings.sound'] = true } }")   # even replaced
         s.fire("PLAYER_LOGOUT")
         self.assertEqual(py(s.g("WuxianKitDB"))["grants"], {"tune.settings.game": True})

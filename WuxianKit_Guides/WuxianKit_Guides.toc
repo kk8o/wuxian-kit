@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: Wuxian Workshop · Guide adapters
+## Title-zhCN: 无限工坊 · 任务指引适配
+## Notes: Connects guide addons (RestedXP) to WuxianKit's quest guide: their current step, in WuxianKit's one shape, for AI apps.
+## Notes-zhCN: 把任务指引插件（RestedXP）接到 WuxianKit 的任务指引：它们当前的一步，按统一的格式交给 AI 应用。
+## Version: 0.1.0
+## X-Wuxian-ID: wuxiankit_guides
+## X-Website: https://wuxianwow.com/workshop/extensions
+## Dependencies: WuxianKit
+## OptionalDeps: RXPGuides
+## LoadOnDemand: 1
+## X-WuxianKit-Extension: guides
+## IconTexture: Interface\AddOns\WuxianKit\Media\logo-small
+
+Guides.lua
+RestedXP.lua

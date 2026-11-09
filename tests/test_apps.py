@@ -159,7 +159,7 @@ class Basics(AppCase):
                 ("{ app = 'a', hear = { 'bus:app.other' } }", "cannot hear kit.* or app.*"),
                 ("{ app = 'a', hear = { 'bus:*' } }", "a bus source is a topic"),
                 ("{ app = 'a', hear = { 'game:nope' } }", "game:nope: a game source is a topic"),
-                ("{ app = 'a', hear = { 'radio:x' } }", "radio:x: no source radio (the sources: bus, chat, game)"),
+                ("{ app = 'a', hear = { 'radio:x' } }", "radio:x: no source radio (the sources: bus, chat, game, route)"),
                 ("{ app = 'a', hear = { 'guild' } }", "guild: a hear entry is <source>:<what>"),
                 ("{ app = 'a', driver = 'robot' }", "driver is \"prompt\" or \"program\""),
                 ("{ app = 'a', driver = 'prompt' }", "driver \"prompt\" goes with prompt"),
