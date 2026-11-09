@@ -290,13 +290,14 @@ local function Option(name, o, agent, paced)
 	local what = "options." .. name
 	if agent then
 		Only(o, { kind = true, title = true, default = true, hint = true, choices = true, min = true, max = true,
-			step = true, unit = true }, what)
+			step = true, unit = true, order = true }, what)
 	end
 	local kind = o.kind or "boolean"
 	if not OPTION_KINDS[kind] then Fail("%s.kind is boolean, text, number, choice or list", what) end
 	local spec = { kind = kind, title = Text(o.title, what .. ".title", TITLE_MAX, agent) or name,
 		hint = Text(o.hint, what .. ".hint", HINT_MAX, agent), unit = Text(o.unit, what .. ".unit", LABEL_MAX, agent),
-		changed = not agent and type(o.changed) == "function" and o.changed or nil }
+		changed = not agent and type(o.changed) == "function" and o.changed or nil,
+		order = ns.Finite(o.order) and o.order or nil }
 	local d = o.default
 	if agent and d ~= nil then
 		local t = type(d)
@@ -338,7 +339,11 @@ local function Options(t, agent, paced)
 		names[#names + 1] = name
 	end
 	if agent and #names > OPTIONS_MOST then Fail("an app has at most %d options (it gave %d)", OPTIONS_MOST, #names) end
-	table.sort(names)
+	table.sort(names, function(a, b)                     -- by order (when given), then by name
+		local ra, rb = out[a].order or math.huge, out[b].order or math.huge
+		if ra ~= rb then return ra < rb end
+		return a < b
+	end)
 	return out, names
 end
 

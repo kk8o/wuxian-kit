@@ -174,7 +174,7 @@ class AppPanel(unittest.TestCase):
         self.assertEqual(self.redraw(s)[0], f"Agent 在场至 {hhmm} · 最近应答 10 分钟前 · 今天发言 2 条")
         self.assertEqual(labels(p), ["停止"])
         click(button(p, "停止"))
-        self.assertEqual(log(s), ["stop guild player"])
+        self.assertEqual(log(s), ["control guild stop", "stop guild player"])
         self.assertEqual(texts(p), ["可以接入 Agent"])                           # redrawn at once
         self.assertEqual(labels(p), ["接入 Agent"])
         click(button(p, "接入 Agent"))

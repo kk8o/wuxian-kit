@@ -375,6 +375,7 @@ function ns.OptionList(ext)
 	for _, name in ipairs(ext.optionOrder) do
 		local o = ext.options[name]
 		local e = { title = ns.T(o.title), kind = o.kind, value = ext:Get(name), default = Copy(o.default) }
+		if o.hint ~= nil then e.hint = ns.T(o.hint) end
 		if o.kind == "number" then
 			e.min, e.max = o.min, o.max
 			if o.unit ~= nil then e.unit = ns.T(o.unit) end

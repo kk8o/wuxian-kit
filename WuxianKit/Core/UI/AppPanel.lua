@@ -255,7 +255,7 @@ end
 -- what the card's buttons do; redrawing
 
 ns.AddAction("app.stop", function(id)
-	Call(ns.AppStop, id, "player")
+	if not Kit:AppControl(id, "stop") then Call(ns.AppStop, id, "player") end   -- with stop among its controls, the app hears it
 	UI.Refresh()
 	return true
 end)
