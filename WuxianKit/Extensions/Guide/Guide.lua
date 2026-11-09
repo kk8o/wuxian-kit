@@ -1,4 +1,4 @@
--- 指引 (Guide): points at something for the player to do, and changes nothing in the game (Point): guide.highlight (a
+-- 界面指引 (UI guide): points at something for the player to do, and changes nothing in the game (Point): guide.highlight (a
 -- glowing frame round a part of the UI, a note under it), guide.note (a note by a frame or mid-screen), guide.waypoint
 -- (the map's pin, with its arrow; it takes the place of a pin the player had), guide.tour (notes one after another, the
 -- player clicks Next; the event guide.tour says where it is), guide.clear (and the pin it put, while it is still that
@@ -13,10 +13,10 @@ local Kit = WuxianKit
 local S, C = Kit.Skin, Kit.Skin.C
 
 local L = Kit:Words {
-	zhCN = { TITLE = "指引", HIGHLIGHT = "高亮界面元素", NOTE = "显示说明", WAYPOINT = "设置地图路标",
+	zhCN = { TITLE = "界面指引", HIGHLIGHT = "高亮界面元素", NOTE = "显示说明", WAYPOINT = "设置地图路标",
 		TOUR = "分步指引", CLEAR = "清除指引", OK = "关闭", NEXT = "下一步", DONE = "完成", STEP = "%d/%d",
 		TOURING = "指引中：%s（%d/%d）" },
-	enUS = { TITLE = "Guide", HIGHLIGHT = "Highlight UI element", NOTE = "Show note", WAYPOINT = "Set map waypoint",
+	enUS = { TITLE = "UI guide", HIGHLIGHT = "Highlight UI element", NOTE = "Show note", WAYPOINT = "Set map waypoint",
 		TOUR = "Step-by-step guide", CLEAR = "Clear guide", OK = "Close", NEXT = "Next", DONE = "Done", STEP = "%d/%d",
 		TOURING = "Guide: %s (%d/%d)" },
 }

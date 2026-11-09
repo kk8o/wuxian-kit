@@ -19,3 +19,9 @@ so call them freely.
 
 In combat and some restricted situations a few values are secret; they are left out, never guessed. Prefer these
 tools to running Lua: they need no hot loading and answer the same way every time.
+
+## The group: the facet `group`
+
+The extension also registers the facet `group`, which apps see: with `"see": ["group"]`, each wake's `state.group` is
+`{size, kind, instance, instanceType}`: how many are in the group, `kind` `solo`, `party` or `raid`, and the instance
+the player is in. For the members themselves, call `wk_sense_group`.

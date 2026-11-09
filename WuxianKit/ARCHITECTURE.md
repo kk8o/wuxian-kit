@@ -2,11 +2,15 @@
 
 WuxianKit 是插件的 Agent 接入框架，由三部分组成：**扩展是零件，应用是成品，核心是运行时**。
 
-- 扩展（零件）只写声明：能做什么（能力）、能让应用听到什么（来源）、发出哪些事件、给 Agent 的说明。
-- 应用（成品）是一份声明加一个驱动者：听哪些来源、条目怎么攒成唤醒、玩家能下什么指令；由 AI 对话照技能驱动，或由本机程序驱动。
-- 核心（运行时）负责其余：校验参数；把更改游戏的操作变成提案，在游戏里预览，玩家执行后生效，可以撤销；管理存储、游戏事件、定时器和 `/wk` 窗口；登记来源、运行应用；生成清单交给 Agent。
+- 扩展（零件）只写声明：能做什么（能力）、能让应用听到什么（来源）、能让应用看到什么（状态面）、发出哪些事件、给 Agent 的说明。
+- 应用（成品）是一份声明加一个驱动者：听哪些来源、看哪些状态面、条目怎么攒成唤醒、玩家能下什么指令；由 AI 对话照技能驱动，或由本机程序驱动。
+- 核心（运行时）负责其余：校验参数；把更改游戏的操作变成提案，在游戏里预览，玩家执行后生效，可以撤销；管理存储、游戏事件、定时器和 `/wk` 窗口；登记来源与状态面、运行应用；生成清单交给 Agent。
 
 依赖只往一个方向走：应用用扩展，扩展不知道有哪些应用，核心不认识具体的扩展和应用。在游戏外「听」游戏只有应用一条路。
+
+**事实归核心，说法归应用。**「发生了什么」（来源）与「现在怎样」（状态面）由框架的扩展给出；「说不说、何时说、怎么说」留在应用。应用不自己从条目里推算状态，也不解析游戏文字。
+
+核心不认识任何第三方插件。要接第三方插件的，框架定一个接口（如任务指引，第 13 节），由自定义扩展写适配器接上（如「任务指引适配」接 RestedXP）。
 
 本文写给扩展和应用的作者。给 Agent 的用法说明见同目录的 `AGENT.md`；交给 Agent 的开发做法见 `skills/kit-extension.md`（写扩展）与 `skills/kit-app.md`（写应用）。
 
@@ -14,9 +18,9 @@ WuxianKit 是插件的 Agent 接入框架，由三部分组成：**扩展是零�
 
 | 层 | 负责 | 不负责 |
 |---|---|---|
-| 应用（成品：插件、Agent 或本机程序声明） | 声明听哪些来源、唤醒节奏、指令、选项；驱动者处理唤醒，经提案行动 | 直接改游戏 |
-| 扩展（零件：内置或别的插件） | 声明能力、来源、事件、选项、命令；附带 `AGENT.md` 与 `skills/` | 确认、撤销、权限、传输；不认识应用 |
-| 核心（运行时） | 校验、提案、免确认、撤销、存储、事件、定时器、窗口；来源登记、应用运行、摘要与租期；生成清单 | 具体玩法 |
+| 应用（成品：插件、Agent 或本机程序声明） | 声明听哪些来源、看哪些状态面、唤醒节奏、指令、选项；驱动者处理唤醒，决定说什么，经提案行动 | 直接改游戏；自己推算游戏状态 |
+| 扩展（零件：内置或别的插件） | 声明能力、来源、状态面、事件、选项、命令；附带 `AGENT.md` 与 `skills/` | 确认、撤销、权限、传输；不认识应用 |
+| 核心（运行时） | 校验、提案、免确认、撤销、存储、事件、定时器、窗口；来源与状态面登记、应用运行、摘要与租期；状态面 `me`；生成清单 | 具体玩法；认识第三方插件 |
 | 开发组件 WoWBridge（可选） | 把能力和事件交给无限工坊：不带代码的调用与事件 | 业务逻辑 |
 | 无限工坊 App | 按固定规则把清单翻译成 MCP；从插件文件夹读说明与技能；通用程序加载器（第 10 节） | 针对某个扩展或应用的代码 |
 | Agent、本机程序 | 使用标准 MCP 工具，或无限工坊的 SDK | 直接改游戏 |
@@ -34,23 +38,35 @@ WuxianKit/
     Locale.lua             核心的中英文字
     Kit.lua                公共表 WuxianKit：文字与语言、总线、载入 / 登录 / 退出钩子
     Schema.lua             参数声明与校验
-    Extension.lua          扩展对象与生命周期、存储、游戏事件、定时器、选项、命令、来源
+    Extension.lua          扩展对象与生命周期、存储、游戏事件、定时器、选项、命令、来源、状态面
     Kinds.lua              五类能力与 Setting；Call / Propose；清单与修订号
     Digest.lua             摘要：条目攒成唤醒、紧急条目、租期、回看
     Proposals.lua          提案管线：预览、执行、战斗排队、等待生效、快照撤销、执行前取消、免确认
     Comm.lua               玩家客户端之间的插件消息（WuxianKit.Comm）
     Bridge.lua             经 WoWBridge 交给 Agent
     UI/                    提案窗口、扩展框架窗口（/wk）、应用卡片（AppPanel）、样式（WuxianKit.Skin）
-    Builtins.lua           核心自己的扩展 kit：扩展开关、提案查询、撤销、清单、称呼；来源 bus
+    Builtins.lua           核心自己的扩展 kit：扩展开关、提案查询、撤销、清单、称呼；来源 bus、状态面 me
     Apps.lua               应用运行时（第 10 节）：kit.app.*、WuxianKit:App
   Extensions/<名称>/        零件：<名称>.lua 等代码、AGENT.md、可选 skills/
+  Extensions/Route/        系统扩展「任务指引」（第 13 节）
+    Route.lua              接口 Route:Provide、来源 route、状态面 route、选择提供者
+    Native.lua             内置提供者「游戏自带」
   Apps/<名称>/              成品：一个应用一个文件夹
   Apps/Guild/App.lua                 框架自带的应用 guild（公会聊天，第 10 节）
   Apps/Guild/skills/guild-chat.md    它的技能
   skills/                  开发说明：kit-app.md（写应用）、kit-extension.md（写扩展）
 ```
 
-- 载入顺序（.toc）：核心（最后是 `Builtins.lua`、`Apps.lua`），然后各扩展，最后各应用（`Apps\Guild\App.lua`）。应用载入时，它要听的来源已经登记。
+仓库里与 `WuxianKit/` 并列的还有一个单独发版的插件：
+
+```
+WuxianKit_Guides/          自定义扩展「任务指引适配」（guides，第 13 节）
+  WuxianKit_Guides.toc     Dependencies: WuxianKit；OptionalDeps: RXPGuides
+  Guides.lua               扩展 guides：启用时为每个已载入的指引插件提供适配器
+  RestedXP.lua             RestedXP 的适配器
+```
+
+- 载入顺序（.toc）：核心（最后是 `Builtins.lua`、`Apps.lua`），然后各扩展，最后各应用（`Apps\Guild\App.lua`）。应用载入时，它要听的来源、要看的状态面已经登记。
 - 说明文件夹（docs）：扩展的和应用的是同一个约定，一份可选的 `AGENT.md`（给 Agent 的说明）加上可选的 `skills/*.md`（技能，第 7 节）。
 
 ## 3. 扩展
@@ -75,7 +91,7 @@ demo:Scope("settings", L"SCOPE")
 ### 生命周期
 
 - 内置扩展在扩展框架的存档载入后启用；别的插件的扩展在它的文件执行完后启用。
-- 玩家在 `/wk` 里停用后立即生效：游戏事件不再交给它，定时器停止，它登记的来源不再有条目（正在听这些来源的应用停止，`why = "extension"`，之后不能开始），能力拒绝调用，它还没执行的提案作废（执行到一半的撤回已执行的步骤）。它经提案做过的更改保留，可以在执行记录里撤销；它在界面上创建的东西要重载界面后才清除。
+- 玩家在 `/wk` 里停用后立即生效：游戏事件不再交给它，定时器停止，它登记的来源不再有条目、状态面不再读取（正在听这些来源、看这些状态面的应用停止，`why = "extension"`，之后不能开始），能力拒绝调用，它还没执行的提案作废（执行到一半的撤回已执行的步骤）。它经提案做过的更改保留，可以在执行记录里撤销；它在界面上创建的东西要重载界面后才清除。
 - 停用记在 `WuxianKitDB.off`，重载和重新登录后仍然停用。
 
 ### 扩展对象的方法
@@ -88,6 +104,7 @@ demo:Scope("settings", L"SCOPE")
 | `ext:Emit(topic, data)` | 总线事件 `<id>.<topic>`，同时交给 Agent |
 | `ext:Event(topic, { doc, data })` | 声明会发出的事件，写进清单（`data`：字段 → 类型） |
 | `ext:Source(name, spec)` | 登记一个来源：应用能听的条目（第 5 节） |
+| `ext:Facet(name, spec)` | 登记一个状态面：应用能看的现状（第 5 节） |
 | `ext:Scope(name, title)` 或 `ext:Scope(name, { title, budget })` | 免确认的类别，玩家在窗口里勾选。名称可以带点分层（`guild.reply`），授权上一层也覆盖下一层；`budget = { per = 秒, most = 次数 }` 是建议的限额，玩家勾选时预先选上（第 6 节） |
 | `ext:Option(name, { title, kind, default, hint, changed, ... })` | 玩家在窗口里设置的选项，见下；只能由玩家修改，Agent 经 `kit.options` 只读 |
 | `ext:Get(name)` | 读选项的值（列表返回副本） |
@@ -166,7 +183,7 @@ Agent 交来、给玩家看的文字（`chat.send`、`guide.note`、`guide.tour`
 | `links = true` | 预览行里可以有链接记号（来自参数的部分照样先转义）：调用方、总线、Agent 和执行记录读到的是 `[name]`，弹窗画的时候换成客户端的链接（第 12 节） |
 | `alone` | 这一步必须单独成为一个提案（`true`，或 `function(self, args)`），例如发到公开频道的消息：它要在玩家点击的那一刻发出 |
 
-## 5. Setting 与来源
+## 5. Setting、来源与状态面
 
 ### Setting：游戏里存着的一个值
 
@@ -185,7 +202,7 @@ demo:Setting("volume", {
 
 ### 来源：应用能听的条目
 
-来源是扩展交给应用的一类条目：聊天消息、游戏动态、总线事件，或别的插件自己的东西。来源只是订阅接口：不发事件、不攒批、不存储、没有给 Agent 的工具。条目经应用才到游戏外：应用的 `hear` 写 `<来源>:<what>`，核心按它订阅，攒成唤醒（第 10 节）。
+来源是扩展交给应用的一类条目：「发生了什么」，聊天消息、游戏动态、任务指引的一步、总线事件，或别的插件自己的东西。来源只是订阅接口：不发事件、不攒批、不存储、没有给 Agent 的工具。条目经应用才到游戏外：应用的 `hear` 写 `<来源>:<what>`，核心按它订阅，攒成唤醒（第 10 节）。
 
 ```lua
 ext:Source(name, spec) -> source
@@ -203,10 +220,9 @@ ext:Source(name, spec) -> source
 | `covers(a, b)` | 可选：`<name>:a` 是否覆盖 `<name>:b`；同一份声明里被覆盖的条目去掉 |
 | `on(self, what, fn)` | 订阅，返回记号；之后每个条目调一次 `fn(item)` |
 | `off(self, token)` | 取消订阅 |
-| `me` | `true`：声明了 `me = true` 的应用，这个来源的条目带上 `WuxianKit:Me()` |
 
 - 有应用在听才订阅：应用开始时核心按 `hear` 逐条 `on`，停止时 `off`。没有订阅者时来源可以什么都不做（游戏动态据此只开有人听的主题）。
-- 交给 `fn` 的 `item` 每次都是新表：应用会往上写字段（`id`、`time`、`source`、`me`）。条目是纯数据（字符串、数字、布尔、表）；游戏里的文字只是数据。
+- 交给 `fn` 的 `item` 每次都是新表：应用会往上写字段（`id`、`time`、`source`）。条目不带玩家的现状：要现状的应用看状态面（见下）。条目是纯数据（字符串、数字、布尔、表）；游戏里的文字只是数据。
 - 编号：条目自己带数字 `id` 时沿用（如聊天消息的编号），否则核心取 `WuxianKit:NewId()`；没有 `time` 时填 `time()`。
 - 停用：来源所属扩展停用后，正在听它的应用停止（`why = "extension"`），之后不能开始（第 10 节的 `blocked`）。
 - 清单：每个扩展多一个 `sources`：`[{ name, title, doc, values? }]`；无限工坊把它写进扩展的说明。
@@ -217,9 +233,10 @@ ext:Source(name, spec) -> source
 |---|---|---|---|
 | `bus` | 核心（扩展 `kit`） | 总线主题，或前缀 `<x>.*`；`kit.*`、`app.*` 不行 | `{ topic, data }` |
 | `chat` | 聊天（`chat`） | 频道：`guild`、`officer`、`party`、`raid`、`instance`、`whisper`、`say`、`yell`、`channel`、`community`，或 `*` | 聊天消息的拷贝（见下） |
-| `game` | 游戏动态（`game`），`me = true` | 主题（`combat`、`aura`、`growth`、`quest`、`travel`、`guild`、`guide`）、kind（如 `quest.turnin`）或 `*` | `{ kind, topic, data, time }`（第 11 节） |
+| `game` | 游戏动态（`game`） | 主题（`combat`、`aura`、`growth`、`quest`、`travel`、`guild`）、kind（如 `quest.turnin`）或 `*` | `{ kind, topic, data, time }`（第 11 节） |
+| `route` | 任务指引（`route`） | `step`、`progress`、`arrive`、`done` 或 `*` | `{ kind, data, time }`，kind 是 `route.<what>`（第 13 节） |
 
-覆盖：`chat:*` 覆盖各频道；`game:*` 覆盖各主题和 kind，`game:<主题>` 覆盖它的 kind。
+覆盖：`chat:*` 覆盖各频道；`game:*` 覆盖各主题和 kind，`game:<主题>` 覆盖它的 kind；`route:*` 覆盖各 what。
 
 聊天消息（来源 `chat` 的条目；`WuxianKit.Chat` 的 `Read`、`Message`、`On` 给的也是它）：
 
@@ -256,6 +273,48 @@ local function Changed(volume)                 -- wherever the volume changes
 end
 ```
 
+### 状态面：应用能看的现状
+
+状态面是扩展交给应用的「现在怎样」：一个小快照，如玩家的等级与区域、队伍、任务指引当前这一步、今天的进度。和来源对称：来源一条条交「发生了什么」，应用用 `hear` 听；状态面在唤醒时读一次，应用用 `see` 看（第 10 节）。驱动者拿到的事实都是读好的，不用从条目里推算。
+
+```lua
+ext:Facet(name, spec) -> facet
+```
+
+- `name`：小写字母、数字和 `_`，最长 24 字节；也是 `see` 里写的名字。全局唯一：别的扩展再登记同名的报错，同一扩展再登记就替换。
+
+| spec 字段 | 含义 |
+|---|---|
+| `title` | 显示名称（`L"KEY"` 或字符串） |
+| `doc` | 给 Agent 的说明（英文）：这个状态面是什么、各字段的意思；写进清单 |
+| `fields` | 可选：字段 → 类型（`{ level = "number" }`），只用于文档 |
+| `read(self)` | 现在的快照：一张纯数据的小表，现在没有时返回 nil |
+| `on(self)` | 可选：第一个运行中的应用开始看它时调用（打开探测） |
+| `off(self)` | 可选：最后一个看它的应用不看了时调用 |
+
+- 读取：每次唤醒时核心调 `read`，结果放进唤醒的 `state`（第 10 节）。快照要小：序列化后超过 600 字节（`FACET_MAX`）的被截短。读不到的值（机密值）不写。
+- 计数类的状态面（如 `today`）只在 `on` 与 `off` 之间计数；`on` 里打开需要的探测，`off` 里放掉。
+- 停用：状态面所属扩展停用后，看它的运行中应用停止（`why = "extension"`），之后不能开始（第 10 节的 `blocked`）。
+- 清单：每个扩展多一个 `facets`：`[{ name, title, doc, fields? }]`；无限工坊把它写进扩展的说明。
+
+框架登记的状态面：
+
+| 状态面 | 登记者 | 字段 |
+|---|---|---|
+| `me` | 核心（扩展 `kit`） | `name`、`nickname`（称呼，第 12 节）、`level`、`class`、`classToken`、`zone`、`subzone`、`combat`、`dead`、`resting`、`xp`（本级经验的百分比，整数；满级没有） |
+| `group` | 角色信息（`sense`） | `size`、`kind`（`solo`、`party`、`raid`）、`instance`、`instanceType` |
+| `route` | 任务指引（`route`） | `provider`、`guide`、`key`、`goals`（精简）、`since`；没有当前步时没有（第 13 节） |
+| `today` | 游戏动态（`game`） | `date`、`levels`、`quests`、`kills`、`deaths`、`xp`、`zones`（第 11 节） |
+
+别的插件登记状态面：
+
+```lua
+demo:Facet("demo", {
+  title = L"TITLE", doc = "demo: the demo's volume now, {volume}", fields = { volume = "number" },
+  read = function(self) return { volume = self.db.volume } end,
+})
+```
+
 ## 6. 提案
 
 | 状态 | 含义 |
@@ -285,8 +344,8 @@ end
 
 ## 7. Agent 接入
 
-- 清单：`Kit:Manifest()`（Agent 经 `kit.manifest` 读取）：`protocol`、`kit`（版本）、`language`、`revision`，每个扩展的 `id`、`title`、`version`、`addon`、`builtin`、`state`、`docs`，已启用扩展还有 `capabilities`、`events`、`sources`（第 5 节）；以及应用的 `apps`（第 10 节）。
-- 修订号：扩展启用或停用、能力或来源变化、应用的声明变化、语言切换时改变；变化后约 0.5 秒发出 `kit.changed`，这半秒内的变化合并为一次。
+- 清单：`Kit:Manifest()`（Agent 经 `kit.manifest` 读取）：`protocol`、`kit`（版本）、`language`、`revision`，每个扩展的 `id`、`title`、`version`、`addon`、`builtin`、`state`、`docs`，已启用扩展还有 `capabilities`、`events`、`sources`、`facets`（第 5 节）；以及应用的 `apps`（第 10 节）。
+- 修订号：扩展启用或停用、能力、来源或状态面变化、应用的声明变化、语言切换时改变；变化后约 0.5 秒发出 `kit.changed`，这半秒内的变化合并为一次。
 - 事件经开发组件交给 Agent：核心的事件（`kit.*`）被挡下时留在队列里（最多 50 条）等有空再发；扩展和应用的事件限速，丢掉的每 5 秒用 `kit.dropped` 报告一次。无限工坊未连接时，开发组件只保留最近的少数事件。
 - 能力的完整 id（`<扩展>.<名称>`）与事件的完整主题都不超过 64 字节（开发组件能传的长度）；超出的在声明或发出时就报错，有没有无限工坊都一样。
 - Agent 接入需要开发组件 WoWBridge 0.9.7 或更新版本（调用以数据传入，关闭热加载也能用）；没有它或版本更旧时，扩展框架照常运行，只是 Agent 用不到。
@@ -309,7 +368,7 @@ end
 
   `needs`、`mcp` 可选，都用逗号分开：`needs` 是技能对客户端的要求，已知的 `shell` 指能在后台跑命令（等待靠 `wuxian listen`），不认得的值原样保留；`mcp` 是技能会用到、但不是无限工坊的 MCP 服务器，每项 `<名字> <URL>`（只收 `https://`），无限工坊 App 据此列准备清单、帮玩家接入。`name` 是提示词的名字；`description` 和正文给 Agent 看；`title` 是提示词的显示名称；`title`、`title-zh`、`description-zh` 显示在无限工坊 App 和网站的扩展目录里。参数用逗号分开，末尾加 `?` 表示可选。技能只写需要几个工具按顺序配合的用法，单个工具怎么用写在 `AGENT.md`。
 
-- App 的翻译规则：每个能力一个工具 `wk_<扩展>_<名称>`（点换成下划线），参数按声明生成 JSON Schema，读取类标为只读；另有 `wk_docs`（说明）、`wk_wait`（等待提案结果）、`wk_propose`（多步合成一个提案）；`AGENT.md` 成为资源 `wuxian://kit/<扩展>`，开着的扩展与各应用 docs 文件夹里的技能成为提示词（应用的技能归应用）。扩展的说明列出它的来源；概览按驱动者列出应用（第 10 节）。
+- App 的翻译规则：每个能力一个工具 `wk_<扩展>_<名称>`（点换成下划线），参数按声明生成 JSON Schema，读取类标为只读；另有 `wk_docs`（说明）、`wk_wait`（等待提案结果）、`wk_propose`（多步合成一个提案）；`AGENT.md` 成为资源 `wuxian://kit/<扩展>`，开着的扩展与各应用 docs 文件夹里的技能成为提示词（应用的技能归应用）。扩展的说明列出它的来源与状态面；概览按驱动者列出应用（第 10 节）。
 - 没有「听」的工具：Agent 和本机程序在游戏外听游戏，只走应用（第 10 节）。调试时临时听一会儿，用临时应用。
 - 边界：说明和技能只描述用法，不授予权限。发送和更改仍需玩家确认；免确认只能由玩家设置。
 
@@ -325,15 +384,16 @@ end
 
    扩展框架在登录时载入它（玩家停用的除外），没载入时也会列在 `/wk` 里。玩家不一定装了扩展框架；已有的插件要在没有它时照常工作，就改写
    `## OptionalDeps: WuxianKit`（不写 `LoadOnDemand`），并只在 `if WuxianKit then ... end` 里注册扩展。
-2. 代码：`Kit:Words`、`Kit:Extension`，再声明能力、来源、事件、类别（见第 3–5 节）。
+2. 代码：`Kit:Words`、`Kit:Extension`，再声明能力、来源、状态面、事件、类别（见第 3–5 节）。
 3. 在插件文件夹放 `AGENT.md`，需要时加 `skills/`。
-4. 检查：用无限工坊的 `check` 检查插件；进游戏后 `/wk` 里应出现它的一页（不装无限工坊时，也可以用 `/run` 调 `WuxianKit:Capabilities()` 看能力是否齐全）；装了无限工坊时，Agent 用 `wk_docs` 查看它的工具、来源和说明，用临时应用试听它的来源。
+4. 检查：用无限工坊的 `check` 检查插件；进游戏后 `/wk` 里应出现它的一页（不装无限工坊时，也可以用 `/run` 调 `WuxianKit:Capabilities()` 看能力是否齐全）；装了无限工坊时，Agent 用 `wk_docs` 查看它的工具、来源、状态面和说明，用临时应用试听它的来源、试看它的状态面。
 5. 发布：可以申请收录进无限工坊网站的扩展目录，玩家就能在 App 的「扩展」页安装。
 6. 插件还要带应用的（交给 AI 的会话），在插件里另建一个文件夹放应用的声明和技能（第 10 节「插件声明」）；扩展的代码不引用它。
+7. 要把第三方插件接到框架定好的接口上（如任务指引），写一个自定义扩展做适配器（第 13 节「适配器」）：核心和系统扩展不认识第三方插件。
 
 ## 9. 公共接口与约定
 
-公共表 `WuxianKit`：`Extension`、`Words`、`Call`、`Propose`、`Proposal`、`Proposals`、`Capabilities`、`Capability`、`Manifest`、`Granted`、`On`、`Off`、`Emit`、`Escape`（转义外来文字）、`AgentOnline`、`Window`（打开扩展框架窗口，可指定扩展或应用：`app:<id>`，同名时扩展优先）、`Comm`（插件消息）、`Skin`（窗口样式）、`Copy`（复制框）、`OptionsPanel`（在别的窗口里画选项）、`Requires`（版本判断）、`Chat`（聊天扩展给别的插件用的解析：`Read`、`Mentions`、`Message`、`Names`、`On`、`Off`，见 `Extensions/Chat/AGENT.md`）、`Game`（游戏动态，第 11 节）、`App`、`AppControl`、`AppSay`、`AppPanel`（应用，第 10 节）、`Value`、`Clean`、`Links`、`Link`、`Linkify`、`Unlink`、`Preload`、`Unit`、`Pattern`、`NewId`、`Me`（第 12 节）、`VERSION`。
+公共表 `WuxianKit`：`Extension`、`Words`、`Call`、`Propose`、`Proposal`、`Proposals`、`Capabilities`、`Capability`、`Manifest`、`Granted`、`On`、`Off`、`Emit`、`Escape`（转义外来文字）、`AgentOnline`、`Window`（打开扩展框架窗口，可指定扩展或应用：`app:<id>`，同名时扩展优先）、`Comm`（插件消息）、`Skin`（窗口样式）、`Copy`（复制框）、`OptionsPanel`（在别的窗口里画选项）、`Requires`（版本判断）、`Chat`（聊天扩展给别的插件用的解析：`Read`、`Mentions`、`Message`、`Names`、`On`、`Off`，见 `Extensions/Chat/AGENT.md`）、`Game`（游戏动态，第 11 节）、`Route`（任务指引：`Provide`、`Providers`，第 13 节）、`App`、`AppControl`、`AppSay`、`AppPanel`（应用，第 10 节）、`Value`、`Clean`、`Links`、`Link`、`Linkify`、`Unlink`、`Preload`、`Unit`、`Pattern`、`NewId`、`Me`（第 12 节）、`VERSION`。
 
 - 不模拟输入、不读内存、不注入代码。施法、使用物品、选择目标、摆动作条这类受保护操作，插件做不到，用指引类指给玩家。
 - 机密值不读：读到的值是机密值时跳过。
@@ -342,7 +402,7 @@ end
 
 ## 10. 应用（0.6）
 
-应用是成品：一份**声明**加一个**驱动者**。声明说清楚它听什么（来源，第 5 节）、条目怎么攒成唤醒、玩家能在游戏里对它下什么指令、多久没有音信算离开、玩家给它设什么选项；核心按声明订阅来源、攒唤醒、管租期，在 `/wk` 窗口的「应用」分组里给它一张卡片。驱动者在游戏外处理唤醒、经提案行动。
+应用是成品：一份**声明**加一个**驱动者**。声明说清楚它听什么（来源，第 5 节）、看什么（状态面，第 5 节）、条目怎么攒成唤醒、玩家能在游戏里对它下什么指令、多久没有音信算离开、玩家给它设什么选项；核心按声明订阅来源、攒唤醒、在唤醒时读状态面、管租期，在 `/wk` 窗口的「应用」分组里给它一张卡片。驱动者在游戏外处理唤醒，决定说不说、何时说、怎么说，经提案行动。
 
 ### 驱动者
 
@@ -368,7 +428,7 @@ end
 WuxianKit:App("officers", {
   title = "官员频道", driver = "prompt", prompt = "officer-chat", docs = "Apps/Officers",
   addon = "MyGuildTools", extension = "myguild",
-  hear = { "chat:officer", "game:guild" },
+  hear = { "chat:officer", "game:guild" }, see = { "me" },
   pace = true, urgent = { "mention", "followup", "question", "burst" },
   controls = { "stop" }, lease = 600, minutes = 120,
   options = { topics = { kind = "list", title = "想多聊的话题" }, avoid = { kind = "list", title = "不聊的话题" } },
@@ -387,12 +447,12 @@ WuxianKit:App("officers", {
 | `title` | 显示名称（Agent 给的最长 48 字节，转义后显示） |
 | `driver` | `prompt` 或 `program`（见上） |
 | `hear` | 来源的列表（最多 16 条），每条 `<来源>:<what>`：`chat:<频道>`、`game:<主题或 kind>`、`bus:<主题>`，以及别的插件登记的来源（第 5 节）；同一份声明里被更宽的条目覆盖的去掉 |
+| `see` | 状态面的名字（最多 8 个）：`me`、`group`、`route`、`today`，以及别的插件登记的状态面（第 5 节）；每次唤醒带上它们的快照 `state` |
 | `digest` | `false` / 不写：每个条目到了就发（`reason = "item"`）；一张表 `{ gather, every, idle, most }`：攒成唤醒（见「唤醒」） |
 | `pace` | `true` 或三档的表 `{ quiet = {...}, normal = {...}, lively = {...} }`（每档 `{ gather, every, idle, most, wake = { why... } }`）：攒成唤醒，节奏跟玩家的选项走；`true` 用核心的三档（见下）。有 `pace` 时不看 `digest` |
 | `urgent` | 不用 `pace` 时，哪些条目立即唤醒：`why` 或 `kind` 的列表；Lua 声明也可以是函数 `urgent(item)`。有 `pace` 时只看当前档的 `wake`（同样按 `why` 或 `kind`） |
 | `controls` | 玩家能下的指令：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑；`stop` 由核心执行（停止应用），其余只转告应用 |
 | `say` | `true`：玩家可以用 `/wk <id> <一句话>` 对应用说话 |
-| `me` | `true`：登记时带 `me = true` 的来源（`game`）的条目带 `me`（`WuxianKit:Me()`） |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有 `kit.app.*` 调用就算离开，应用停止（`why = "left"`） |
 | `minutes` | 最长运行多久（默认 120，最多 720）；`kit.app.open` 的 `minutes` 优先 |
 | `options` | 玩家给应用设的选项，`name → { kind, title, default, hint, choices, min, max, step, unit, order }`，种类同扩展选项；按 `order`（再按名字）排，核心的两个在最前；Agent 给的最多 8 个 |
@@ -432,7 +492,8 @@ WuxianKit:App("officers", {
 | source | 字段 |
 |---|---|
 | `chat` | 聊天消息的全部字段（第 5 节，含 `why`）；`id` 就是聊天消息的编号，回复用它 |
-| `game` | `kind`、`topic`、`data`、`me?` |
+| `game` | `kind`、`topic`、`data` |
+| `route` | `kind`、`data`（第 13 节） |
 | `bus` | `topic`、`data` |
 | 别的来源 | 来源给的字段（第 5 节） |
 | `addon` | `data`（`app:Push(data)`） |
@@ -443,17 +504,18 @@ WuxianKit:App("officers", {
 
 ### 事件
 
-- `app.<id>`：唤醒，只有一个形状 `{ app, reason, items, skipped, pace?, quiet? }`。`reason`：`item`（不汇总）、`urgent`、`full`、`batch`、`idle`；`items` 从旧到新。单个事件太大时去掉最旧的，`skipped` 是去掉的个数（它们在回看里）。
-- `kit.app`：`{ app, on, why?, ends? }`，应用开始和停止时发出；`why`：`stopped`（Agent 停的）、`player`、`expired`（到时）、`left`（租期过了）、`extension`（所属扩展或所听来源的扩展停用）、`replaced`。
+- `app.<id>`：唤醒，只有一个形状 `{ app, reason, items, skipped, pace?, quiet?, state? }`。`reason`：`item`（不汇总）、`urgent`、`full`、`batch`、`idle`；`items` 从旧到新。`state` 是 `{ [状态面] = 快照 }`，唤醒时读，声明没有 `see` 就不带；某个状态面现在没有（`read` 返回 nil）就没有那一项。单个事件太大时（`state` 算在内）先去掉最旧的条目，`skipped` 是去掉的个数（它们在回看里）。
+- `kit.app`：`{ app, on, why?, ends? }`，应用开始和停止时发出；`why`：`stopped`（Agent 停的）、`player`、`expired`（到时）、`left`（租期过了）、`extension`（所属扩展，或所听来源、所看状态面的扩展停用）、`replaced`。
 - `kit.app.launch`：`{ app }`，玩家要开始一个程序应用（卡片「开始」、`/wk <id> 开始`）。只在 `launch = true`、没在运行、无限工坊在线（`WoWBridge.Online()`）时发出；本机的无限工坊收到后启动登记过的那个程序。
 
 ### 能力（核心扩展 kit）
 
-- `kit.app.open { app, minutes?, temp?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时只续时间和租期（发一次 `kit.app` `on = true`）；只有 Agent 给了不同的声明（比较时不含 `launch`、`temp`），才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（临时应用除外）。现在不能开始时不报错（报错会在玩家游戏里弹红字，Agent 每次重试都弹一次），答它的状态：`on = false`，`blocked` 是原因：`check()` 不过；所属扩展停用；某个来源所属的扩展停用（「需要开启「X」扩展」）；记住的声明里有还没登记的来源（第三方来源的插件还没载入，「需要来源「x」」，声明不丢）。新声明里没登记的来源直接报错。程序应用由程序自己经 SDK 开，Agent 不要替它开。
+- `kit.app.open { app, minutes?, temp?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时只续时间和租期（发一次 `kit.app` `on = true`）；只有 Agent 给了不同的声明（比较时不含 `launch`、`temp`），才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（临时应用除外）。现在不能开始时不报错（报错会在玩家游戏里弹红字，Agent 每次重试都弹一次），答它的状态：`on = false`，`blocked` 是原因：`check()` 不过；所属扩展停用；某个来源或状态面所属的扩展停用（「需要开启「X」扩展」）；记住的声明里有还没登记的来源或状态面（第三方插件还没载入，「需要来源「x」」「需要状态面「x」」，声明不丢）。新声明里没登记的来源或状态面直接报错。程序应用由程序自己经 SDK 开，Agent 不要替它开。
 - `kit.app.declare { app, ...声明, launch? }`（读取）：记住一个 Agent 声明，但**不开始**。同 id 的插件声明优先，多余字段照 `kit.app.open` 的规矩列进 `ignored`。`launch = true`：这个程序由本机的无限工坊加载，卡片给「开始」；`launch` 只放内存（本次界面会话），重载后无限工坊在 `kit.ready` 后重新声明。它不算心跳（不更新 `seen`）；答复同 `kit.app.status`；声明没变就不发 `kit.changed`。
-- `kit.app.status { app }`：`{ app, title, by, driver, launch, temp, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, controls, say, blocked?, extension?, why?, start? }`；`lease` 没设为 0；`blocked` 是现在不能开始的原因；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 的每次 `kit.app.*` 调用（`kit.app.declare`、`kit.apps` 除外）都更新 `seen`。
+- `kit.app.status { app }`：`{ app, title, by, driver, launch, temp, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, see, controls, say, blocked?, extension?, why?, start? }`；`lease` 没设为 0；`blocked` 是现在不能开始的原因；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 的每次 `kit.app.*` 调用（`kit.app.declare`、`kit.apps` 除外）都更新 `seen`。
+- `kit.app.state { app }`（读取）：`{ app, at, state }`，现在读一次应用所看的状态面（`at` 是读的时间），形状同唤醒的 `state`。它也是心跳。驱动者在两次唤醒之间要最新的现状时用它。
 - `kit.app.stop { app }`、`kit.app.recent { app, since?, limit? }`（回看最近 100 个条目：`{ items, next }`，`items` 是编号大于 `since` 的最近 `limit` 个，从旧到新，重载后仍在）。
-- `kit.apps`：`[{ id, title, by = addon|agent, driver, launch, temp, launching, addon?, on, ends, present, prompt?, start?, extension?, blocked? }]`；`blocked` 只在停着时给；`launching` 是点了「开始」、程序还没开应用。它不是心跳，不续应用的租期，所以工坊 App 的页面读它而不读 `kit.app.status`。
+- `kit.apps`：`[{ id, title, by = addon|agent, driver, launch, temp, launching, addon?, see, on, ends, present, prompt?, start?, extension?, blocked? }]`；`blocked` 只在停着时给；`launching` 是点了「开始」、程序还没开应用。它不是心跳，不续应用的租期，所以工坊 App 的页面读它而不读 `kit.app.status`。
 - `kit.options { app }`：应用的选项（同扩展；显示顺序 `activity`、`quiet` 在前，其余按名字）。改了应用的选项，总线事件 `kit.option` 是 `{ app, name, value }`。
 
 ### 临时应用
@@ -477,7 +539,7 @@ WuxianKit:App("officers", {
   "run": ["tts/.venv-fast/Scripts/python.exe", "-m", "companion.main"],
   "cwd": ".",
   "env": { "PYTHONIOENCODING": "utf-8" },
-  "app": { "hear": ["game:combat"], "me": true, "controls": ["mute", "stop"], "lease": 600, "minutes": 720 }
+  "app": { "hear": ["game:combat"], "see": ["me"], "controls": ["mute", "stop"], "lease": 600, "minutes": 720 }
 }
 ```
 
@@ -537,15 +599,15 @@ for wake in Client().app(*program_app()):
 
 Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Running()`、`app:Push(data)`）；`WuxianKit:AppControl(id, cmd)`、`WuxianKit:AppSay(id, text)`（玩家的指令与话；`/wk <id> <词或话>`、卡片按钮都走它们）；`WuxianKit:AppPanel(id, parent, width)`：在插件自己的窗口里画应用卡片（状态、主按钮、停止、指令按钮、选项），和 `/wk` 的应用页是同一张，返回带 `:Refresh()` 的框体。
 
-清单：`Kit:Manifest()` 的 `apps`：`[{ id, title, by, driver, launch, temp, addon?, extension?, docs?, topic = "app.<id>", hear, prompt?, start? }]`，修订号包含它；游戏不在线时无限工坊也从保留的清单拿到启动语和应用的技能。
+清单：`Kit:Manifest()` 的 `apps`：`[{ id, title, by, driver, launch, temp, addon?, extension?, docs?, topic = "app.<id>", hear, see, prompt?, start? }]`，修订号包含它；游戏不在线时无限工坊也从保留的清单拿到启动语和应用的技能。
 
-权限不变：应用只「听」来源给的东西，说话、改游戏照旧走发送和更改类的提案与类别。Agent 给的文字限长、原样存，显示时转义。
+权限不变：应用只「听」来源给的、「看」状态面给的东西，说话、改游戏照旧走发送和更改类的提案与类别。Agent 给的文字限长、原样存，显示时转义。
 
 ## 11. 游戏动态（0.6）
 
-内置扩展 `game`（「游戏动态」）：游戏里发生的事，按主题分组，登记为来源 `game`（第 5 节）。某个主题只在有订阅者（听 `game:<主题或 kind>` 的应用，或别的插件的 `Game:On`）时才运行它的探测，打开时重建基线（经验、天赋、任务日志、公会名单），不会一开始就误报。高频事件更省：UNIT_COMBAT、UNIT_HEALTH、NAME_PLATE_UNIT_REMOVED 只在有人听的战斗中注册，UNIT_AURA 只在脱战时注册；区域到访一直记（`first` 要用）。时间都是整数秒。读不到的值（机密值）不报，字段就不写。
+内置扩展 `game`（「游戏动态」）：游戏里发生的事，按主题分组，登记为来源 `game`；今天的进度登记为状态面 `today`（第 5 节）。某个主题只在有订阅者（听 `game:<主题或 kind>` 的应用，或别的插件的 `Game:On`）时才运行它的探测，打开时重建基线（经验、天赋、任务日志、公会名单），不会一开始就误报。高频事件更省：UNIT_COMBAT、UNIT_HEALTH、NAME_PLATE_UNIT_REMOVED 只在有人听的战斗中注册，UNIT_AURA 只在脱战时注册；区域到访一直记（`first` 要用）。时间都是整数秒。读不到的值（机密值）不报，字段就不写。
 
-- 来源 `game`：`game:<主题>`、`game:<kind>`（如 `game:quest.turnin`）或 `game:*`；条目 `{ kind, topic, data, time }`，应用声明 `me = true` 时带 `me`。
+- 来源 `game`：`game:<主题>`、`game:<kind>`（如 `game:quest.turnin`）或 `game:*`；条目 `{ kind, topic, data, time }`。玩家的现状不在条目里，看状态面 `me`（第 5 节）。
 - Lua：`WuxianKit.Game:On(kind 或 主题 或 "*", fn(item))` 返回记号，`WuxianKit.Game:Off(记号)`；`item = { kind, topic, time, data }`（每个订阅者一份，不带编号）；`what` 不认识时报错。`Game.TOPICS`、`Game.KINDS`（kind → 主题）。
 
 单位结构 `unit` 即 `WuxianKit:Unit(unit)`：`{ name, fullName, level, classification, creature, player, hostile, class }`。
@@ -556,7 +618,7 @@ Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Runn
 | | `combat.end` | `secs`、`kills`、`foes`（最多同时几只） | 脱战 |
 | | `danger` | `why = "adds"`、`foes`（正在打你的敌人数） | 3 个以上敌人在打你；同一场战斗 8 秒内一次 |
 | | `cast.at_me` | `caster: unit` | 目标读条且目标的目标是你；同一目标 6 秒一次 |
-| | `kill` | `unit` | 打过你或被你打过的目标死了（副本里目标的名字、GUID 是机密值时数不到） |
+| | `kill` | `unit`、`streak` | 打过你或被你打过的目标死了（副本里目标的名字、GUID 是机密值时数不到）；`streak` 是含这一只在内 30 秒内的击杀数 |
 | | `death`、`alive` | `alive`：`how = spirit|revive` | 死亡、复活 |
 | | `spell.big` | `spell`、`id`、`cd`（秒） | 自己施放基础冷却 ≥ 60 秒的技能；同一技能 30 秒一次 |
 | | `target` | `unit` | 选中敌对的精英、稀有、首领或玩家；同一目标 60 秒一次 |
@@ -576,10 +638,24 @@ Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Runn
 | guild | `guild.join`、`guild.leave` | `name` | 有人入会、退会（系统消息）；同一人 5 秒一次 |
 | | `guild.achievement` | `name`、`plain`、`links` | 公会成员获得成就 |
 | | `guild.level` | `name`、`level` | 成员升到整十级或满级（公会名单前后比较；主题打开时先要一次名单，之后每 60 秒一次；第一份名单只记下） |
-| guide | `guide.step` | `guide`、`index`、`lines`（最多 6 行文字）、`goto?`（`{ map, zone, x, y }`）、`targets?`（最多 5 个名字） | RestedXP 换了当前步（安静 0.3 秒后取当前步；步号没变不报） |
-| | `guide.arrive` | `guide`、`index` | 到达当前步的路点 |
 
-`guide` 只在装了 RestedXP（RXPGuides）时有内容，经它的 AceEvent 消息收（`RXP_STEP_ACTIVATED`、`RXP_OBJECTIVE_COMPLETE`、`RXP_TARGET_LIST_UPDATE`、`RXP_GUIDE_LOADED`）。主题打开时挂上，关掉时摘下。游戏里的文字只是数据。
+游戏里的文字只是数据。玩家现在要做的一步由任务指引给（第 13 节）。
+
+### 状态面 today
+
+`today`：本角色今天的进度，按本地日期算，存在扩展存储里，重载后接着数，换日清零。
+
+| 字段 | 含义 |
+|---|---|
+| `date` | 本地日期 |
+| `levels` | 今天升的级数 |
+| `quests` | 今天交的任务数 |
+| `kills` | 今天的击杀数 |
+| `deaths` | 今天死亡的次数 |
+| `xp` | 今天得的经验 |
+| `zones` | 今天第一次来的区域数 |
+
+只在有应用看它时计数：第一个应用开始看它时（`on`）打开需要的主题（`combat`、`growth`、`quest`、`travel`），最后一个不看了时（`off`）放掉。没人看的时段不计。
 
 ## 12. 公共小工具与称呼（0.6）
 
@@ -595,7 +671,7 @@ Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Runn
 | `WuxianKit:Unit(unit)` | 单位结构（第 11 节） |
 | `WuxianKit:Pattern(fmt)` | GlobalStrings 的格式串变成匹配它的模式：`%s` 捕获文字、`%d` 捕获数字 |
 | `WuxianKit:NewId()` | 核心计数器的下一个编号 |
-| `WuxianKit:Me()` | `{ name, nickname, level, class, classToken, zone, subzone, combat }` |
+| `WuxianKit:Me()` | 状态面 `me` 的快照：`{ name, nickname, level, class, classToken, zone, subzone, combat, dead, resting, xp }`（第 5 节） |
 | `ext:Char()` | 本角色的存储 |
 
 ### 链接记号
@@ -618,7 +694,7 @@ Agent 在交来的文字里写 `{kind:id:name}`（名字可以省略：`{item:25
 - 用在：`chat.send`（发送时换，255 字节按换好链接后算；提出提案时先请求物品）；提案弹窗（`links = true` 的预览，每秒重画时换，物品载入后就成了链接）；`guide.note` 的文字和标题、`guide.tour` 的步骤和标题、`guide.highlight` 的文字（物品载入后重画）。
 - 悬停提示：`WuxianKit.Skin.Hyperlinks(frame, hover)` 给自己的窗口打开链接和 `GameTooltip` 提示；本身不接鼠标的框体传 `hover`（有链接时才接鼠标移动，点击照样穿过）。
 
-核心选项 `nickname`「称呼」（文本，AI 应用怎么叫玩家；空的就叫角色名），在 `/wk` 的核心页设置。`kit.me`（读取）：`{ name, nickname, aliases }`，`aliases` 是聊天扩展的 `Chat.Names()`（完整角色名、它的各段和「别人怎么叫我」；聊天扩展关着时为空）。
+核心选项 `nickname`「称呼」（文本，AI 应用怎么叫玩家；空的就叫角色名），在 `/wk` 的核心页设置，状态面 `me` 的 `nickname` 就是它。`kit.me`（读取）：`{ name, nickname, aliases }`，`aliases` 是聊天扩展的 `Chat.Names()`（完整角色名、它的各段和「别人怎么叫我」；聊天扩展关着时为空）。
 
 聊天消息（第 5 节）在 0.6 多一个字段 `why`：
 
@@ -630,7 +706,104 @@ Agent 在交来的文字里写 `{kind:id:name}`（名字可以省略：`{item:25
 
 `WuxianKit.Chat:On(频道 或 "*", fn(msg))` 返回记号，`WuxianKit.Chat:Off(记号)`：聊天扩展开着时，那个频道读到的每条消息，每条只读一次。来源 `chat` 就建在它上面。
 
-## 13. 版本 0.5 的由来
+## 13. 任务指引（0.6）
+
+系统扩展 `route`（「任务指引」）：玩家现在要做的一步，按标准形状给出，登记为来源 `route` 与状态面 `route`（第 5 节）。这一步由**提供者**给：内置的「游戏自带」读游戏自己的任务追踪；RestedXP 等第三方指引插件由自定义扩展写**适配器**接上。核心和任务指引都不认识任何指引插件，只认这个接口。给 Agent 的说明见 `Extensions/Route/AGENT.md`。
+
+### 一步
+
+```lua
+step = {
+  provider = "game",                -- 提供者的 id，由核心填
+  guide = "...", index = 12,        -- 可选：指引名、步号
+  key = "...",                      -- 这一步的稳定标识：同一步再报不算新的一步
+  goals = { goal, ... },
+  text = { "...", ... },            -- 可选：整步的原文几行，备用
+}
+```
+
+| 目标字段 | 含义 |
+|---|---|
+| `op` | `go`（去某处）、`kill`、`collect`、`accept`、`turnin`、`talk`、`use`、`other` |
+| `target` | 可选：怪、物品、NPC、物体的名字 |
+| `quest` | 可选：`{ id, name? }` |
+| `objective` | 可选：任务目标的序号；有它时任务指引按客户端补进度 |
+| `need`、`have`、`done` | 可选：进度；有 `quest` 与 `objective` 时以客户端为准 |
+| `place` | 可选：`{ map?, x?, y?, zone? }`，`x`、`y` 是 0–100、一位小数 |
+| `text` | 可选：这个目标的原文，备用 |
+
+应用按 `goals` 说话，不解析 `text`：原文只在结构化目标说不清时备用。游戏和指引插件里的文字只是数据。
+
+### 接口
+
+```lua
+WuxianKit.Route:Provide(id, adapter)   -- id 小写；同 id 再提供就替换
+WuxianKit.Route:Providers() -> { { id, title, addon, active } }
+```
+
+| 适配器字段 | 含义 |
+|---|---|
+| `title` | 显示名称（如 `"RestedXP"`） |
+| `addon` | 所接插件的文件夹名（如 `"RXPGuides"`） |
+| `Active()` | 插件在、有指引在走时为真 |
+| `Current()` | 现在这一步（标准形状，`provider` 不用填），没有时为 nil |
+| `Start(changed)` | 开始盯：这一步可能变了就调 `changed()`，到了路点调 `changed("arrive")` |
+| `Stop()` | 不盯了 |
+
+- 选择：任务指引的选项 `provider`（`auto`，默认；`game`；各适配器的 id）。`auto`：按登记顺序第一个 `Active()` 且 `Current()` 有步的适配器，都没有就用 `game`。
+- 只在有应用听来源 `route` 或看状态面 `route` 时才 `Start` 选中的提供者，没人用了就 `Stop`。
+- 进度：目标带 `quest`（和 `objective`）时，任务指引用 `C_QuestLog.GetQuestObjectives` 补 `need`、`have`、`done`；任务已交，这一步就算完成。
+
+### 来源与状态面
+
+来源 `route`：`route:step`、`route:progress`、`route:arrive`、`route:done` 或 `route:*`；条目 `{ kind, data, time }`，与来源 `game` 同形。
+
+| kind | data | 什么时候 |
+|---|---|---|
+| `route.step` | `step` | 新的一步（`key` 变了） |
+| `route.progress` | `key`、`goal`（目标的序号）、`have`、`need`、`done` | 某个目标的进度变了 |
+| `route.arrive` | `key`、`place` | 到了路点 |
+| `route.done` | `key`、`why`（`complete`、`turnin`、`replaced`） | 这一步完成或作废 |
+
+状态面 `route`：`{ provider, guide, key, goals, since }`，`goals` 是精简的目标（`op`、`target`、`need`、`have`、`done`、`quest.name`、`place.zone`），`since` 是这一步开始的时间；没有当前步时没有。
+
+### 游戏自带
+
+内置提供者 `game`（「游戏自带」）：
+
+- 这一步是玩家追踪的任务（`C_SuperTrack.GetSuperTrackedQuestID()`），没有就取任务追踪列表的第一个。
+- 目标来自 `C_QuestLog.GetQuestObjectives`：怪 → `kill`，物品 → `collect`，其余 → `other`；目标全部完成后只剩一个 `turnin`。
+- `place` 取 `C_QuestLog.GetNextWaypoint(questID)`，拿不到就不给。
+- 听 QUEST_LOG_UPDATE、SUPER_TRACKING_CHANGED、QUEST_ACCEPTED、QUEST_TURNED_IN、QUEST_WATCH_LIST_CHANGED，只在被选中且有人用时注册。客户端给不出的字段不写，不报错。
+
+### 适配器：任务指引适配
+
+第三方指引插件由自定义扩展接上，不进核心。框架的仓库带一个：`WuxianKit_Guides`（「任务指引适配」，扩展 `guides`），与 `WuxianKit/` 并列、单独发版。
+
+- `.toc`：`## Dependencies: WuxianKit`、`## OptionalDeps: RXPGuides`，标题「无限工坊 · 任务指引适配」。
+- `Guides.lua`：扩展启用时，对每个所接插件已载入的适配器调 `Route:Provide`。
+- `RestedXP.lua`：RestedXP 的适配器（id `rxp`）。经 RestedXP 的 AceEvent 消息盯当前步，安静 0.3 秒后取步；按 RestedXP 的元素给结构化目标：路点 → `go`，接、交、完成任务 → `accept`、`turnin` 和带任务编号的目标，击杀、收集 → `kill`、`collect`；原文进 `text`。
+- 以后接别的指引插件，各加一个文件。
+
+给别的插件写适配器（写在自定义扩展里，不写在指引插件或核心里）：
+
+```lua
+if WuxianKit and WuxianKit.Route and MyGuides then
+  WuxianKit.Route:Provide("myguides", {
+    title = "MyGuides", addon = "MyGuides",
+    Active = function() return MyGuides:Current() ~= nil end,
+    Current = function()
+      local s = MyGuides:Current()
+      return s and { guide = s.guide, index = s.index, key = s.guide .. ":" .. s.index,
+        goals = { { op = "go", place = { map = s.map, x = s.x, y = s.y } } }, text = { s.text } }
+    end,
+    Start = function(changed) MyGuides:OnStep(changed) end,
+    Stop = function() MyGuides:OnStep(nil) end,
+  })
+end
+```
+
+## 14. 版本 0.5 的由来
 
 0.5 的新接口都来自「无限公会助手」这个实际场景（本机 Agent 参与公会聊天），判断标准是：第二个扩展也会用到的进核心，只和公会有关的留在公会助手，Agent 自己管得好的（记忆、资讯）放在 Agent 那边。
 
@@ -643,7 +816,7 @@ Agent 在交来的文字里写 `{kind:id:name}`（名字可以省略：`{item:25
 | 聊天扩展的点名、回复、让玩家先说、`WuxianKit.Chat` | 认出有人叫我，回复可以单独免确认 | 答疑、陪玩、队伍助手 |
 | `sense.guild` | 公会概况与在线成员 | 答疑、Agent 了解公会 |
 
-## 14. 版本 0.6 的由来
+## 15. 版本 0.6 的由来
 
 0.6 来自两个实际应用：无限陪玩（本机进程听游戏里的大事件，用语音陪玩）和无限公会助手（Claude Code 里的 Agent 参与公会聊天）。两个应用为了接入各写了一个扩展，加起来约 1,800 行，几乎都是通用的：探测游戏里发生的事、Agent 在不在与节奏、聊天语境、外部进程的接入、读值的小工具。0.6 把它们收进框架，下一个 AI 应用写一份声明就能接入。0.5 没有单独发布，与 0.6 合成一次发布，0.5 里的 `WuxianKit.Chat.NewId`、「汇总 Feed 的事件名要和 Feed 不同」两条在 0.6 去掉。
 
@@ -654,7 +827,7 @@ Agent 在交来的文字里写 `{kind:id:name}`（名字可以省略：`{item:25
 | 租期 `lease` | 消费方走了监听还在跑 |
 | 聊天的 `why`、`Chat:On` | 公会助手自己判断点名、接话、提问、话题正热 |
 | `Value`、`Clean`、`Links`、`Unit`、`Pattern`、`NewId`、`Me`、`ext:Char`、称呼 | 两个应用各写一份 |
-| 链接记号 `Link`、`Linkify`、`Unlink`、`Preload` | 只有 `chat.send` 换物品和法术，弹窗和指引里看不到链接 |
+| 链接记号 `Link`、`Linkify`、`Unlink`、`Preload` | 只有 `chat.send` 换物品和法术，弹窗和界面指引里看不到链接 |
 | 工坊 `wuxian listen`、`sdk/python/wuxiankit.py` | 陪玩自写长轮询客户端；公会技能里手写等待循环 |
 
 发布前的分层重构（同在 0.6）：扩展是零件，应用是成品，核心是运行时。原来在游戏外听有两条路：扩展各自的监听（Feed，聊天、游戏动态各一套工具）和应用；两条路的摘要、租期、回看是同一套，Agent 却要学两遍。重构后只剩应用一条路，扩展改为登记来源；应用加上驱动者，本机程序由无限工坊的通用程序加载器加载，与插件一样能让 Agent 自己写、自己调试。
@@ -665,3 +838,15 @@ Agent 在交来的文字里写 `{kind:id:name}`（名字可以省略：`{item:25
 | 临时应用（`temp = true`） | 调试时开聊天、游戏动态的监听 |
 | 驱动者 `driver`、`kit.app.declare`、事件 `kit.app.launch`、卡片「开始」 | 陪玩用 `start.ps1`、`stop.ps1` 自己启停进程 |
 | 应用的 `docs`；公会聊天搬到 `Apps/Guild/` | 公会聊天的声明和技能放在聊天扩展里 |
+
+分层的第二步（同在 0.6）：**事实归核心，说法归应用。**陪玩接上分层之后，「现在怎样」仍由应用自己推算：从游戏动态的条目里数今天的击杀、从条目上的 `me` 取玩家、解析 RestedXP 步骤的原文找「还差几只」。这些是事实，第二个应用也要；该说什么才是应用自己的事。于是状态面进核心，任务指引成为接口，第三方插件移出核心。
+
+| 改动 | 原来 |
+|---|---|
+| 状态面 `ext:Facet`、应用的 `see`、唤醒的 `state`、`kit.app.state` | 应用从条目里自己攒现状 |
+| 状态面 `me`（加 `dead`、`resting`、`xp`） | 声明的 `me = true`、来源的 `me`、条目上的 `me` |
+| 系统扩展「任务指引」：标准的一步、`Route:Provide`、来源与状态面 `route`、提供者「游戏自带」 | 游戏动态的 `guide` 主题，只接 RestedXP，交出原文几行 |
+| 自定义扩展「任务指引适配」（`WuxianKit_Guides`） | 核心里的 `Extensions/Game/Guide.lua` 直接认 RestedXP |
+| 状态面 `today`、`kill` 的 `streak` | 陪玩自己数今天的进度和连杀 |
+| 状态面 `group` | 应用调 `sense.group` 或不知道队伍 |
+| 原来的「指引」改名「界面指引」 | 与「任务指引」同名易混 |
