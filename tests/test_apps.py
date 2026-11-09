@@ -262,7 +262,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
 
     def test_sources_copy_and_dedupe(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'c', hear = { 'chat:*', 'game:*', 'game:quest' }, me = true }")
+        self.agent(s, "kit.app.open", "{ app = 'c', hear = { 'chat:*', 'game:*', 'game:quest' }, see = { 'me' } }")
         self.assertEqual(self.lua(s, "__count(__chatsubs)"), 1)
         self.assertEqual(self.lua(s, "__count(__gamesubs)"), 1)
         s.lua.execute(b"__msg = __say('party', { plain = 'hi', why = 'question' })")
@@ -270,8 +270,11 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
         item = self.wakes(s, "c")[0]["items"][0]
         self.assertEqual((item["source"], item["why"], item["id"]), ("chat", "question", s.lua.eval(b"__msg.id")))
         s.lua.execute(b"__moment('quest.turnin', 'quest', { id = 5 })")
-        g = self.wakes(s, "c")[1]["items"][0]
-        self.assertEqual((g["kind"], g["data"], g["me"]["name"]), ("quest.turnin", {"id": 5}, s.lua.eval(b"WuxianKit:Me().name").decode()))
+        w = self.wakes(s, "c")[1]
+        g = w["items"][0]
+        self.assertEqual((g["kind"], g["data"]), ("quest.turnin", {"id": 5}))
+        self.assertNotIn("me", g)                                         # the player is the wake's state, not the item's
+        self.assertEqual(w["state"]["me"]["name"], s.lua.eval(b"WuxianKit:Me().name").decode())
         self.assertGreater(g["id"], item["id"])
         self.agent(s, "kit.app.stop", "{ app = 'c' }")
         self.assertEqual((self.lua(s, "__count(__chatsubs)"), self.lua(s, "__count(__gamesubs)")), (0, 0))
@@ -480,7 +483,7 @@ class Manifest(AppCase):
         s = self.start()
         m = self.lua(s, "WuxianKit:Manifest()")
         guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
-                 "hear": ["chat:guild", "game:guild"], "prompt": "guild-chat",
+                 "hear": ["chat:guild", "game:guild"], "see": {}, "prompt": "guild-chat",
                  "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat", "driver": "prompt",
                  "docs": "WuxianKit/Apps/Guild", "launch": False, "temp": False}
         self.assertEqual(m["apps"], [guild])                               # the kit's own
@@ -497,10 +500,10 @@ class Manifest(AppCase):
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', hear = { 'game:quest' } })")
         m = self.lua(s, "WuxianKit:Manifest()")
         self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
-                                      "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill"),
+                                      "see": {}, "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill"),
                                       "driver": "prompt", "launch": False, "temp": False},
                                      {"id": "ad", "title": "AD", "by": "addon", "addon": "WxAd", "topic": "app.ad",
-                                      "hear": ["game:quest"], "launch": False, "temp": False}])
+                                      "hear": ["game:quest"], "see": {}, "launch": False, "temp": False}])
         self.assertNotEqual(m["revision"], rev)
         s.run(1)
         self.assertEqual(self.events(s, "kit.changed")[-1]["revision"], m["revision"])

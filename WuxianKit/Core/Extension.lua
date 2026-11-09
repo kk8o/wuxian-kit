@@ -29,6 +29,7 @@
 --                                          emits kit.option { extension, name, value }
 --   ext:Command(word, fn(self, rest), help)  "/wk <word> ..." runs fn while it is on; /wk help lists it
 --   ext:Source(name, spec) -> source       what apps hear: the hear entries <name>:<what> (see "sources" below)
+--   ext:Facet(name, spec) -> facet         what apps see: a state each of their wakes carries (see "facets" below)
 local addonName, ns = ...
 local Kit, L = ns.Kit, ns.L
 
@@ -98,6 +99,7 @@ function ns.Enable(ext)
 	end
 	for _, t in ipairs(ext.timers) do Start(ext, t) end
 	if ext.setup then ns.Safe(ext.setup, ext) end
+	ns.FacetsLive(ext, true)                          -- (its facets that apps look at: on)
 	ns.Changed("extension", ext)
 	Kit:Emit("kit.extension", { id = ext.id, on = true })
 end
@@ -111,6 +113,7 @@ function ns.Disable(ext)
 		if t.ticker then t.ticker:Cancel() end
 		t.ticker = nil
 	end
+	ns.FacetsLive(ext, false)                         -- (its facets' off, before its teardown)
 	if ext.teardown then ns.Safe(ext.teardown, ext) end
 	ns.Changed("extension", ext)
 	Kit:Emit("kit.extension", { id = ext.id, on = false })
@@ -128,7 +131,7 @@ function Kit:Extension(id, info)
 	info = info or {}
 	if not ext then
 		ext = setmetatable({ id = id, caps = {}, capOrder = {}, scopes = {}, scopeOrder = {}, timers = {},
-			sourceOrder = {}, options = {}, optionOrder = {}, emits = {}, emitOrder = {}, budgets = {}, builtin = not started },
+			sourceOrder = {}, facetOrder = {}, options = {}, optionOrder = {}, emits = {}, emitOrder = {}, budgets = {}, builtin = not started },
 			Extension)
 		extensions[id] = ext
 		order[#order + 1] = id
@@ -407,7 +410,7 @@ function ns.Commands() return commands end
 --   covers(a, b)       whether <name>:a hears all that <name>:b does (chat:* covers chat:guild): an app hears b once
 --   on(self, what, fn) -> token   subscribes: fn(item) for each item heard, a new table each time (an app writes its
 --                      fields on it); off(self, token) unsubscribes; self is the extension
---   me = true          an app that declared me gets the player (WuxianKit:Me()) on this source's items
+-- (What the player is like now is not on items: an app sees the facet me, below.)
 -- An extension that is off keeps its sources registered: an app that hears one cannot start (Apps.lua says why), and
 -- one that runs hears nothing of it until it is on again.
 -- addon, control and player are the apps' own sources (an item's source) and cannot be registered.
@@ -467,6 +470,175 @@ function ns.SourceList(ext)
 		if s and s.ext == ext then
 			out[#out + 1] = { name = name, title = ns.T(s.spec.title) or name, doc = ns.Text(ns.T(s.spec.doc) or ""),
 				values = ns.SourceValues(s) }
+		end
+	end
+	return out
+end
+
+------------------------------------------------------------------------------------------------------------------------
+-- facets: what apps see (Apps.lua), as sources are what they hear. ext:Facet(name, spec) registers a state an app
+-- declares in see = { name, ... }: each wake of the app carries state[name] = what read gives at that wake, and
+-- kit.app.state reads them at once. A name is the whole kit's, as a source's (a source and a facet may share one: route):
+-- another extension's of the same name is an error, the same extension's again replaces it. spec:
+--   title, doc         doc: what the state is (kit.app.open's doc and the manifest show it)
+--   fields             optional: field -> type text ({ level = "number", zone = "string?" }), for the docs
+--   read(self) -> table|nil   the state now, a small table (nil: none now); one that comes to more than FACET_MAX bytes
+--                      as a wake carries it is cut (texts shorten, lists lose their last entries, nested tables go) and
+--                      says cut = true
+--   on(self), off(self)   optional: the first app that runs and sees it started (turn on what it takes to know it: a
+--                      probe, a game event), the last one stopped; off too when its extension goes off, and on again when
+--                      it comes back on while one still sees it
+-- An extension that is off keeps its facets registered: an app that sees one of them cannot start, and one that runs stops
+-- (Apps.lua); read is not called while it is off.
+-- ns.facets: name -> { name, ext, spec, watchers = { [who] = true }, n, live (on was called) }; ns.facetOrder: the names as
+-- registered; ns.FacetList(ext) for the manifest; ns.FacetWatch(facet, who, on): who (an app) starts or stops looking;
+-- ns.FacetRead(facet): the state as a wake carries it.
+
+local facets, facetOrder = {}, {}
+ns.facets, ns.facetOrder = facets, facetOrder
+local FACET_MAX, FACET_TEXT, FACET_DEPTH = 600, 200, 4
+ns.FACET_MAX = FACET_MAX
+
+-- on or off as whether anyone looks and the extension is on
+local function Live(facet)
+	local want = facet.n > 0 and facet.ext.active == true
+	if want == (facet.live == true) then return end
+	facet.live = want or nil
+	local fn = facet.spec[want and "on" or "off"]
+	if fn then ns.Safe(fn, facet.ext) end
+end
+
+function Extension:Facet(name, spec)
+	if type(name) ~= "string" or #name > SOURCE_MAX or not name:match("^[a-z][a-z0-9_]*$") then
+		error(("%s: a facet's name is lowercase letters, digits and _, at most %d bytes"):format(self.id, SOURCE_MAX), 2)
+	end
+	if type(spec) ~= "table" or type(spec.read) ~= "function" then
+		error(("%s: facet %s's spec has read(self)"):format(self.id, name), 2)
+	end
+	for _, k in ipairs({ "on", "off" }) do
+		if spec[k] ~= nil and type(spec[k]) ~= "function" then
+			error(("%s: facet %s's %s is a function"):format(self.id, name, k), 2)
+		end
+	end
+	if spec.fields ~= nil and type(spec.fields) ~= "table" then
+		error(("%s: facet %s's fields is a table (field -> type text)"):format(self.id, name), 2)
+	end
+	local old = facets[name]
+	if old and old.ext ~= self then
+		error(("%s: the facet %s is extension %s's"):format(self.id, name, old.ext.id), 2)
+	end
+	local facet = { name = name, ext = self, spec = spec, watchers = old and old.watchers or {}, n = old and old.n or 0 }
+	if old and old.live then                            -- looked at: the old spec's off, then the new one's on
+		old.n = 0
+		Live(old)
+	end
+	if not old then
+		facetOrder[#facetOrder + 1] = name
+		self.facetOrder[#self.facetOrder + 1] = name
+	end
+	facets[name] = facet
+	Live(facet)
+	ns.Changed("facet", facet)
+	return facet
+end
+
+function ns.FacetWatch(facet, who, on)
+	if on and not facet.watchers[who] then
+		facet.watchers[who], facet.n = true, facet.n + 1
+	elseif not on and facet.watchers[who] then
+		facet.watchers[who], facet.n = nil, facet.n - 1
+	end
+	Live(facet)
+end
+
+-- an extension went on or off: its facets that apps look at with it (Enable, Disable)
+function ns.FacetsLive(ext)
+	for _, name in ipairs(ext.facetOrder) do
+		local facet = facets[name]
+		if facet and facet.ext == ext then Live(facet) end
+	end
+end
+
+-- a copy of v as a wake may carry it: texts at most `text` bytes, no deeper than FACET_DEPTH, no secret values
+local function Plain(v, text, depth)
+	v = Kit:Value(v)
+	local t = type(v)
+	if t == "string" then return ns.Cut(v, text) end
+	if t == "number" then return ns.Finite(v) and v or nil end
+	if t == "boolean" then return v end
+	if t ~= "table" or depth > FACET_DEPTH then return nil end
+	local out = {}
+	for k, x in pairs(v) do
+		if type(k) == "string" or (type(k) == "number" and ns.Finite(k)) then out[k] = Plain(x, text, depth + 1) end
+	end
+	return out
+end
+
+local function Size(v)
+	local ok, text = pcall(ns.Comm.Serialize, v)
+	return ok and #text or math.huge
+end
+
+-- the longest list in t, at any depth (nil when none has an entry), and its length
+local function Longest(t, best, n)
+	if #t > n then best, n = t, #t end
+	for _, x in pairs(t) do
+		if type(x) == "table" then best, n = Longest(x, best, n) end
+	end
+	return best, n
+end
+
+-- v cut to FACET_MAX: texts shorten to FACET_TEXT bytes, then lists lose their last entries, then texts shorten more,
+-- then nested tables go; cut = true says so
+local function Fit(v)
+	local out = Plain(v, FACET_MAX, 1)
+	if Size(out) <= FACET_MAX then return out end
+	local room = FACET_MAX - 12                         -- (for cut = true)
+	out = Plain(out, FACET_TEXT, 1)
+	while Size(out) > room do
+		local list, n = Longest(out, nil, 0)
+		if not list then break end
+		list[n] = nil
+	end
+	if Size(out) > room then out = Plain(out, 40, 1) end
+	if Size(out) > room then                            -- its top level's plain values alone
+		local flat = {}
+		for k, x in pairs(out) do
+			if type(x) ~= "table" then flat[k] = x end
+		end
+		out = flat
+	end
+	if Size(out) > room then out = {} end
+	out.cut = true
+	return out
+end
+
+function ns.FacetRead(facet)
+	if not (facet and facet.ext.active) then return nil end
+	local ok, v = pcall(facet.spec.read, facet.ext)
+	if not ok then
+		geterrorhandler()(v)
+		return nil
+	end
+	if type(v) ~= "table" then return nil end
+	return Fit(v)
+end
+
+-- an extension's facets as the manifest lists them: [{ name, title, doc, fields? }]
+function ns.FacetList(ext)
+	local out = {}
+	for _, name in ipairs(ext.facetOrder) do
+		local f = facets[name]
+		if f and f.ext == ext then
+			local fields
+			if type(f.spec.fields) == "table" then
+				fields = {}
+				for k, v in pairs(f.spec.fields) do
+					if type(k) == "string" then fields[k] = ns.Text(v) end
+				end
+			end
+			out[#out + 1] = { name = name, title = ns.T(f.spec.title) or name, doc = ns.Text(ns.T(f.spec.doc) or ""),
+				fields = fields }
 		end
 	end
 	return out

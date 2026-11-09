@@ -306,8 +306,9 @@ function Kit:NewId()
 	return id
 end
 
--- WuxianKit:Me(): a small picture of the player for an AI app: { name (whole), nickname (the core's option 称呼: what
--- an AI calls the player; "" = by name), level, class, classToken, zone, subzone, combat }
+-- WuxianKit:Me(): a small picture of the player for an AI app (the core's facet me): { name (whole), nickname (the
+-- core's option 称呼: what an AI calls the player; "" = by name), level, class, classToken, zone, subzone, combat, dead
+-- (dead or a ghost), resting, xp (this level's experience, a whole percent; nil at the top level) }
 function Kit:Me()
 	local V = function(v) return Kit:Value(v) end
 	local core = ns.extensions and ns.extensions.kit
@@ -315,11 +316,21 @@ function Kit:Me()
 	nick = type(nick) == "string" and nick:match("^%s*(.-)%s*$") or ""
 	local className, classToken = UnitClass("player")
 	local name = GetUnitName and V(GetUnitName("player", true)) or V((UnitName("player")))
-	return { name = name, nickname = nick, level = V(UnitLevel("player")), class = V(className),
+	local level = V(UnitLevel("player"))
+	local top = GetMaxLevelForPlayerExpansion and V(GetMaxLevelForPlayerExpansion()) or nil
+	local xp, most = UnitXP and V(UnitXP("player")), UnitXPMax and V(UnitXPMax("player"))
+	local pct
+	if type(xp) == "number" and type(most) == "number" and most > 0
+		and not (type(top) == "number" and type(level) == "number" and level >= top) then
+		pct = math.max(0, math.min(100, math.floor(xp / most * 100)))
+	end
+	return { name = name, nickname = nick, level = level, class = V(className),
 		classToken = V(classToken), zone = Kit:Clean(GetZoneText and GetZoneText()),
 		subzone = Kit:Clean(GetSubZoneText and GetSubZoneText()),
 		combat = ((InCombatLockdown and InCombatLockdown()) or
-			(UnitAffectingCombat and V(UnitAffectingCombat("player")))) and true or false }
+			(UnitAffectingCombat and V(UnitAffectingCombat("player")))) and true or false,
+		dead = UnitIsDeadOrGhost and V(UnitIsDeadOrGhost("player")) and true or false,
+		resting = IsResting and V(IsResting()) and true or false, xp = pct }
 end
 
 -- a chat line the player reads (not print: WoWBridge forwards print output to the daemon)

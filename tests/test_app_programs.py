@@ -60,7 +60,7 @@ class Programs(unittest.TestCase):
     def test_declare_keeps_without_starting_and_is_no_heartbeat(self):
         s = self.start()
         rev = py(s.lua.eval(b"WuxianKit:Manifest()"))["revision"]
-        decl = "{ app = 'comp', title = 'Companion', driver = 'program', hear = { 'game:combat' }, me = true, lease = 60 }"
+        decl = "{ app = 'comp', title = 'Companion', driver = 'program', hear = { 'game:combat' }, see = { 'me' }, lease = 60 }"
         st = self.agent(s, "kit.app.declare", decl)
         self.assertEqual((st["on"], st["by"], st["driver"], st["launch"], st["lease"]), (False, "agent", "program", False, 60))
         self.assertNotIn("seen", st)

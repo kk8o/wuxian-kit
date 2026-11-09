@@ -9,8 +9,9 @@
 -- A wake is { reason = "urgent" | "full" | "batch" | "idle" (or the host's own, "item"), items (oldest first), skipped }
 -- and what host:Wrap(s) adds: gather s (5) after an urgent item, every s (60; false: only urgent or full) after the first
 -- one gathered, at once at most (30) of them, and after idle s (false: never) without an item or a wake (an idle wake
--- carries what is gathered: nothing, unless every is false). A wake is kept under WAKE_MAX bytes: the oldest items go
--- (skipped counts them; the ring still has them). urgent may be a list instead: an item is urgent when its why or its kind
+-- carries what is gathered: nothing, unless every is false). A wake is kept under WAKE_MAX bytes, what host:Wrap adds
+-- (an app's state) counted: the oldest items go (skipped counts them; the ring still has them), what Wrap added stays
+-- (an app's state is at most 8 facets of FACET_MAX bytes: it fits). urgent may be a list instead: an item is urgent when its why or its kind
 -- is in it (ns.UrgentList).
 -- Also here: ns.Lease (a lease as kept), ns.RingRecent (what a ring answers for since and limit).
 local _, ns = ...

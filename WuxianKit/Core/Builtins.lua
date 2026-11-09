@@ -9,15 +9,17 @@
 --   kit.me                (See)  the player's name, what AI apps call them (the core's option nickname), their aliases
 --   kit.undo              (Do)   undo a proposal that ran
 --   bus                   (Source) what addons emit on the bus, for apps to hear (bus:<topic or prefix.*>)
+--   me                    (Facet)  the player now (WuxianKit:Me()), for apps to see (see = { "me" }: state.me)
 -- (The apps' capabilities, kit.app.* and kit.apps, are in Apps.lua.)
 local _, ns = ...
 local Kit, L = ns.Kit, ns.L
 
 -- words of the core's own extension that the core's Locale does not have
 local W = Kit:Words {
-	zhCN = { NICKNAME = "称呼", NICKNAME_HINT = "AI 应用怎么叫你；留空就叫角色名", ME = "关于我", BUS = "插件事件" },
+	zhCN = { NICKNAME = "称呼", NICKNAME_HINT = "AI 应用怎么叫你；留空就叫角色名", ME = "关于我", BUS = "插件事件",
+		PLAYER = "角色状态" },
 	enUS = { NICKNAME = "What to call me", NICKNAME_HINT = "How AI apps address you; empty: your character name",
-		ME = "About me", BUS = "Addon events" },
+		ME = "About me", BUS = "Addon events", PLAYER = "The player now" },
 }
 
 local kit = Kit:Extension("kit", { title = L"CORE", version = Kit.VERSION })
@@ -92,6 +94,15 @@ kit:See("me", { title = W"ME",
 		return { name = me.name, nickname = me.nickname, aliases = aliases }
 	end })
 
+-- the player now, as a facet apps see (see = { "me" }): each wake carries state.me
+kit:Facet("me", { title = W"PLAYER",
+	doc = "the player now: name (whole), nickname (what to call them; \"\" = by name), level, class, classToken, zone, "
+		.. "subzone, combat, dead (dead or a ghost), resting, xp (this level's experience, a whole percent; none at the "
+		.. "top level)",
+	fields = { name = "string", nickname = "string", level = "number", class = "string", classToken = "string",
+		zone = "string?", subzone = "string?", combat = "boolean", dead = "boolean", resting = "boolean", xp = "number?" },
+	read = function() return Kit:Me() end })
+
 kit:Setting("extension", { title = L"SWITCH", doc = "whether an extension is on",
 	key = { extension = "string" }, value = "boolean", scope = "extensions",
 	check = function(_, k)
@@ -117,9 +128,10 @@ kit:Setting("extension", { title = L"SWITCH", doc = "whether an extension is on"
 kit:See("manifest", { title = L"MANIFEST",
 	doc = "what the agent may use (the Agent access spec): protocol, kit (version), language, revision, extensions [{id, "
 		.. "title, version, addon, builtin, state, docs (the folder under Interface\\AddOns of its AGENT.md and skills/), "
-		.. "capabilities, events, sources [{name, title, doc, values}] (what apps can hear of it)}], the capabilities and "
-		.. "events of those that are on, apps [{id, title, by, addon, topic, hear, prompt, start, extension, driver (prompt "
-		.. "or program), docs (an addon's app: the folder of its skills/), launch, temp}]. For 无限工坊's app",
+		.. "capabilities, events, sources [{name, title, doc, values}] (what apps can hear of it), facets [{name, title, "
+		.. "doc, fields}] (what apps can see of it)}], the capabilities and events of those that are on, apps [{id, title, "
+		.. "by, addon, topic, hear, see, prompt, start, extension, driver (prompt or program), docs (an addon's app: the "
+		.. "folder of its skills/), launch, temp}]. For 无限工坊's app",
 	run = function() return Kit:Manifest() end })
 kit:See("revision", { title = L"REVISION", doc = "the manifest's revision: {revision}; it changes whenever the manifest does",
 	run = function() return { revision = Kit:Manifest().revision } end })

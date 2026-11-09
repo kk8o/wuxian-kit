@@ -319,10 +319,13 @@ local function Revision(m)
 		for _, v in ipairs(e.sources or {}) do
 			parts[#parts + 1] = table.concat({ "source", v.name, v.title or "", v.doc, table.concat(v.values or {}, ",") }, "\1")
 		end
+		for _, v in ipairs(e.facets or {}) do
+			parts[#parts + 1] = table.concat({ "facet", v.name, v.title or "", v.doc, Specs(v.fields) }, "\1")
+		end
 	end
 	for _, a in ipairs(m.apps or {}) do
 		parts[#parts + 1] = table.concat({ "app", a.id, a.title or "", a.by or "", a.addon or "", a.topic or "",
-			table.concat(a.hear or {}, ","), a.prompt or "", a.start or "", a.extension or "", a.driver or "", a.docs or "",
+			table.concat(a.hear or {}, ","), table.concat(a.see or {}, ","), a.prompt or "", a.start or "", a.extension or "", a.driver or "", a.docs or "",
 			tostring(a.launch), tostring(a.temp) }, "\1")
 	end
 	return Hash(table.concat(parts, "\2"))
@@ -344,10 +347,11 @@ function Kit:Manifest()
 				entry.events[#entry.events + 1] = { topic = v.topic, doc = v.doc, data = v.data }
 			end
 			entry.sources = ns.SourceList(ext)                         -- [{ name, title, doc, values? }]
+			entry.facets = ns.FacetList(ext)                           -- [{ name, title, doc, fields? }]
 		end
 		m.extensions[#m.extensions + 1] = entry
 	end
-	-- (Apps.lua) [{ id, title, by, addon?, topic, hear, prompt?, start?, extension?, driver?, docs?, launch, temp }]
+	-- (Apps.lua) [{ id, title, by, addon?, topic, hear, see, prompt?, start?, extension?, driver?, docs?, launch, temp }]
 	m.apps = ns.AppManifest and ns.AppManifest() or {}
 	m.revision = Revision(m)
 	return m

@@ -1,5 +1,6 @@
 -- 角色信息 (Character info): what the game shows of the player, read at once: sense.character, sense.position, sense.bags,
--- sense.quests, sense.professions, sense.reputation, sense.currency, sense.group, sense.guild. Nothing here reads what
+-- sense.quests, sense.professions, sense.reputation, sense.currency, sense.group, sense.guild; and the facet group that
+-- apps see (size, kind, instance). Nothing here reads what
 -- the client keeps secret on purpose (health and power are secret to addons on this client); a value that comes back
 -- secret (in combat, an encounter, a PvP match) is left out. sense.guild never reads public or officer notes.
 local Kit = WuxianKit
@@ -211,6 +212,26 @@ sense:See("group", { title = L"GROUP",
 			end
 		end
 		return { kind = raid and "raid" or "party", members = members }
+	end })
+
+-- the group now, as a facet apps see (see = { "group" }): small, read at each wake
+sense:Facet("group", { title = L"GROUP",
+	doc = "the player's group now: size (1 alone), kind (solo, party, raid), instance (its name, inside one), instanceType "
+		.. "(party, raid, pvp, arena, scenario, inside one)",
+	fields = { size = "number", kind = "string", instance = "string?", instanceType = "string?" },
+	read = function()
+		local grouped = IsInGroup and V(IsInGroup())
+		local size = grouped and V(GetNumGroupMembers()) or nil
+		local out = { kind = not grouped and "solo" or (V(IsInRaid()) and "raid" or "party"),
+			size = type(size) == "number" and size > 0 and size or 1 }
+		local inside, kind = IsInInstance()
+		if V(inside) then
+			local name = V((GetInstanceInfo()))
+			out.instance = type(name) == "string" and name ~= "" and name or nil
+			kind = V(kind)
+			out.instanceType = type(kind) == "string" and kind ~= "none" and kind or nil
+		end
+		return out
 	end })
 
 -- the guild's roster as the guild window has it (asking the server for a fresh one: it answers a moment later)

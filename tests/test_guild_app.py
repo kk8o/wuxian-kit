@@ -92,7 +92,7 @@ class GuildApp(unittest.TestCase):
                                                       "launching": False}])
         m = py(s.lua.eval(b"WuxianKit:Manifest()"))
         self.assertEqual(m["apps"], [{"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit",
-                                      "topic": "app.guild", "hear": ["chat:guild", "game:guild"],
+                                      "topic": "app.guild", "hear": ["chat:guild", "game:guild"], "see": {},
                                       "prompt": "guild-chat", "start": START_EN, "extension": "chat",
                                       "driver": "prompt", "docs": "WuxianKit/Apps/Guild", "launch": False,
                                       "temp": False}])

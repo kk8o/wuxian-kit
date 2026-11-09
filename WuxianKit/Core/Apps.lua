@@ -1,10 +1,12 @@
--- Apps (应用, 0.6): the finished products. Extensions are the parts (capabilities, and the sources apps hear: ext:Source,
--- Extension.lua); the core is the runtime; an app uses extensions, and no extension knows which apps there are. Outside
--- the game, hearing the game is only through an app. An app is a declaration and its driver: what it hears (hear
--- entries <source>:<what>, such as chat:guild, game:quest, bus:demo.*), whether and how its items are gathered into wakes
--- (a digest, Digest.lua; with pace, the player's activity and quiet hours run it), which commands the player can give it
--- in the game, how long it may go unheard from before it counts as gone (lease), and options the player sets for it; its
--- driver is a prompt (an AI client follows the skill it names) or a program (one on this computer, which 无限工坊 loads).
+-- Apps (应用, 0.6): the finished products. Extensions are the parts (capabilities, the sources apps hear: ext:Source, and
+-- the facets they see: ext:Facet, Extension.lua); the core is the runtime; an app uses extensions, and no extension knows
+-- which apps there are. Outside the game, hearing the game is only through an app. An app is a declaration and its
+-- driver: what it hears (hear entries <source>:<what>, such as chat:guild, game:quest, bus:demo.*: what happened), what
+-- it sees (see: facets such as me, group: how things are now; each wake carries them as state), whether and how its
+-- items are gathered into wakes (a digest, Digest.lua; with pace, the player's activity and quiet hours run it), which
+-- commands the player can give it in the game, how long it may go unheard from before it counts as gone (lease), and
+-- options the player sets for it; its driver is a prompt (an AI client follows the skill it names) or a program (one on
+-- this computer, which 无限工坊 loads).
 -- K2 draws it (UI/AppPanel.lua, the window's 应用 page, /wk <app> ...). The contract is ARCHITECTURE.md section 10; in
 -- short:
 --
@@ -19,15 +21,17 @@
 --   WuxianKit:AppPanel(id, parent, width)      (UI/AppPanel.lua, K2) the app's card in another addon's window
 --
 -- Capabilities (the core's extension "kit"): kit.app.open { app, ...decl, temp, minutes, lease }, kit.app.declare
--- { app, ...decl, launch } (kept, not started, no heartbeat), kit.app.status { app } (also the heartbeat), kit.app.stop
--- { app }, kit.app.recent { app, since, limit }, kit.apps. Events: app.<id> (the app's wakes: { app, reason, items,
--- skipped, pace?, quiet? }; an extension's event as far as the link's rate goes), kit.app ({ app, on, why?, ends? } when
--- one starts or stops), kit.app.launch ({ app }: the player wants a program's app started).
--- A declaration's driver is "prompt" or "program" (none given with a prompt: "prompt"; "prompt" needs one). temp = true
--- (kit.app.open's): a temporary app, in memory only, at most TEMP_MOST at once and not one of the AGENT_MOST kept, gone
--- once it stops or the UI reloads. launch = true (kit.app.declare's, in memory: 无限工坊 declares again after each
--- kit.ready): 无限工坊 loads its program, so the player can start it (kit.app.launch). Neither counts when two
--- declarations are compared.
+-- { app, ...decl, launch } (kept, not started, no heartbeat), kit.app.status { app } (also the heartbeat), kit.app.state
+-- { app } (what it sees now: { app, at, state }; a heartbeat too), kit.app.stop { app }, kit.app.recent { app, since,
+-- limit }, kit.apps. Events: app.<id> (the app's wakes: { app, reason, items, skipped, state? (with see: { [facet] =
+-- its read at the wake }), pace?, quiet? }; an extension's event as far as the link's rate goes), kit.app ({ app, on,
+-- why?, ends? } when one starts or stops), kit.app.launch ({ app }: the player wants a program's app started).
+-- A declaration's driver is "prompt" or "program" (none given with a prompt: "prompt"; "prompt" needs one). see: at most
+-- SEE_MOST facet names; a facet is on (its spec's on) while an app that runs sees it, and its extension going off stops
+-- the apps that see it, as for a source. temp = true (kit.app.open's): a temporary app, in memory only, at most TEMP_MOST
+-- at once and not one of the AGENT_MOST kept, gone once it stops or the UI reloads. launch = true (kit.app.declare's, in
+-- memory: 无限工坊 declares again after each kit.ready): 无限工坊 loads its program, so the player can start it
+-- (kit.app.launch). Neither counts when two declarations are compared.
 --
 -- For the window (K2):
 --   ns.AppList()                  the apps as kit.apps answers (start: the start line, for an app with a prompt;
@@ -57,6 +61,7 @@ local W = Kit:Words {
 		STARTED = "%s：已开始，至 %s", STOPPED = "%s：已停止", EXPIRED = "%s：已到时间，已停止",
 		LEFT = "%s：Agent 已离开，已停止", EXT_STOPPED = "%s：所属扩展已停用，已停止",
 		EXT_OFF = "所属扩展「%s」已停用", NEEDS = "需要开启「%s」扩展", NEEDS_SOURCE = "需要来源「%s」",
+		NEEDS_FACET = "需要状态面「%s」",
 		ACTIVITY = "活跃度", A_QUIET = "安静", A_NORMAL = "适中", A_LIVELY = "活跃",
 		ACTIVITY_HINT = "安静：只在点名时唤醒；适中：接话、提问时唤醒，冷场时也唤醒；活跃：话题正热时也唤醒，节奏更快",
 		QUIET = "免打扰时段", QUIET_HINT = "如 01:00-08:00；这段时间只在点名时唤醒",
@@ -70,6 +75,7 @@ local W = Kit:Words {
 		STARTED = "%s: started, until %s", STOPPED = "%s: stopped", EXPIRED = "%s: time is up, stopped",
 		LEFT = "%s: the agent left, stopped", EXT_STOPPED = "%s: its extension was turned off, stopped",
 		EXT_OFF = "Its extension %s is off", NEEDS = "Needs the %s extension on", NEEDS_SOURCE = "Needs the source %s",
+		NEEDS_FACET = "Needs the state %s",
 		ACTIVITY = "Activity", A_QUIET = "Quiet", A_NORMAL = "Normal", A_LIVELY = "Lively",
 		ACTIVITY_HINT = "Quiet: wakes only when you are named; Normal: also for follow-ups, questions and lulls; "
 			.. "Lively: also when the talk is hot, faster",
@@ -84,7 +90,7 @@ local W = Kit:Words {
 }
 
 local ID_MAX, TITLE_MAX, HINT_MAX, LABEL_MAX, WORD_MAX = 24, 48, 120, 24, 32
-local AGENT_MOST, TEMP_MOST, OPTIONS_MOST, CHOICES_MOST, HEAR_MOST, LIST_MOST = 8, 4, 8, 8, 16, 16
+local AGENT_MOST, TEMP_MOST, OPTIONS_MOST, CHOICES_MOST, HEAR_MOST, SEE_MOST, LIST_MOST = 8, 4, 8, 8, 16, 8, 16
 local RING, MINUTES, MINUTES_MOST, LEASE, LEASE_MOST, SAY_MAX = 100, 120, 720, 600, 43200, 255
 local LAUNCH_WAIT = 30
 
@@ -323,6 +329,35 @@ local function Hear(list, kept)
 	return Trim(list)
 end
 
+------------------------------------------------------------------------------------------------------------------------
+-- see: the facets an app's wakes carry as state (ns.facets, Extension.lua)
+
+local function FacetNames()
+	local names = {}
+	for i, name in ipairs(ns.facetOrder) do names[i] = name end
+	table.sort(names)
+	return table.concat(names, ", ")
+end
+
+-- the names, each once; kept (a remembered declaration, an addon's): a facet not registered (yet) stays, and the app
+-- cannot start while it is missing
+local function See(list, kept)
+	if list == nil then return {} end
+	if not IsList(list) or #list > SEE_MOST then Fail("see is a list of at most %d states (%s)", SEE_MOST, FacetNames()) end
+	local out, done = {}, {}
+	for _, name in ipairs(list) do
+		if type(name) ~= "string" or #name > ID_MAX or not name:match("^[a-z][a-z0-9_]*$") then
+			Fail("see: %s is not a state's name (the states: %s)", ns.Text(name), FacetNames())
+		end
+		if not ns.facets[name] and not kept then Fail("see: no state %s (the states: %s)", name, FacetNames()) end
+		if not done[name] then
+			done[name] = true
+			out[#out + 1] = name
+		end
+	end
+	return out
+end
+
 local function Option(name, o, agent, paced)
 	if type(name) ~= "string" or #name > ID_MAX or not name:match("^[a-z][a-z0-9_]*$") then
 		Fail("options: %s is not a name (lowercase letters, digits and _, at most %d bytes)", ns.Text(name), ID_MAX)
@@ -391,8 +426,8 @@ local function Options(t, agent, paced)
 	return out, names
 end
 
-local DECL_FIELDS = { title = true, hear = true, digest = true, pace = true, urgent = true, controls = true, say = true,
-	me = true, lease = true, minutes = true, options = true, prompt = true, driver = true }
+local DECL_FIELDS = { title = true, hear = true, see = true, digest = true, pace = true, urgent = true, controls = true,
+	say = true, lease = true, minutes = true, options = true, prompt = true, driver = true }
 
 local function CheckId(id)
 	if type(id) ~= "string" or #id > ID_MAX or not id:match("^[a-z][a-z0-9_]*$") then
@@ -431,6 +466,7 @@ local function Normalize(id, d, agent, kept)
 	if agent then Only(d, DECL_FIELDS, "the declaration") end
 	local n = { title = Text(d.title, "title", TITLE_MAX, agent) or id }
 	n.hear = Hear(d.hear, kept)
+	n.see = See(d.see, kept)
 	if d.pace ~= nil and d.pace ~= false then
 		n.pace = Pace(d.pace, agent)
 		for _, name in ipairs(ACTIVITIES) do n.pace[name].wakeSet = Set(n.pace[name].wake) end
@@ -455,7 +491,6 @@ local function Normalize(id, d, agent, kept)
 		end
 	end
 	n.say = Bool(d.say, "say") or false
-	n.me = Bool(d.me, "me") or false
 	local lease = LeaseOf(d.lease, "lease")
 	if lease == nil then lease = LEASE end
 	n.lease = lease or nil
@@ -641,6 +676,13 @@ local function Retune(app, s)
 	s.options.digest = dg
 end
 
+-- what the app sees now: { [name] = the facet's read } (a facet missing, or its extension off: none)
+local function State(app)
+	local state = {}
+	for _, name in ipairs(app.decl.see) do state[name] = ns.FacetRead(ns.facets[name]) end
+	return state
+end
+
 local function Host(app)
 	app.host = {
 		ext = ns.extensions.kit,
@@ -648,6 +690,7 @@ local function Host(app)
 		Wrap = function(_, s)
 			local w = { app = app.id }
 			if app.decl.pace then w.pace, w.quiet = s.pace or "normal", s.quiet and true or false end
+			if #app.decl.see > 0 then w.state = State(app) end   -- (read at the wake; its size counts: items go first)
 			return w
 		end,
 		Send = function(_, data) Kit:Emit("app." .. app.id, data) end,
@@ -684,13 +727,11 @@ end
 -- items
 
 -- an item heard while the app runs, from source (a registered source's name, or the app's own: addon, control,
--- player): stamped, enriched, kept, gathered or sent; me: the source gives the player to an app that declared me;
--- immediate: the wake goes at once (control and player items)
-local function Deliver(app, source, item, immediate, me)
+-- player): stamped, enriched, kept, gathered or sent; immediate: the wake goes at once (control and player items)
+local function Deliver(app, source, item, immediate)
 	local s = Run(app)
 	if not s or type(item) ~= "table" then return false end
 	item.source = source
-	if me and app.decl.me then item.me = Kit:Me() end
 	if ns.Finite(item.id) then ns.BumpId(item.id) else item.id = Kit:NewId() end
 	if item.time == nil then item.time = time() end
 	if app.decl.enrich then
@@ -709,8 +750,27 @@ local function Deliver(app, source, item, immediate, me)
 	return true
 end
 
--- each entry of a registered source subscribed (one of a source not registered yet: when it is); what a source gives
--- while its extension is off is not heard
+-- the facets it sees counted as looked at (ns.FacetWatch: the first look turns one on); one not registered yet: once it
+-- is
+local function Watch(app)
+	app.watching = app.watching or {}
+	for _, name in ipairs(app.decl.see) do
+		local facet = ns.facets[name]
+		if facet and app.watching[name] ~= facet then
+			if app.watching[name] then ns.FacetWatch(app.watching[name], app, false) end
+			app.watching[name] = facet
+			ns.FacetWatch(facet, app, true)
+		end
+	end
+end
+
+local function Unwatch(app)
+	for _, facet in pairs(app.watching or {}) do ns.FacetWatch(facet, app, false) end
+	app.watching = nil
+end
+
+-- each entry of a registered source subscribed (one of a source not registered yet: when it is), and the facets it sees
+-- watched; what a source gives while its extension is off is not heard
 local function Subscribe(app)
 	if app.subs then return end
 	app.subs = {}
@@ -718,18 +778,28 @@ local function Subscribe(app)
 		local name, what = Split(entry)
 		local src = name and ns.sources[name]
 		if src then
-			local me = src.spec.me == true
 			local ok, t = pcall(src.spec.on, src.ext, what, function(item)
-				if src.ext.active then Deliver(app, name, item, false, me) end
+				if src.ext.active then Deliver(app, name, item, false) end
 			end)
 			if ok then app.subs[#app.subs + 1] = { src = src, token = t } else geterrorhandler()(t) end
 		end
 	end
+	Watch(app)
 end
 
 local function Unsubscribe(app)
 	for _, sub in ipairs(app.subs or {}) do pcall(sub.src.spec.off, sub.src.ext, sub.token) end
 	app.subs = nil
+	Unwatch(app)
+end
+
+-- whether the app sees a facet of extension ext
+local function SeesOf(app, ext)
+	for _, name in ipairs(app.decl.see) do
+		local facet = ns.facets[name]
+		if facet and facet.ext.id == ext then return true end
+	end
+	return false
 end
 
 -- whether the app hears an entry of source name
@@ -817,7 +887,8 @@ local function Ticking()
 	if not ticker then ticker = C_Timer.NewTicker(1, Tick) end
 end
 
--- why the app cannot start now (for the player: its extension, a source missing or its extension off, its check), or nil
+-- why the app cannot start now (for the player: its extension, a source or a facet missing or its extension off, its
+-- check), or nil
 local function Blocked(app)
 	local d = app.decl
 	if d.extension then
@@ -829,6 +900,11 @@ local function Blocked(app)
 		local src = name and ns.sources[name]
 		if not src then return W.NEEDS_SOURCE:format(ns.Text(name or entry)) end
 		if not src.ext.active then return W.NEEDS:format(ns.T(src.ext.title)) end
+	end
+	for _, name in ipairs(d.see) do
+		local facet = ns.facets[name]
+		if not facet then return W.NEEDS_FACET:format(ns.Text(name)) end
+		if not facet.ext.active then return W.NEEDS:format(ns.T(facet.ext.title)) end
 	end
 	if d.check then
 		local ok, why = pcall(d.check, app)
@@ -906,7 +982,8 @@ end
 
 local function Status(app)
 	local d, s, now = app.decl, Run(app), time()
-	local out = { app = app.id, title = Title(app), by = app.by, on = s ~= nil, hear = Copy(d.hear), said = Said(app),
+	local out = { app = app.id, title = Title(app), by = app.by, on = s ~= nil, hear = Copy(d.hear), see = Copy(d.see),
+		said = Said(app),
 		lease = (s and s.lease) or (not s and d.lease) or 0, controls = Copy(d.controls), say = d.say,
 		next = Recent(app, math.huge, 1).next, start = StartLine(app), driver = d.driver, launch = app.launch == true,
 		temp = app.temp == true }
@@ -1111,7 +1188,8 @@ function ns.AppList()
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
 			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt, start = StartLine(app),
 			extension = app.decl.extension, blocked = not s and Blocked(app) or nil, driver = app.decl.driver,
-			launch = app.launch == true, temp = app.temp == true, launching = app.launching ~= nil }
+			launch = app.launch == true, temp = app.temp == true, launching = app.launching ~= nil,
+			see = #app.decl.see > 0 and Copy(app.decl.see) or nil }
 	end
 	return out
 end
@@ -1121,7 +1199,8 @@ function ns.AppManifest()
 	for _, id in ipairs(order) do
 		local app = apps[id]
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, topic = "app." .. id,
-			hear = Copy(app.decl.hear), prompt = app.decl.prompt, start = StartLine(app), extension = app.decl.extension,
+			hear = Copy(app.decl.hear), see = Copy(app.decl.see), prompt = app.decl.prompt, start = StartLine(app),
+			extension = app.decl.extension,
 			driver = app.decl.driver, docs = DocsPath(app), launch = app.launch == true, temp = app.temp == true }
 	end
 	return out
@@ -1205,10 +1284,10 @@ local kit = Kit:Extension("kit")
 
 local OPEN_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
 	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	me = "boolean?", options = "table?", prompt = "string?", driver = "string?", temp = "boolean?" }
+	see = "table?", options = "table?", prompt = "string?", driver = "string?", temp = "boolean?" }
 local DECLARE_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
 	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	me = "boolean?", options = "table?", prompt = "string?", driver = "string?", launch = "boolean?" }
+	see = "table?", options = "table?", prompt = "string?", driver = "string?", launch = "boolean?" }
 
 -- the hear entries the sources take, from the sources registered now
 local function HearDoc()
@@ -1220,6 +1299,16 @@ local function HearDoc()
 			.. (values and (" (" .. table.concat(values, "|") .. ")") or "")
 	end
 	return table.concat(parts, "; ")
+end
+
+-- the facets apps see, from those registered now
+local function SeeDoc()
+	local parts = {}
+	for _, name in ipairs(ns.facetOrder) do
+		local f = ns.facets[name]
+		parts[#parts + 1] = name .. ": " .. ns.Text(ns.T(f.spec.doc) or ns.T(f.spec.title) or name)
+	end
+	return #parts > 0 and table.concat(parts, "; ") or "none registered"
 end
 
 local function Open(_, a, opts)
@@ -1261,7 +1350,7 @@ local function Open(_, a, opts)
 	return out
 end
 
--- kit.app.open, its doc made from the sources registered: declared again whenever a source is
+-- kit.app.open, its doc made from the sources and facets registered: declared again whenever one is
 local function DeclareOpen()
 	kit:See("app.open", { title = "kit.app.open", args = OPEN_ARGS, run = Open,
 		doc = "starts an app; one already running goes on with the new minutes and lease (a changed declaration ends "
@@ -1274,8 +1363,9 @@ local function DeclareOpen()
 			.. "most, wake = [whys]}), digest ({gather, every, idle, most}: gathered into wakes; none: each item is a "
 			.. "wake), urgent ([whys or kinds] that wake within gather seconds, without pace), controls (the player's "
 			.. "commands: mute, unmute, less, more, test, pause, resume, stop), say (the player may talk to you: /wk <app> "
-			.. "<words>), me (the items of a source that offers it, game, carry the player: name, nickname, level, class, "
-			.. "zone ...), lease (seconds without a kit.app.* call before it stops, default 600, 0 none, at least 60), "
+			.. "<words>), see (at most 8 states each wake carries as state {name = the state at that wake}; kit.app.state "
+			.. "reads them at once: " .. SeeDoc() .. "), lease (seconds without a kit.app.* call before it stops, "
+			.. "default 600, 0 none, at least 60), "
 			.. "minutes (default 120, at most 720), options (at most 8 the player sets: name -> {kind "
 			.. "boolean|text|number|choice|list, title, default, hint, choices [{value, label}], min, max, step, unit}), "
 			.. "prompt (a skill's name), driver (prompt: an AI client runs it from that skill, the default with a "
@@ -1284,13 +1374,14 @@ local function DeclareOpen()
 			.. "8, at most 4 at once, gone once it stops or the UI reloads. An app an addon declared takes only app, "
 			.. "minutes and lease (the rest is listed in `ignored`). Its wakes are the event app.<app>: {app, reason "
 			.. "(item, urgent, full, batch, idle), items (oldest first; each {id, time, source (the source's name, or "
-			.. "addon, control, player), ...}), skipped, pace?, quiet?}; kit.app {app, on, why?} says when it stops" })
+			.. "addon, control, player), ...}), skipped (the oldest items left out to keep a wake small; the state stays), "
+			.. "state? (with see), pace?, quiet?}; kit.app {app, on, why?} says when it stops" })
 end
 DeclareOpen()
 
 kit:See("app.declare", { title = "kit.app.declare", args = DECLARE_ARGS,
 	doc = "remembers an app's declaration without starting it (as kit.app.open's first call gives it: title, hear, "
-		.. "pace, digest, urgent, controls, say, me, lease, minutes, options, prompt, driver; not temp), for a program "
+		.. "pace, digest, urgent, controls, say, see, lease, minutes, options, prompt, driver; not temp), for a program "
 		.. "that drives it: the program starts it with kit.app.open {app} when it runs. launch = true: 无限工坊 on this "
 		.. "computer loads the program, so the player can start it from the app's card (the event kit.app.launch); "
 		.. "launch is kept until the UI reloads: declare again after kit.ready. An app an addon declared keeps its "
@@ -1327,7 +1418,7 @@ kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 		.. "from): {app, title, by (addon|agent), on, ends, started, heard (items this run), wakes, lastWake, seen (your "
 		.. "last call), present (you called within its lease), lease (seconds, 0 none), why (while off: how its last run "
 		.. "ended), pace? (the player's activity), quiet? (in quiet hours), said (today's chat.send of yours that ran into "
-		.. "channels it hears), hear, controls, say, next (the newest item id: kit.app.recent's since), blocked? (why it "
+		.. "channels it hears), hear, see, controls, say, next (the newest item id: kit.app.recent's since), blocked? (why it "
 		.. "cannot start, while off), start? (with a prompt: the start line the player hands an AI client, which reads the "
 		.. "skill with wk_docs), driver? (prompt or program), launch (无限工坊 loads its program), temp (a temporary "
 		.. "app)}. Call it at least every lease / 3 seconds while you listen",
@@ -1335,6 +1426,15 @@ kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 		local app = Need(a.app)
 		Touch(app, opts)
 		return Status(app)
+	end })
+
+kit:See("app.state", { title = "kit.app.state", args = { app = "string" },
+	doc = "what an app sees now, read at once (as each of its wakes carries it): {app, at (the time read), state {name = "
+		.. "the state} of the facets its see names (one missing or off: none)}. Also a heartbeat, as kit.app.status",
+	run = function(_, a, opts)
+		local app = Need(a.app)
+		Touch(app, opts)
+		return { app = app.id, at = time(), state = State(app) }
 	end })
 
 kit:See("app.stop", { title = "kit.app.stop", args = { app = "string" },
@@ -1359,7 +1459,7 @@ kit:See("apps", { title = "kit.apps",
 	doc = "the apps: [{id, title, by (addon: an addon declared it, kit.app.open takes only app, minutes, lease; agent: "
 		.. "declared by kit.app.open or kit.app.declare), addon?, on, ends, present, prompt? (its skill), start? (the "
 		.. "start line: one sentence that tells an AI client to read the skill with wk_docs), extension? (the extension "
-		.. "it belongs to), blocked? (why it cannot start, while off), driver? (prompt or program), launch (无限工坊 "
+		.. "it belongs to), blocked? (why it cannot start, while off), see? (the states it sees), driver? (prompt or program), launch (无限工坊 "
 		.. "loads its program), temp (a temporary app), launching (the player asked to start its program a moment "
 		.. "ago)}]. Not a heartbeat: it does not keep an app alive",
 	run = function() return ns.AppList() end })
@@ -1374,7 +1474,7 @@ kit:Event("app.launch", { doc = "the player wants a program's app started (its c
 ------------------------------------------------------------------------------------------------------------------------
 -- what else stops an app, counts for it, or starts it again
 
--- its extension going off stops it
+-- its extension going off stops it, and so does one whose sources it hears or whose facets it sees
 Kit:On("kit.extension", function(_, e)
 	if type(e) ~= "table" or e.on ~= false then return end
 	for _, id in ipairs(Ids()) do
@@ -1385,13 +1485,21 @@ Kit:On("kit.extension", function(_, e)
 			local src = name and ns.sources[name]
 			if src and src.ext.id == e.id then hears = true end
 		end
-		if app and (app.decl.extension == e.id or hears) then Stop(app, "extension") end
+		if app and (app.decl.extension == e.id or hears or SeesOf(app, e.id)) then Stop(app, "extension") end
 	end
 end)
 
 -- a source registered (another addon's, once its files have run): kit.app.open's doc tells of it, and an app running
--- that hears it is heard again
+-- that hears it is heard again; a facet the same, and an app running that sees it watches it
 ns.OnChange(function(what, source)
+	if what == "facet" then                              -- a facet registered: kit.app.open's doc, and apps that see it
+		DeclareOpen()
+		for _, id in ipairs(Ids()) do
+			local app = apps[id]
+			if app.subs and Run(app) then Watch(app) end
+		end
+		return
+	end
 	if what ~= "source" then return end
 	DeclareOpen()
 	for _, id in ipairs(Ids()) do
