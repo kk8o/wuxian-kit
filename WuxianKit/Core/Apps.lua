@@ -20,7 +20,7 @@
 -- kit.app ({ app, on, why?, ends? } when one starts or stops).
 --
 -- For the window (K3):
---   ns.AppList()                  the apps as kit.apps answers
+--   ns.AppList()                  the apps as kit.apps answers (start: the start line, for an app with a prompt)
 --   ns.App(id)                    the app object, or nil
 --   ns.AppStatus(id)              as kit.app.status answers (without marking it heard from)
 --   ns.AppStop(id, why)           stops it ("player" from the window)
@@ -48,6 +48,7 @@ local W = Kit:Words {
 		QUIET = "免打扰时段", QUIET_HINT = "如 01:00-08:00；这段时间只在点名时唤醒",
 		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
 			resume = "继续", stop = "停止" },
+		START = "开始无限工坊的应用「%s」：先调用工具 wk_docs，参数 {\"skill\": \"%s\"}，照读到的步骤做。",
 	},
 	enUS = {
 		STARTED = "%s: started, until %s", STOPPED = "%s: stopped", EXPIRED = "%s: time is up, stopped",
@@ -59,6 +60,8 @@ local W = Kit:Words {
 		QUIET = "Quiet hours", QUIET_HINT = "Such as 01:00-08:00; only wakes when you are named then",
 		CONTROL = { mute = "Mute", unmute = "Unmute", less = "Less", more = "More", test = "Test", pause = "Pause",
 			resume = "Resume", stop = "Stop" },
+		START = "Start the 无限工坊 app \"%s\": first call the tool wk_docs with {\"skill\": \"%s\"} and follow the steps "
+			.. "it gives.",
 	},
 }
 
@@ -486,6 +489,14 @@ local function Title(app)
 	return ns.T(app.decl.title) or app.id
 end
 
+-- the start line (启动语): one sentence for any AI client with 无限工坊's MCP tools, in the language in force, that
+-- points it at the app's skill; nil for an app without a prompt
+local function StartLine(app)
+	local prompt = app.decl.prompt
+	if type(prompt) ~= "string" or prompt == "" then return nil end
+	return W.START:format(ns.Text(Title(app)), prompt)
+end
+
 local function Paced(app) return app.decl.pace ~= nil end
 local function Digesting(app) return app.decl.pace ~= nil or app.decl.digest ~= nil end
 
@@ -816,7 +827,7 @@ local function Status(app)
 	local d, s, now = app.decl, Run(app), time()
 	local out = { app = app.id, title = Title(app), by = app.by, on = s ~= nil, hear = Copy(d.hear), said = Said(app),
 		lease = (s and s.lease) or (not s and d.lease) or 0, controls = Copy(d.controls), say = d.say,
-		next = Recent(app, math.huge, 1).next }
+		next = Recent(app, math.huge, 1).next, start = StartLine(app) }
 	if out.next == math.huge then out.next = 0 end
 	if s then
 		out.ends, out.started, out.heard, out.wakes, out.lastWake, out.seen = s.ends, s.started, s.heard or 0,
@@ -925,7 +936,7 @@ function ns.AppList()
 		local app = apps[id]
 		local s = Run(app)
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
-			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt }
+			ends = s and s.ends or nil, present = Present(s, now), prompt = app.decl.prompt, start = StartLine(app) }
 	end
 	return out
 end
@@ -935,7 +946,7 @@ function ns.AppManifest()
 	for _, id in ipairs(order) do
 		local app = apps[id]
 		out[#out + 1] = { id = id, title = Title(app), by = app.by, addon = app.addon, topic = "app." .. id,
-			hear = Copy(app.decl.hear), prompt = app.decl.prompt }
+			hear = Copy(app.decl.hear), prompt = app.decl.prompt, start = StartLine(app) }
 	end
 	return out
 end
@@ -1093,7 +1104,8 @@ kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 		.. "by (addon|agent), on, ends, started, heard (items this run), wakes, lastWake, seen (your last call), present "
 		.. "(you called within its lease), lease (seconds, 0 none), why (while off: how its last run ended), pace? (the "
 		.. "player's activity), quiet? (in quiet hours), said (today's chat.send of yours that ran into channels it hears), hear, controls, say, next (the "
-		.. "newest item id: kit.app.recent's since), blocked? (why it cannot start, while off)}. Call it at least every "
+		.. "newest item id: kit.app.recent's since), blocked? (why it cannot start, while off), start? (with a "
+		.. "prompt: the start line the player hands an AI client, which reads the skill with wk_docs)}. Call it at least every "
 		.. "lease / 3 seconds while you listen",
 	run = function(_, a, opts)
 		local app = Need(a.app)
@@ -1121,7 +1133,8 @@ kit:See("app.recent", { title = "kit.app.recent", args = { app = "string", since
 
 kit:See("apps", { title = "kit.apps",
 	doc = "the apps: [{id, title, by (addon: an addon declared it, kit.app.open takes only app, minutes, lease; agent: "
-		.. "declared by kit.app.open), addon?, on, ends, present, prompt?}]",
+		.. "declared by kit.app.open), addon?, on, ends, present, prompt? (its skill), start? (the start line: one sentence "
+		.. "that tells an AI client to read the skill with wk_docs)}]",
 	run = function() return ns.AppList() end })
 
 kit:Event("feed", { doc = "a feed started or stopped; a stop says why: stopped, expired (its time was up), left (its "

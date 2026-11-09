@@ -67,9 +67,17 @@ function WuxianKit:AppSay(id, text)
 end
 __online = true
 function WuxianKit:AgentOnline() return __online end
+__ctrl = false
+function IsControlKeyDown() return __ctrl end
+getmetatable(UIParent).HighlightText = function(self, a, b) self.highlighted = not (a == 0 and b == 0) end
 """
 
 GLYPHS = "›»▸▶■✓✗"
+
+
+def lua_str(text):
+    """text as a Lua string literal"""
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def start(test, **kw):
@@ -256,6 +264,71 @@ class AppPanel(unittest.TestCase):
         self.assertIn("Tone ||cff00ff00green||r", shown_texts)
         self.assertEqual(labels(p), ["||cffA||r"])                              # the choice; no connect
         self.assertEqual(py(s.lua.eval(b"__ns.UI.Apps()[1].title")), "||cffff0000Bot||r")
+
+    def test_hand_to_ai(self):
+        """an app with a start line has 交给 AI (primary when ready, connect then not): the copy box with the app's
+        title, the start line selected with the keyboard in it, how to copy it under it; what is typed goes back to
+        the line, selected again; focus selects it; Esc, Enter, the close button and Ctrl+C close it; none while it
+        runs, none without a start line; an agent's title escaped above it, the line as it is"""
+        s = start(self)
+        line = 'Start the app "Guild chat": first call wk_docs with {"skill": "guild-chat"}.'
+        s.lua.execute(("__add('guild', { decl = { title = 'Guild chat', prompt = 'guild-chat' }, "
+                       "status = { app = 'guild', on = false, start = %s } })" % lua_str(line)).encode())
+        p = self.panel(s, "guild")
+        self.assertEqual(labels(p), ["Hand to AI", "Connect an agent"])
+        self.assertTrue(button(p, "Hand to AI")[b"primary"])
+        self.assertFalse(button(p, "Connect an agent")[b"primary"])
+        f = s.g("WuxianKitCopyWindow")
+        self.assertIsNone(f)
+        click(button(p, "Hand to AI"))
+        f = s.g("WuxianKitCopyWindow")
+        edit = f[b"edit"]
+        self.assertEqual((f[b"shown"], edit[b"text"].decode(), edit[b"focus"], edit[b"highlighted"]),
+                         (True, line, True, True))
+        self.assertEqual(texts(f)[:2], ["Guild chat", "Press Ctrl+C to copy, then paste it into your AI chat"])
+        self.assertNotIn("Ctrl+C to copy", texts(f))
+        edit[b"highlighted"] = False
+        edit.SetText(edit, b"something else")                                  # typed: the line comes back
+        edit[b"scripts"][b"OnTextChanged"](edit, True)
+        self.assertEqual((edit[b"text"].decode(), edit[b"highlighted"]), (line, True))
+        edit[b"highlighted"] = False
+        edit[b"scripts"][b"OnEditFocusGained"](edit)
+        self.assertTrue(edit[b"highlighted"])
+        edit[b"scripts"][b"OnEnterPressed"](edit)
+        self.assertFalse(f[b"shown"])
+        self.assertFalse(edit[b"focus"])
+        click(button(p, "Hand to AI"))
+        edit[b"scripts"][b"OnEscapePressed"](edit)
+        self.assertFalse(f[b"shown"])
+        click(button(p, "Hand to AI"))
+        click(f[b"close"])
+        self.assertFalse(f[b"shown"])
+        click(button(p, "Hand to AI"))
+        s.lua.execute(b"__ctrl = true")
+        edit[b"scripts"][b"OnKeyDown"](edit, b"C")
+        self.assertIn("Copied", texts(f))
+        s.run(0.5)
+        self.assertFalse(f[b"shown"])
+        s.lua.execute(b"__ctrl = false __ns.SetLanguage('zhCN') __p:Refresh()")
+        self.assertEqual(labels(p), ["交给 AI", "接入 Agent"])
+        click(button(p, "交给 AI"))
+        self.assertEqual(texts(f)[:2], ["Guild chat", "按 Ctrl+C 复制，粘贴到 AI 对话里"])
+        edit[b"scripts"][b"OnEscapePressed"](edit)
+        s.lua.execute(b"__ns.SetLanguage('enUS')")
+        st = s.g("__apps")[b"guild"][b"status"]
+        st[b"on"] = True                                                        # running: no hand, no connect
+        self.redraw(s)
+        self.assertEqual(labels(p), ["Stop"])
+        st[b"on"], st[b"start"] = False, None                                   # no start line: connect alone
+        self.redraw(s)
+        self.assertEqual(labels(p), ["Connect an agent"])
+        self.assertTrue(button(p, "Connect an agent")[b"primary"])
+        s.lua.execute(("__add('bot', { by = 'agent', decl = { title = '|cffff0000Bot|r', prompt = 'bot-run' }, "
+                       "status = { app = 'bot', on = false, start = %s } })" % lua_str("Start |cffBot|r")).encode())
+        p = self.panel(s, "bot")
+        click(button(p, "Hand to AI"))
+        self.assertEqual(texts(f)[0], "||cffff0000Bot||r")
+        self.assertEqual(f[b"edit"][b"text"].decode(), "Start |cffBot|r")
 
     def test_redraws(self):
         """a card redraws a moment after kit.app, kit.option, kit.changed or app.<id>, and every few seconds while it

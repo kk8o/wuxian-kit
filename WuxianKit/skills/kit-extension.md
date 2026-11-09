@@ -32,7 +32,9 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - `doc`: one English sentence starting with a verb (Returns... / Proposes to...), naming other capabilities by
      their id; errors in English; player-facing words short and plain.
 5. Docs: an `AGENT.md` in the addon folder (what the tools are for, how to use them together, cautions), and
-   `skills/<name>.md` only for a workflow that needs several tools in order.
+   `skills/<name>.md` only for a workflow that needs several tools in order (its front matter: `name`, `title`,
+   `description`, `arguments`; `needs: shell` when the client must run commands in the background, `mcp: <name>
+   <URL>` for another MCP server it uses).
 6. Check: the workshop's `check` on the addon until it reports no errors. Keep each capability's full id
    (`<extension>.<name>`) and each event's full topic within 64 bytes.
 7. Try it in the game. A new addon appears only after a full restart of the game; later changes to its Lua need a UI

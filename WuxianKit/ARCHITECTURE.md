@@ -97,7 +97,7 @@ demo:Scope("settings", L"SCOPE")
 
 复制框与接入：
 
-- `WuxianKit:Copy(text, { title, hint, done })`：一个只读的复制框，文字已选中、输入焦点在框里；玩家按 Ctrl+C 后显示「已复制」并在片刻后收起，调 `done()`；Esc 关闭。无限的客户端不允许插件写剪贴板（`CopyToClipboard` 受限），要复制给玩家的文字都用它。同一时间只有一个复制框，新的替换旧的。
+- `WuxianKit:Copy(text, { title, hint, how, done })`：一个只读的复制框，文字已选中、输入焦点在框里，改了内容就恢复原文并重新选中；最下一行是 `how`（不写就是「Ctrl+C 复制」），玩家按 Ctrl+C 后显示「已复制」并在片刻后收起，调 `done()`；Esc、Enter、关闭按钮关闭。无限的客户端不允许插件写剪贴板（`CopyToClipboard` 受限），要复制给玩家的文字都用它。同一时间只有一个复制框，新的替换旧的。
 - `info.prompt`：扩展页显示「接入 Agent」按钮，点开复制框，内容是 `/mcp__wuxian__<prompt>`（Claude Code 里调用无限工坊这个提示词的命令），提示里写上给其他客户端的说法。
 - `WuxianKit:Requires(version)`：扩展框架的版本不低于 `version`（`"0.5.0"`）时为真。可选依赖扩展框架的插件用它判断新接口在不在。
 
@@ -243,11 +243,13 @@ ext:Feed("listen", { title = L"LISTEN", event = "message", events = { "CHAT_MSG_
   description: Change a set of settings ... in one proposal
   description-zh: 按玩家的要求调整一组设置……合成一个可以整体撤销的提案
   arguments: goal, role?
+  needs: shell
+  mcp: wuxianwow https://wuxianwow.com/mcp
   ---
   正文：给 Agent 的步骤（英文）。参数写成 {{goal}}。
   ```
 
-  `name` 是提示词的名字；`description` 和正文给 Agent 看；`title` 是提示词的显示名称；`title`、`title-zh`、`description-zh` 显示在无限工坊 App 和网站的扩展目录里。参数用逗号分开，末尾加 `?` 表示可选。技能只写需要几个工具按顺序配合的用法，单个工具怎么用写在 `AGENT.md`。
+  `needs`、`mcp` 可选，都用逗号分开：`needs` 是技能对客户端的要求，已知的 `shell` 指能在后台跑命令（等待靠 `wuxian listen`），不认得的值原样保留；`mcp` 是技能会用到、但不是无限工坊的 MCP 服务器，每项 `<名字> <URL>`（只收 `https://`），无限工坊 App 据此列准备清单、帮玩家接入。`name` 是提示词的名字；`description` 和正文给 Agent 看；`title` 是提示词的显示名称；`title`、`title-zh`、`description-zh` 显示在无限工坊 App 和网站的扩展目录里。参数用逗号分开，末尾加 `?` 表示可选。技能只写需要几个工具按顺序配合的用法，单个工具怎么用写在 `AGENT.md`。
 
 - App 的翻译规则：每个能力一个工具 `wk_<扩展>_<名称>`（点换成下划线），参数按声明生成 JSON Schema，读取类标为只读；另有 `wk_docs`（说明）、`wk_wait`（等待提案结果）、`wk_propose`（多步合成一个提案）；`AGENT.md` 成为资源 `wuxian://kit/<扩展>`，技能成为提示词。
 - 边界：说明和技能只描述用法，不授予权限。发送和更改仍需玩家确认；免确认只能由玩家设置。
@@ -310,7 +312,7 @@ WuxianKit:App("officers", {
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有 `kit.app.*` 调用就算离开，应用停止（`why = "left"`） |
 | `minutes` | 最长运行多久（默认 120，最多 720）；`kit.app.open` 的 `minutes` 优先 |
 | `options` | 玩家给应用设的选项，`name → { kind, title, default, hint, choices, min, max, step, unit, order }`，种类同扩展选项；按 `order`（再按名字）排，核心的两个在最前；Agent 给的最多 8 个 |
-| `prompt` | 技能名：卡片上的「接入 Agent」复制 `/mcp__wuxian__<prompt>` |
+| `prompt` | 技能名：有了它就有启动语 `start`（见下），卡片上有「交给 AI」与「接入 Agent」（复制 `/mcp__wuxian__<prompt>`） |
 | `addon`、`extension` | 所属插件、所属扩展（Lua 声明）：所属扩展停用时应用停止、不能开始 |
 | `check` | （Lua）开始前的前提，返回原因就不开始，卡片上显示原因 |
 | `enrich` | （Lua）条目发出前就地补字段 |
@@ -345,8 +347,10 @@ WuxianKit:App("officers", {
 能力（核心扩展 kit）：
 
 - `kit.app.open { app, minutes?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时只续时间和租期（发一次 `kit.app` `on = true`）；只有 Agent 给了不同的声明，才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（最多 8 个，玩家可以在窗口里移除）。现在不能开始时不报错（报错会在玩家游戏里弹红字，Agent 每次重试都弹一次），答它的状态：`on = false`，`blocked` 是原因：`check()` 不过、所属扩展停用，或听 `chat:`、`game:` 但聊天扩展、游戏动态关着。
-- `kit.app.status { app }`：`{ app, title, by, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, controls, say, blocked?, extension?, why? }`；`lease` 没设为 0；`blocked` 是现在不能开始的原因；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 的每次 `kit.app.*` 调用都更新 `seen`。
-- `kit.app.stop { app }`、`kit.app.recent { app, since?, limit? }`（回看最近 100 个条目，同 Feed 的 `.recent`）、`kit.apps`（`[{ id, title, by = addon|agent, addon?, on, ends, present, prompt? }]`）。
+- `kit.app.status { app }`：`{ app, title, by, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, controls, say, blocked?, extension?, why?, start? }`；`lease` 没设为 0；`blocked` 是现在不能开始的原因；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 的每次 `kit.app.*` 调用都更新 `seen`。
+- `kit.app.stop { app }`、`kit.app.recent { app, since?, limit? }`（回看最近 100 个条目，同 Feed 的 `.recent`）、`kit.apps`（`[{ id, title, by = addon|agent, addon?, on, ends, present, prompt?, start? }]`）。
+
+启动语（`start`）：有 `prompt` 的应用才有，按当前语言生成，`%s` 依次是应用标题、技能名。中文 `开始无限工坊的应用「%s」：先调用工具 wk_docs，参数 {"skill": "%s"}，照读到的步骤做。`，其他语言 `Start the 无限工坊 app "%s": first call the tool wk_docs with {"skill": "%s"} and follow the steps it gives.`。它出现在 `kit.apps`、`kit.app.status`（含 `kit.app.open` 的回答）和清单的 `apps` 里。提示词只有技能文件一份，启动语只是指向它的一句话：任何接了无限工坊 MCP 的客户端都能照着开工。卡片上的「交给 AI」打开复制框：标题是应用名，框里是启动语，下面一行「按 Ctrl+C 复制，粘贴到 AI 对话里」；应用运行中不显示。
 - `kit.options { app }`：应用的选项（同扩展；显示顺序 `activity`、`quiet` 在前，其余按名字）。改了应用的选项，总线事件 `kit.option` 是 `{ app, name, value }`。
 
 运行状态按角色存（同 Feed），重载后接着跑；换角色登录不接着转发。存储：`WuxianKitDB.apps[id] = { decl, run, recent, options, said, last }`（`decl` 只有 Agent 声明的应用才存）。
@@ -355,9 +359,9 @@ WuxianKit:App("officers", {
 
 等唤醒：无限工坊 0.9.13 的 `wuxian listen <id> [--open 声明.json] [--minutes N] [--since N] [--once] [--max 秒] [--replace]`。它先问 `kit.app.status`，在跑就接上，不在跑才 `kit.app.open`（`--replace` 强制重开）；每个唤醒打印一行 JSON（`{ id, t, topic, data }`），每批之后 `NEXT <id>`，应用停了 `END <why>`，到 `--max` 打印 `TIMEOUT`；自己按 max(30, lease/3) 秒心跳，`kit.ready` 后重新接上。游戏外的长驻程序可以用无限工坊仓库的 Python SDK `sdk/python/wuxiankit.py`（`Client().app(id, ...)` 迭代唤醒）。
 
-Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Running()`、`app:Push(data)`）；`WuxianKit:AppControl(id, cmd)`、`WuxianKit:AppSay(id, text)`（玩家的指令与话；`/wk <id> <词或话>`、卡片按钮都走它们）；`WuxianKit:AppPanel(id, parent, width)`：在插件自己的窗口里画应用卡片（状态、接入、停止、指令按钮、选项），和 `/wk` 的应用页是同一张，返回带 `:Refresh()` 的框体。
+Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Running()`、`app:Push(data)`）；`WuxianKit:AppControl(id, cmd)`、`WuxianKit:AppSay(id, text)`（玩家的指令与话；`/wk <id> <词或话>`、卡片按钮都走它们）；`WuxianKit:AppPanel(id, parent, width)`：在插件自己的窗口里画应用卡片（状态、交给 AI、接入、停止、指令按钮、选项），和 `/wk` 的应用页是同一张，返回带 `:Refresh()` 的框体。
 
-清单：`Kit:Manifest()` 多一个 `apps`：`[{ id, title, by, addon?, topic = "app.<id>", hear, prompt? }]`，修订号包含它。
+清单：`Kit:Manifest()` 多一个 `apps`：`[{ id, title, by, addon?, topic = "app.<id>", hear, prompt?, start? }]`，修订号包含它；游戏不在线时无限工坊也从保留的清单拿到启动语。
 
 权限不变：应用只「听」已有读取类能听到的东西，说话、改游戏照旧走发送和更改类的提案与类别。Agent 给的文字限长、原样存，显示时转义。
 

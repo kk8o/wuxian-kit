@@ -16,6 +16,8 @@ from kitmock import KIT_DIR, Session, lupa, py
 from test_standalone import bridge
 
 REPO = Path(__file__).resolve().parents[1]
+START_EN = ('Start the 无限工坊 app "Guild chat": first call the tool wk_docs with {"skill": "guild-chat"} and follow '
+            'the steps it gives.')
 ME, ASKER = "Player-1-00000001", "Player-1-00000002"
 GUILD = b"""
 ERR_GUILD_JOIN_S = "%s has joined the guild."
@@ -84,13 +86,15 @@ class GuildApp(unittest.TestCase):
         self.assertNotIn("enrich", app)
         self.assertEqual(self.agent(s, "kit.apps"), [{"id": "guild", "title": "Guild chat", "by": "addon",
                                                       "addon": "WuxianKit", "on": False, "present": False,
-                                                      "prompt": "guild-chat"}])
+                                                      "prompt": "guild-chat", "start": START_EN}])
         m = py(s.lua.eval(b"WuxianKit:Manifest()"))
         self.assertEqual(m["apps"], [{"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit",
                                       "topic": "app.guild", "hear": ["chat:guild", "game:guild"],
-                                      "prompt": "guild-chat"}])
+                                      "prompt": "guild-chat", "start": START_EN}])
         zh = self.start(locale="zhCN")
         self.assertEqual(self.agent(zh, "kit.apps")[0]["title"], "公会聊天")
+        self.assertEqual(self.agent(zh, "kit.apps")[0]["start"],
+                         '开始无限工坊的应用「公会聊天」：先调用工具 wk_docs，参数 {"skill": "guild-chat"}，照读到的步骤做。')
         o = py(zh.ns.AppOptionList(b"guild"))
         self.assertEqual((o["topics"]["title"], o["avoid"]["title"], o["avoid"]["hint"]),
                          ("想多聊的话题", "不聊的话题", "Agent 不会主动提起"))
@@ -109,6 +113,18 @@ class GuildApp(unittest.TestCase):
         st = self.agent(s, "kit.app.open", "{ app = 'guild' }")
         self.assertEqual((st["on"], st["blocked"]), (False, "Your character is not in a guild"))
         self.assertEqual(py(s.ns.AppStatus(b"guild"))["blocked"], "Your character is not in a guild")
+
+    def test_hand_to_ai_on_its_card(self):
+        """the /wk window's page of the app: 交给 AI opens the copy box with the start line kit.apps gives"""
+        s = self.start()
+        s.lua.execute(b"WuxianKit:Window('app:guild')")
+        w = s.g("WuxianKitWindow")
+        hand = next(b for b in w[b"buttons"].values() if b[b"shown"] and b[b"label"][b"text"] == b"Hand to AI")
+        hand.Click(hand)
+        f = s.g("WuxianKitCopyWindow")
+        self.assertEqual((f[b"shown"], f[b"edit"][b"text"].decode(), f[b"title"][b"text"].decode()),
+                         (True, START_EN, "Guild chat"))
+        self.assertEqual(f[b"status"][b"text"].decode(), "Press Ctrl+C to copy, then paste it into your AI chat")
 
     def test_options_carry_over(self):
         """the options a player set for WuxianGuild 0.3's guild app (WuxianKitDB.apps.guild) stay"""
@@ -160,8 +176,9 @@ class GuildApp(unittest.TestCase):
         text = p.read_text(encoding="utf-8")
         self.assertNotIn(b"\r\n", p.read_bytes())
         head = dict(re.findall(r"^([a-z-]+): (.+)$", text.split("---")[1], re.M))
-        self.assertEqual((head["name"], head["title"], head["title-zh"], head["arguments"]),
-                         ("guild-chat", "Guild chat", "公会聊天", "hours?"))
+        self.assertEqual((head["name"], head["title"], head["title-zh"], head["arguments"], head["needs"],
+                          head["mcp"]),
+                         ("guild-chat", "Guild chat", "公会聊天", "hours?", "shell", "wuxianwow https://wuxianwow.com/mcp"))
         for gone in ("chatlink", "FACTS", "wk_guild_brief", "recruited", "mcp__codex__", "C:\\", "wow-forever"):
             self.assertNotIn(gone, text)
         for there in ("https://wuxianwow.com/mcp", "https://wuxianwow.com/ai",

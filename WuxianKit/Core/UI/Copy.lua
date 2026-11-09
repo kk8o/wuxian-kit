@@ -1,6 +1,7 @@
--- The copy box: WuxianKit:Copy(text, { title, hint, done }) shows text in a read-only box, selected, the keyboard in it,
--- for the player to copy with Ctrl+C (this client does not let addons write the clipboard: CopyToClipboard is
--- restricted). Ctrl+C says so and the box goes a moment later (the client copies first), then done(); Esc closes it.
+-- The copy box: WuxianKit:Copy(text, { title, hint, how, done }) shows text in a read-only box, selected, the keyboard
+-- in it, for the player to copy with Ctrl+C (this client does not let addons write the clipboard: CopyToClipboard is
+-- restricted). Ctrl+C says so and the box goes a moment later (the client copies first), then done(); Esc, Enter and
+-- the close button close it.
 -- One box: a new text takes the place of the one shown (whose done is not called).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
@@ -47,7 +48,7 @@ local function Frame()
 	end)
 	f.edit:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
 	f.edit:SetScript("OnMouseUp", function(self) self:HighlightText() end)
-	f.edit:SetScript("OnEnterPressed", function(self) self:HighlightText() end)
+	f.edit:SetScript("OnEnterPressed", function() f:Hide() end)
 	f.edit:SetScript("OnEscapePressed", function() f:Hide() end)
 	f.edit:SetScript("OnKeyDown", function(_, key)
 		if key == "C" and IsControlKeyDown and IsControlKeyDown() then Copied() end
@@ -62,8 +63,8 @@ local function Frame()
 	return f
 end
 
--- WuxianKit:Copy(text, opts): the box with text selected; opts.title above it, opts.hint under it, opts.done() after
--- the player copied it. true
+-- WuxianKit:Copy(text, opts): the box with text selected; opts.title above it, opts.hint under it, opts.how the last
+-- line until it is copied (default "Ctrl+C 复制"), opts.done() after the player copied it. true
 function Kit:Copy(text, opts)
 	opts = type(opts) == "table" and opts or {}
 	Frame()
@@ -84,7 +85,7 @@ function Kit:Copy(text, opts)
 	end
 	f.status:ClearAllPoints()
 	f.status:SetPoint("TOPLEFT", 14, -y)
-	f.status:SetText(L.COPY_HINT)
+	f.status:SetText(opts.how ~= nil and ns.T(opts.how) or L.COPY_HINT)
 	S.Ink(f.status, C.muted)
 	f:SetHeight(y + math.max(12, f.status:GetStringHeight()) + 14)
 	if not f:IsShown() then

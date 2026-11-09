@@ -8,8 +8,8 @@
 -- wheel. One window: nothing else is spread over the screen.
 -- WuxianKit:OptionsPanel(id, parent, width) draws an extension's options in another addon's window with the same
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
--- Under the extensions, the group 应用 (apps, 0.6): each app's page is its card (UI.AppCard, AppPanel.lua), an app an
--- agent declared with a remove button. /wk <app> [word or words] gives an app the player's command or words.
+-- Under the extensions, the group 应用 (apps, 0.6): each app's page is its card (UI.AppCard, AppPanel.lua: with a
+-- start line, 交给 AI opens the copy box with it), an app an agent declared with a remove button. /wk <app> [word or words] gives an app the player's command or words.
 -- UI.Canvas: the drawing pieces, for AppPanel.lua's card (one canvas drawn at a time).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
@@ -26,6 +26,7 @@ local A = Kit:Words {
 		SEEN = "最近应答 %d 分钟前", SEEN_NOW = "最近应答 刚刚", UNSEEN = "Agent 尚未应答", SAID = "今天发言 %d 条",
 		READY = "可以接入 Agent",
 		CONNECT_HINT = "在 Claude Code 的专用对话里粘贴；其他客户端：请 Agent 使用无限工坊的提示词「%s」",
+		HAND = "交给 AI", HAND_HOW = "按 Ctrl+C 复制，粘贴到 AI 对话里",
 		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
 			resume = "继续", stop = "停止" },
 		NAME = "「%s」",
@@ -43,6 +44,7 @@ local A = Kit:Words {
 		READY = "Ready to connect an agent",
 		CONNECT_HINT = "Paste it into a dedicated Claude Code conversation. Other clients: ask the agent to use Wuxian "
 			.. "Workshop's prompt \"%s\"",
+		HAND = "Hand to AI", HAND_HOW = "Press Ctrl+C to copy, then paste it into your AI chat",
 		CONTROL = { mute = "Mute", unmute = "Unmute", less = "Less", more = "More", test = "Test", pause = "Pause",
 			resume = "Resume", stop = "Stop" },
 		NAME = "%s",

@@ -8,6 +8,11 @@ import unittest
 from kitmock import Session, lupa, py
 from test_standalone import bridge
 
+# the start line (启动语) of an app with a prompt, as the contract gives it
+START = {"en": 'Start the 无限工坊 app "{}": first call the tool wk_docs with {{"skill": "{}"}} and follow the steps it '
+               'gives.',
+         "zh": '开始无限工坊的应用「{}」：先调用工具 wk_docs，参数 {{"skill": "{}"}}，照读到的步骤做。'}
+
 # Chat:On and Game:On as K4 and K1 give them, faked: __say(channel, msg) and __moment(kind, topic, data) hand a message
 # or a moment to whoever subscribed (a fresh copy of the moment to each, the same message table to all)
 FAKES = b"""
@@ -226,7 +231,8 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
                          ("Club chat", "addon", ["chat:guild", "game:guild"], 120, ["hear", "title"]))
         self.assertEqual(self.agent(s, "kit.apps")[1], {"id": "club", "title": "Club chat", "by": "addon",
                                                         "addon": "WxClub", "on": True, "ends": st["ends"],
-                                                        "present": True, "prompt": "club-chat"})
+                                                        "present": True, "prompt": "club-chat",
+                                                        "start": START["en"].format("Club chat", "club-chat")})
         self.assertIs(s.lua.eval(b"WuxianKit:App('club') == __app"), True)
         self.assertIsNone(s.lua.eval(b"WuxianKit:App('none')"))
 
@@ -466,7 +472,8 @@ class Manifest(AppCase):
         s = self.start()
         m = self.lua(s, "WuxianKit:Manifest()")
         guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
-                 "hear": ["chat:guild", "game:guild"], "prompt": "guild-chat"}
+                 "hear": ["chat:guild", "game:guild"], "prompt": "guild-chat",
+                 "start": START["en"].format("Guild chat", "guild-chat")}
         self.assertEqual(m["apps"], [guild])                               # the kit's own
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
@@ -480,7 +487,7 @@ class Manifest(AppCase):
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', hear = { 'game:quest' } })")
         m = self.lua(s, "WuxianKit:Manifest()")
         self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
-                                      "prompt": "mm-skill"},
+                                      "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill")},
                                      {"id": "ad", "title": "AD", "by": "addon", "addon": "WxAd", "topic": "app.ad",
                                       "hear": ["game:quest"]}])
         self.assertNotEqual(m["revision"], rev)
@@ -491,6 +498,34 @@ class Manifest(AppCase):
         self.assertEqual([a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]], ["guild", "ad"])
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.mm"))
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "mm", "on": False, "why": "player"})
+
+    def test_the_start_line(self):
+        """an app with a prompt has a start line (kit.apps, kit.app.status, kit.app.open's answer, the manifest) in
+        the language in force, its title as it is (an agent's raw: it is data); none without a prompt; a change of
+        language changes it and the revision"""
+        s = self.start()
+        self.agent(s, "kit.app.open", "{ app = 'tt', title = 'Tea \"time\" |cff00ff00ok|r', hear = { 'bus:t.*' }, "
+                                      "prompt = 'tea-time' }")
+        self.agent(s, "kit.app.open", "{ app = 'np', title = 'No prompt', hear = { 'bus:n.*' } }")
+        want = START["en"].format('Tea "time" |cff00ff00ok|r', "tea-time")
+        apps = {a["id"]: a for a in self.agent(s, "kit.apps")}
+        self.assertEqual(apps["tt"]["start"], want)
+        self.assertNotIn("start", apps["np"])
+        self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'tt' }")["start"], want)
+        self.assertEqual(self.agent(s, "kit.app.open", "{ app = 'tt' }")["start"], want)
+        self.assertNotIn("start", self.agent(s, "kit.app.status", "{ app = 'np' }"))
+        m =self.lua(s, "WuxianKit:Manifest()")
+        man = {a["id"]: a for a in m["apps"]}
+        self.assertEqual(man["tt"]["start"], want)
+        self.assertNotIn("start", man["np"])
+        self.agent(s, "kit.app.stop", "{ app = 'tt' }")
+        s.ns.SetLanguage(b"zhCN")
+        zh = {a["id"]: a for a in self.agent(s, "kit.apps")}
+        self.assertEqual(zh["tt"]["start"], START["zh"].format('Tea "time" |cff00ff00ok|r', "tea-time"))
+        self.assertEqual(zh["guild"]["start"], START["zh"].format("公会聊天", "guild-chat"))
+        m2 = self.lua(s, "WuxianKit:Manifest()")
+        self.assertEqual({a["id"]: a for a in m2["apps"]}["guild"]["start"], START["zh"].format("公会聊天", "guild-chat"))
+        self.assertNotEqual(m2["revision"], m["revision"])
 
 
 class Options(AppCase):

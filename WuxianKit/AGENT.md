@@ -166,6 +166,10 @@ just renews its time and lease. An app an addon declared (`wk_kit_apps` lists it
   `minutes`: how long it may run (default 120, at most 720).
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,
   step, unit}`; read them with `wk_kit_options` and `{"app": "<id>"}`.
+- `prompt`: the name of the skill that runs the app (`skills/<name>.md` of an extension). An app with one has a start
+  line, `start` in `wk_kit_apps` and `wk_kit_app_status`: one sentence that tells an AI client to call `wk_docs` with
+  `{"skill": "<prompt>"}` and follow it. The player copies it from the app's card (交给 AI) or from 无限工坊's app and
+  pastes it into any client with 无限工坊's MCP tools.
 - If it cannot start now (its addon's own check, an extension it needs is off), it answers its status with `on` false
   and `blocked`, the reason: tell the player, and do not open it again and again (try after the player changes it).
 

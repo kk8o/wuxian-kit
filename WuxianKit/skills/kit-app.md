@@ -32,8 +32,9 @@ Make and run the AI app {{app}}. What it should do: {{goal}}
    - `lease`: seconds without a call to one of its tools (`wk_kit_app_status` and the others) before it counts as
      gone and stops (default 600, at least 60). `minutes`: its longest run (default 120, at most 720).
    - `options`: at most 8 settings the player sets on its card (`{kind, title, default, ...}` as extension options);
-     read them with `wk_kit_options` and `{"app": "<id>"}`. `prompt`: the name of the skill or prompt the card's
-     接入 Agent (Connect) button copies.
+     read them with `wk_kit_options` and `{"app": "<id>"}`. `prompt`: the name of the skill that runs the app; the
+     kit then gives a start line (`start` in `wk_kit_apps` and `wk_kit_app_status`), one sentence that tells any AI
+     client to read the skill with `wk_docs`, which the card's 交给 AI (Hand to AI) button copies.
 4. Open it: `wk_kit_app_open` with `{"app": "<id>", ...the declaration}`. It answers the app's status (`on`, `ends`,
    `lease`, ...). The declaration is remembered: later `{"app": "<id>"}` alone opens it again. `wk_kit_app_status`
    tells whether it runs, what it heard and how many messages went out today; every call is also a heartbeat.
