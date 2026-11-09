@@ -8,8 +8,11 @@
 -- wheel. One window: nothing else is spread over the screen.
 -- WuxianKit:OptionsPanel(id, parent, width) draws an extension's options in another addon's window with the same
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
--- Under the extensions, the group 应用 (apps, 0.6): each app's page is its card (UI.AppCard, AppPanel.lua: with a
--- start line, 交给 AI opens the copy box with it), an app an agent declared with a remove button. /wk <app> [word or words] gives an app the player's command or words.
+-- The groups in the player's order: 应用 (apps, 0.6) first, then the built-in extensions, then the custom ones; the
+-- window first opens on the first app's page (none: the core's). Each app's page is its card (UI.AppCard, AppPanel.lua:
+-- its main button follows its driver, 交给 AI for a prompt's, 开始 for a program's), an app an agent declared with a
+-- remove button. /wk <app> [word or words] gives an app the player's command or words; /wk <app> 开始|start starts a
+-- program's.
 -- UI.Canvas: the drawing pieces, for AppPanel.lua's card (one canvas drawn at a time).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
@@ -18,14 +21,20 @@ local S, C = UI.Skin, UI.Skin.C
 -- the words of the apps' parts (the window's group and page, the card, the slash command)
 local A = Kit:Words {
 	zhCN = {
-		GROUP = "应用", PILL = "应用", BY_ADDON = "插件 %s", BY_AGENT = "Agent 声明", REMOVE = "移除",
-		LIST_ON = "运行中", LIST_OFF = "未运行",
+		GROUP = "应用", PILL = "应用", TEMP = "临时", BY_ADDON = "插件 %s", BY_AGENT = "Agent 声明", BY_PROGRAM = "本机程序",
+		REMOVE = "移除",
+		LIST_ON = "运行中", LIST_OFF = "未运行", LIST_LAUNCHING = "启动中",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
 		EXT_OFF = "扩展「%s」未启用", EXT_OFF_HINT = "启用后才能接入", OPEN_EXT = "打开扩展页",
 		UNTIL = "Agent 在场至 %s", PRESENT = "Agent 在场", LEFT = "Agent 已离开",
 		SEEN = "最近应答 %d 分钟前", SEEN_NOW = "最近应答 刚刚", UNSEEN = "Agent 尚未应答", SAID = "今天发言 %d 条",
 		READY = "可以接入 Agent",
 		HAND = "交给 AI", HAND_HOW = "按 Ctrl+C 复制，粘贴到 AI 对话里",
+		IDLE = "未运行", READY_PROGRAM = "可以开始", ASKED = "已请求无限工坊启动",
+		LAUNCH = "开始", LAUNCHING = "启动中…", LAUNCH_WORD = "开始",
+		NEED_WORKSHOP = "需要无限工坊在运行", BY_PROGRAM_HINT = "由本机程序驱动",
+		LAUNCH_SENT = "已请求无限工坊启动%s", RUNNING = "%s已在运行", STARTING = "%s正在启动",
+		CANNOT = "%s无法开始：%s", CANNOT_PLAIN = "%s无法开始", NO_LAUNCH = "%s由本机程序驱动，请在无限工坊里开始",
 		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
 			resume = "继续", stop = "停止" },
 		NAME = "「%s」",
@@ -33,8 +42,9 @@ local A = Kit:Words {
 		NO_WORDS = "%s不接受指令", HELP = "应用：",
 	},
 	enUS = {
-		GROUP = "Apps", PILL = "App", BY_ADDON = "Addon %s", BY_AGENT = "Declared by an agent", REMOVE = "Remove",
-		LIST_ON = "On", LIST_OFF = "Off",
+		GROUP = "Apps", PILL = "App", TEMP = "Temporary", BY_ADDON = "Addon %s", BY_AGENT = "Declared by an agent",
+		BY_PROGRAM = "Local program", REMOVE = "Remove",
+		LIST_ON = "On", LIST_OFF = "Off", LIST_LAUNCHING = "Starting",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
 		EXT_OFF = "Extension %s is off", EXT_OFF_HINT = "Turn it on to connect", OPEN_EXT = "Open its page",
 		UNTIL = "Agent here until %s", PRESENT = "Agent here", LEFT = "Agent has left",
@@ -42,6 +52,12 @@ local A = Kit:Words {
 		SAID = "Said today: %d",
 		READY = "Ready to connect an agent",
 		HAND = "Hand to AI", HAND_HOW = "Press Ctrl+C to copy, then paste it into your AI chat",
+		IDLE = "Not running", READY_PROGRAM = "Ready to start", ASKED = "Asked Wuxian Workshop to start it",
+		LAUNCH = "Start", LAUNCHING = "Starting…", LAUNCH_WORD = "start",
+		NEED_WORKSHOP = "Needs Wuxian Workshop running", BY_PROGRAM_HINT = "Driven by a local program",
+		LAUNCH_SENT = "Asked Wuxian Workshop to start %s", RUNNING = "%s is already running", STARTING = "%s is starting",
+		CANNOT = "%s cannot start: %s", CANNOT_PLAIN = "%s cannot start",
+		NO_LAUNCH = "%s is driven by a local program; start it in Wuxian Workshop",
 		CONTROL = { mute = "Mute", unmute = "Unmute", less = "Less", more = "More", test = "Test", pause = "Pause",
 			resume = "Resume", stop = "Stop" },
 		NAME = "%s",
@@ -57,7 +73,7 @@ local HISTORY_SHOWN = 8
 local KIND_ORDER = { "see", "say", "do", "keep", "point" }
 local NUMBER_W = 80                       -- a number option's box
 local f                                   -- the frame, made the first time it opens
-local selected = "kit"                    -- the page shown: an extension's id, or "app:" .. an app's
+local selected                            -- the page shown: an extension's id, or "app:" .. an app's; nil at first
 local cv                                  -- the canvas being drawn: the window (f) or an OptionsPanel
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -169,13 +185,14 @@ local function ValueText(o, v)
 	return v == nil and "" or tostring(v)
 end
 
--- a row of buttons ({ label, primary, fn, least }) from x0 (0), each as wide as its label (at least least), wrapped at
--- the edge
+-- a row of buttons ({ label, primary, fn, least, off }) from x0 (0), each as wide as its label (at least least), wrapped
+-- at the edge; off: drawn but not to be clicked
 local function ButtonRow(list, x0)
 	x0 = x0 or 0
 	local y, x = cv.y, x0
 	for _, it in ipairs(list) do
 		local b = PutButton(x, y, it[1], it[2], it[3])
+		if it[5] then S.Enable(b, false) end
 		local w = Fit(b, it[4] or 48)
 		if x > x0 and x + w > cv.width - 12 then             -- no room left on this row: the next
 			x, y = x0, y + 28
@@ -436,15 +453,18 @@ local function Page(e)
 	end
 end
 
--- an app's page: its title and where it came from, then its card (with a remove button when an agent declared it)
+-- an app's page: its title (a temporary one's capsule says so) and where it came from (a local program, an agent's
+-- declaration, an addon), then its card (with a remove button when an agent declared it)
 local function AppPage(e)
 	local title = Put(0, C.fg, e.title, W - LEFT - 160, true)
-	f.pill.Set(A.PILL, "custom")
+	f.pill.Set(e.temp and A.TEMP or A.PILL, "custom")
 	f.pill:ClearAllPoints()
 	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
 	f.pill:Show()
 	local agent = e.by == "agent"
-	if agent then
+	if e.driver == "program" then
+		Put(0, C.muted, A.BY_PROGRAM)
+	elseif agent then
 		Put(0, C.muted, A.BY_AGENT)
 	elseif e.addon then
 		Put(0, C.muted, A.BY_ADDON:format(ns.Escape(e.addon)))
@@ -524,13 +544,23 @@ function UI.DrawWindow()
 	f.more:SetText(L.SCROLL)
 	f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)   -- none without 无限工坊
 	local list = ns.ExtensionList()
-	local groups = { { kind = "sys", list = {} }, { kind = "custom", list = {} }, { kind = "apps", list = {} } }
-	for _, e in ipairs(list) do table.insert(groups[e.builtin and 1 or 2].list, e) end   -- WuxianKit's own, other addons'
-	for _, a in ipairs(UI.Apps()) do                       -- then the apps
-		table.insert(groups[3].list, { id = "app:" .. a.id, app = a.id, title = a.title, by = a.by, addon = a.addon,
-			state = a.on and "on" or "off" })
+	local groups = { { kind = "apps", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} } }
+	for _, a in ipairs(UI.Apps()) do                       -- the apps first
+		table.insert(groups[1].list, { id = "app:" .. a.id, app = a.id, title = a.title, by = a.by, addon = a.addon,
+			driver = a.driver, temp = a.temp, state = a.on and "on" or a.launching and "launching" or "off" })
 	end
-	local current, n, nHead, y = nil, 0, 0, 0
+	for _, e in ipairs(list) do table.insert(groups[e.builtin and 2 or 3].list, e) end   -- WuxianKit's own, other addons'
+	local current
+	for _, g in ipairs(groups) do
+		for _, e in ipairs(g.list) do
+			if e.id == selected then current = e end
+		end
+	end
+	if not current then                                    -- none chosen yet, or gone: the first app, else the core
+		current = groups[1].list[1] or list[1]
+		selected = current.id
+	end
+	local n, nHead, y = 0, 0, 0
 	for _, g in ipairs(groups) do
 		if #g.list > 0 then
 			nHead = nHead + 1
@@ -549,12 +579,12 @@ function UI.DrawWindow()
 				b.id = e.id
 				b.label:SetText(e.title or e.id)
 				b.label:SetWidth(e.app and LEFT - 76 or LEFT - 30)
-				b.state:SetText(e.app and (e.state == "on" and A.LIST_ON or A.LIST_OFF) or "")
+				b.state:SetText(e.app and (e.state == "on" and A.LIST_ON or e.state == "launching" and A.LIST_LAUNCHING
+					or A.LIST_OFF) or "")
 				b.state:SetShown(e.app ~= nil)
 				S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
 				S.Ink(b.label, e.state == "on" and C.fg or C.muted)
 				b:Show()
-				if e.id == selected then current = e end
 				y = y + 24
 			end
 			y = y + 8
@@ -562,7 +592,6 @@ function UI.DrawWindow()
 	end
 	for i = n + 1, #f.items do f.items[i]:Hide() end
 	for i = nHead + 1, #f.heads do f.heads[i]:Hide() end
-	if not current then selected, current = "kit", list[1] end
 	Begin(f)
 	if current.app then AppPage(current) else Page(current) end
 	f.range = math.max(0, f.y + 8 - BODY)                  -- how far the page scrolls
@@ -620,8 +649,8 @@ function UI.Toggle()
 end
 
 -- WuxianKit:Window(page): the window, open and in front, on an extension's page ("tune", "chat" ...; "kit" the core's);
--- without one, or with one not there, on the page it showed last. For other addons' buttons (WoWBridge's panel, its
--- minimap button)
+-- without one, or with one not there, on the page it showed last (at first the first app's, else the core's). For other
+-- addons' buttons (WoWBridge's panel, its minimap button)
 function Kit:Window(page)
 	Frame()
 	local want
@@ -652,7 +681,7 @@ end
 
 -- every few seconds (AppPanel.lua): an app's page drawn again ("last answer n min ago")
 function UI.TickApps()
-	if f and f:IsShown() and selected:match("^app:") then UI.DrawWindow() end
+	if f and f:IsShown() and selected and selected:match("^app:") then UI.DrawWindow() end
 end
 
 function UI.Tick()
@@ -694,12 +723,19 @@ ns.AddAction("button", function(id, i)
 	return ok
 end)
 
--- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (ns.CONTROL_WORDS) the command;
--- else the player's words, when it takes them; else what it takes
+local START_WORDS = { start = true, ["开始"] = true }
+
+-- /wk <app> <rest>: its page when nothing follows; 开始 or start a program's app started (UI.AppLaunch); a word that
+-- names one of its controls (ns.CONTROL_WORDS) the command; else the player's words, when it takes them; else what it
+-- takes
 local function AppCommand(id, rest)
 	if rest == "" then return Kit:Window("app:" .. id) end
 	local name = A.NAME:format(UI.AppTitle(id))
 	local word = rest:match("^(%S+)")
+	if START_WORDS[word:lower()] then
+		local ok, line = UI.AppLaunch(id)
+		if ok ~= nil then return ns.Say(line) end
+	end
 	local cmd = ns.CONTROL_WORDS[word:lower()] or ns.CONTROL_WORDS[word]
 	if cmd then
 		for _, c in ipairs(UI.AppControlList(id)) do
