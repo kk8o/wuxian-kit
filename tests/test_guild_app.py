@@ -106,8 +106,8 @@ class GuildApp(unittest.TestCase):
 
     def test_not_in_a_guild(self):
         s = self.start(before="__guild = false")
-        self.assertIn("app guild cannot start: Your character is not in a guild",
-                      self.fails(s, "kit.app.open", "{ app = 'guild' }"))
+        st = self.agent(s, "kit.app.open", "{ app = 'guild' }")
+        self.assertEqual((st["on"], st["blocked"]), (False, "Your character is not in a guild"))
         self.assertEqual(py(s.ns.AppStatus(b"guild"))["blocked"], "Your character is not in a guild")
 
     def test_options_carry_over(self):

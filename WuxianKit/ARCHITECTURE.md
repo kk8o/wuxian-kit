@@ -344,7 +344,7 @@ WuxianKit:App("officers", {
 
 能力（核心扩展 kit）：
 
-- `kit.app.open { app, minutes?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时只续时间和租期（发一次 `kit.app` `on = true`）；只有 Agent 给了不同的声明，才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（最多 8 个，玩家可以在窗口里移除）。不能开始时报错 `app <id> cannot start: <原因>`：`check()` 不过、所属扩展停用，或听 `chat:`、`game:` 但聊天扩展、游戏动态关着。
+- `kit.app.open { app, minutes?, ...声明 }`（读取）：开始应用，答状态。同名应用正在运行时只续时间和租期（发一次 `kit.app` `on = true`）；只有 Agent 给了不同的声明，才先停掉旧的（`why = "replaced"`）再开。插件声明过的应用只认 `app`、`minutes`、`lease`，多给的字段列在回答的 `ignored` 里；Agent 声明的会被记住（最多 8 个，玩家可以在窗口里移除）。现在不能开始时不报错（报错会在玩家游戏里弹红字，Agent 每次重试都弹一次），答它的状态：`on = false`，`blocked` 是原因：`check()` 不过、所属扩展停用，或听 `chat:`、`game:` 但聊天扩展、游戏动态关着。
 - `kit.app.status { app }`：`{ app, title, by, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, controls, say, blocked?, extension?, why? }`；`lease` 没设为 0；`blocked` 是现在不能开始的原因；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 的每次 `kit.app.*` 调用都更新 `seen`。
 - `kit.app.stop { app }`、`kit.app.recent { app, since?, limit? }`（回看最近 100 个条目，同 Feed 的 `.recent`）、`kit.apps`（`[{ id, title, by = addon|agent, addon?, on, ends, present, prompt? }]`）。
 - `kit.options { app }`：应用的选项（同扩展；显示顺序 `activity`、`quiet` 在前，其余按名字）。改了应用的选项，总线事件 `kit.option` 是 `{ app, name, value }`。

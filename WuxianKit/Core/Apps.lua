@@ -1028,8 +1028,8 @@ local OPEN_ARGS = { app = "string", minutes = "number?", lease = "number?", titl
 
 kit:See("app.open", { title = "kit.app.open", args = OPEN_ARGS,
 	doc = "starts an app; one already running goes on with the new minutes and lease (a changed declaration ends that "
-		.. "run instead, kit.app why \"replaced\", and starts a new one); answers its status as kit.app.status, or fails "
-		.. "with the reason it cannot start (its check, an extension off). The first time, give its declaration (it "
+		.. "run instead, kit.app why \"replaced\", and starts a new one); answers its status as kit.app.status; when it "
+		.. "cannot start now (its check, an extension off) it does not start and the status says why: blocked (on false). The first time, give its declaration (it "
 		.. "is remembered: later just {app}; at most 8 kept): app (id: lowercase letters, digits, _, at most 24 bytes), title (at most 48 "
 		.. "bytes), hear (sources: chat:<channel> guild|officer|party|raid|instance|whisper|say|yell|channel|community|*, "
 		.. "game:<topic or kind or *>, bus:<topic or prefix.*>, not kit.* or app.*), pace (true: the player's activity "
@@ -1076,6 +1076,12 @@ kit:See("app.open", { title = "kit.app.open", args = OPEN_ARGS,
 		local minutes = MinutesOf(a.minutes, "minutes") or app.decl.minutes
 		local lease = LeaseOf(a.lease, "lease")
 		if lease == nil then lease = app.decl.lease end
+		local why = Blocked(app)
+		if why then                       -- not an error: an answer (an error shows the player a red notice each try)
+			local out = Status(app)
+			out.blocked, out.ignored = why, ignored
+			return out
+		end
 		Start(app, minutes, lease or nil, agent, replace)
 		local out = Status(app)
 		out.ignored = ignored

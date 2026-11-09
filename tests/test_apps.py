@@ -243,7 +243,8 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
 
         self.agent(s, "kit.app.stop", "{ app = 'club' }")
         s.lua.execute(b"__inguild = false")
-        self.assertIn("app club cannot start: not in a guild", self.fails(s, "kit.app.open", "{ app = 'club' }"))
+        st = self.agent(s, "kit.app.open", "{ app = 'club' }")                 # an answer, not an error (no red notice)
+        self.assertEqual((st["on"], st["blocked"]), (False, "not in a guild"))
         st = py(s.ns.AppStatus(b"club"))
         self.assertEqual((st["on"], st["blocked"]), (False, "not in a guild"))
         self.assertEqual(self.lua(s, "__app.decl.prompt"), "club-chat")
@@ -353,15 +354,16 @@ class Runs(AppCase):
         s.ns.Switch(b"xg", False)
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "xa", "on": False, "why": "extension"})
         self.assertIn("XA: its extension was turned off, stopped", s.chat())
-        self.assertIn("cannot start: Its extension XG is off", self.fails(s, "kit.app.open", "{ app = 'xa' }"))
+        self.assertEqual(self.agent(s, "kit.app.open", "{ app = 'xa' }")["blocked"], "Its extension XG is off")
         st = py(s.ns.AppStatus(b"xa"))
         self.assertEqual((st["extension"], st["blocked"], st["why"]), (False, "Its extension XG is off", "extension"))
         s.ns.Switch(b"xg", True)
         self.assertTrue(self.agent(s, "kit.app.open", "{ app = 'xa' }")["on"])
         s.ns.Switch(b"chat", False)                                       # a source's extension off: cannot start
         self.agent(s, "kit.app.stop", "{ app = 'xa' }")
-        self.assertIn("Needs the Chat extension on",
-                      self.fails(s, "kit.app.open", "{ app = 'cc', hear = { 'chat:guild' } }"))
+        st = self.agent(s, "kit.app.open", "{ app = 'cc', hear = { 'chat:guild' } }")
+        self.assertEqual(st["on"], False)
+        self.assertIn("Needs the Chat extension on", st["blocked"])
 
 
 class Wakes(AppCase):
