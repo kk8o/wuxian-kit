@@ -95,7 +95,7 @@ class RouteTest(unittest.TestCase):
 
 
 HERBS = {"provider": "game", "key": "game|3001", "goals": [
-    {"op": "collect", "quest": {"id": 3001, "name": "Healing Herbs"}, "objective": 1, "need": 5, "have": 3,
+    {"op": "collect", "target": "Peacebloom", "quest": {"id": 3001, "name": "Healing Herbs"}, "objective": 1, "need": 5, "have": 3,
      "done": False, "text": "Peacebloom: 3/5"}]}
 
 
@@ -109,8 +109,22 @@ class Native(RouteTest):
         self.assertIsInstance(item["time"], int)
         self.assertEqual(item["data"], HERBS)
         self.assertEqual(a.eval("WuxianKit.Route:State()"), {"provider": "game", "key": "game|3001", "since": item["time"],
-                         "goals": [{"op": "collect", "quest": {"name": "Healing Herbs"}, "need": 5, "have": 3,
+                         "goals": [{"op": "collect", "target": "Peacebloom", "quest": {"name": "Healing Herbs"}, "need": 5, "have": 3,
                                     "done": False}]})
+
+    def test_the_target_is_the_objectives_text_without_its_count(self):
+        a = self.app()
+        a.lua_("__quests[2].objectives = { "
+               "{ type = 'monster', text = '0/12 消灭加拉克斥候', numFulfilled = 0, numRequired = 12, finished = false }, "
+               "{ type = 'item', text = '钢齿土狼的肋骨：0/1', numFulfilled = 0, numRequired = 1, finished = false }, "
+               "{ type = 'monster', text = 'Kobold Vermin slain: 3/10', numFulfilled = 3, numRequired = 10, finished = false }, "
+               "{ type = 'event', text = '找到营地', finished = false } } "
+               "__track(3001)")
+        a.listen()
+        goals = a.data("route.step")[-1]["goals"]
+        self.assertEqual([(g["op"], g.get("target")) for g in goals],
+                         [("kill", "加拉克斥候"), ("collect", "钢齿土狼的肋骨"), ("kill", "Kobold Vermin"), ("other", None)])
+        self.assertEqual(goals[0]["text"], "0/12 消灭加拉克斥候")      # the text stays as the client gave it
 
     def test_the_recent_items_keep_a_goals_quest(self):
         a = self.app()

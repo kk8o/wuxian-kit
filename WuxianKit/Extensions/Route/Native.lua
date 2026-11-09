@@ -1,6 +1,6 @@
 -- 任务指引 · Native: the provider "game" (游戏自带), the game's own quest tracking. The quest is the super-tracked one
 -- (C_SuperTrack.GetSuperTrackedQuestID), else the first on the watch list; its goals are its objectives
--- (C_QuestLog.GetQuestObjectives: monster -> kill, item -> collect, else other), or, once they are all done, one turnin
+-- (C_QuestLog.GetQuestObjectives: monster -> kill, item -> collect, else other; target taken from the objective's text), or, once they are all done, one turnin
 -- goal (a new step: key game|<id>|turnin); the next waypoint (C_QuestLog.GetNextWaypoint) is the place of its first goal
 -- not done. Each read leaves out what the client does not give. Its events are registered only while it is the provider
 -- read (Start .. Stop).
@@ -44,6 +44,26 @@ local function Waypoint(id)
 	return place
 end
 
+-- the monster's or item's name in an objective's text ("0/12 消灭加拉克斥候", "钢齿土狼的肋骨：0/1", "Kobold slain: 3/10"):
+-- the count, the colon and a kill verb taken off; nil when nothing is left. The client gives no name of its own.
+local KILL_HEAD = { "消灭", "杀死", "击杀", "击败", "Slay ", "Kill ", "Defeat " }
+local KILL_TAIL = { "被杀", "已杀死", "已消灭", " slain", " killed", " defeated" }
+local function Target(text, op)
+	if type(text) ~= "string" then return nil end
+	local t = text:gsub("%d+%s*/%s*%d+", ""):gsub(":", " "):gsub("\239\188\154", " ")   -- the full-width colon
+	t = t:gsub("^%s+", ""):gsub("%s+$", "")
+	if op == "kill" then
+		for _, w in ipairs(KILL_HEAD) do
+			if t:sub(1, #w) == w then t = t:sub(#w + 1) break end
+		end
+		for _, w in ipairs(KILL_TAIL) do
+			if #t > #w and t:sub(-#w) == w then t = t:sub(1, -#w - 1) break end
+		end
+		t = t:gsub("^%s+", ""):gsub("%s+$", "")
+	end
+	return t ~= "" and t or nil
+end
+
 local function Current()
 	local id = C_QuestLog and Tracked()
 	if not id then return nil end
@@ -54,8 +74,9 @@ local function Current()
 		if type(o) == "table" then
 			local done = Kit:Value(o.finished) and true or false
 			if not done then all = false end
-			goals[#goals + 1] = { op = TYPES[Kit:Value(o.type)] or "other", quest = quest, objective = j, done = done,
-				text = Kit:Clean(o.text) }
+			local op, text = TYPES[Kit:Value(o.type)] or "other", Kit:Clean(o.text)
+			goals[#goals + 1] = { op = op, target = op ~= "other" and Target(text, op) or nil, quest = quest,
+				objective = j, done = done, text = text }
 		end
 	end
 	local ready = (#goals > 0 and all) or Read(C_QuestLog.IsComplete, id) and true or false
