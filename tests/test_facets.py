@@ -77,7 +77,7 @@ class Declare(FacetCase):
     def test_see_is_checked(self):
         s = self.start()
         err = self.fails(s, "kit.app.open", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'nope' } }")
-        self.assertIn("see: no state nope (the states: group, me)", err)
+        self.assertIn("see: no state nope (the states: group, me, today)", err)
         err = self.fails(s, "kit.app.open", "{ app = 'v', see = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i' } }")
         self.assertIn("see is a list of at most 8 states", err)
         self.assertIn("see: 3 is not a state's name", self.fails(s, "kit.app.open", "{ app = 'v', see = { 3 } }"))
