@@ -138,7 +138,7 @@ class Wakes(FacetCase):
         s.lua.execute(b"__probe = nil")
         self.assertNotIn("probe", self.agent(s, "kit.app.state", "{ app = 'v' }")["state"])   # none now
 
-    def test_the_wake_drops_items_first(self):
+    def test_the_items_wait_not_the_state(self):
         s = self.start()
         s.lua.execute(b"""
 		local px = WuxianKit:Extension('fat', { title = 'Fat' })
@@ -149,15 +149,18 @@ class Wakes(FacetCase):
         see = ", ".join(f"'fat{i}'" for i in range(1, 9))
         self.agent(s, "kit.app.open", f"{{ app = 'v', hear = {{ 'bus:demo.*' }}, see = {{ {see} }}, "
                                       f"digest = {{ gather = 0, every = 10, most = 30 }} }}")
-        for i in range(6):
+        for i in range(12):
             s.lua.execute(f"WuxianKit:Emit('demo.x', ('y'):rep(300))".encode())
-        s.run(11)
-        [w] = self.wakes(s, "v")
-        self.assertEqual(sorted(w["state"]), [f"fat{i}" for i in range(1, 9)])
-        self.assertGreater(w["skipped"], 0)
-        self.assertEqual(len(w["items"]) + w["skipped"], 6)
-        size = self.lua(s, "#WuxianKit.Comm.Serialize(__events[#__events].data)")
-        self.assertLessEqual(size, 5500)
+        s.run(14)
+        ws = self.wakes(s, "v")
+        self.assertLess(len(ws[0]["items"]), 12)                           # what did not fit: with the next wake
+        self.assertEqual((sum(len(w["items"]) for w in ws), sum(w["skipped"] for w in ws)), (12, 0))
+        for w in ws:
+            self.assertEqual(sorted(w["state"]), [f"fat{i}" for i in range(1, 9)])
+            self.assertTrue(all("text" in f for f in w["state"].values()))  # whole, each of them
+        for e in s.lua.eval(b"__events").values():                         # as WoWBridge writes it: its line is 8000
+            if e.topic == b"app.v":
+                self.assertLessEqual(s.ns.WireSize(e.data), 7200)
 
 
 class Cut(FacetCase):

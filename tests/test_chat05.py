@@ -53,8 +53,8 @@ class Chat05(unittest.TestCase):
         a = self.say(s, "CHAT_MSG_GUILD", "one", "Asker-Realm", ASKER)
         b = self.say(s, "CHAT_MSG_GUILD", "two", "Asker-Realm", ASKER)
         c = self.say(s, "CHAT_MSG_PARTY", "three", "Asker-Realm", ASKER)     # not listened to: still read, still an id
-        self.assertEqual([b["id"] - a["id"], c["id"] - b["id"]], [1, 1])
-        self.assertEqual([m["id"] for m in self.heard(s)], [a["id"], b["id"]])    # the app's item: a copy, its id
+        self.assertTrue(a["id"] < b["id"] < c["id"])                         # (an app's items take ids between them)
+        self.assertEqual([m["ref"] for m in self.heard(s)], [a["id"], b["id"]])   # the app's item: a copy, its ref
         self.assertEqual(py(s.lua.eval(f"WuxianKit.Chat.Message({b['id']})".encode()))["plain"], "two")
         s2 = s.reload()
         s2.login()
