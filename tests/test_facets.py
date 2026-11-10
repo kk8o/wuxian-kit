@@ -59,11 +59,11 @@ class Register(FacetCase):
                                                    "fields": {"n": "number"}}])
         self.assertEqual(ext["chat"]["facets"], {})
         rev = m["revision"]
-        self.agent(s, "kit.app.open", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'probe' } }")
+        self.opens(s, "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'probe' } }")
         m = self.lua(s, "WuxianKit:Manifest()")
         self.assertEqual(next(a for a in m["apps"] if a["id"] == "v")["see"], ["me", "probe"])
         self.assertNotEqual(m["revision"], rev)
-        doc = next(c for c in self.agent(s, "kit.capabilities") if c["id"] == "kit.app.open")["doc"]
+        doc = next(c for c in self.agent(s, "kit.capabilities") if c["id"] == "kit.app.declare")["doc"]
         self.assertIn("see (at most 8 states", doc)
         self.assertIn("me: the player now", doc)
         self.assertIn("group: the player's group now", doc)
@@ -76,13 +76,13 @@ class Register(FacetCase):
 class Declare(FacetCase):
     def test_see_is_checked(self):
         s = self.start()
-        err = self.fails(s, "kit.app.open", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'nope' } }")
+        err = self.fails(s, "kit.app.declare", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'nope' } }")
         self.assertIn("see: no state nope (the states: group, me, route, today)", err)
-        err = self.fails(s, "kit.app.open", "{ app = 'v', see = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i' } }")
+        err = self.fails(s, "kit.app.declare", "{ app = 'v', see = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i' } }")
         self.assertIn("see is a list of at most 8 states", err)
-        self.assertIn("see: 3 is not a state's name", self.fails(s, "kit.app.open", "{ app = 'v', see = { 3 } }"))
-        self.assertIn("no argument me", self.fails(s, "kit.app.open", "{ app = 'v', hear = { 'bus:x' }, me = true }"))
-        st = self.agent(s, "kit.app.open", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'group', 'me' } }")
+        self.assertIn("see: 3 is not a state's name", self.fails(s, "kit.app.declare", "{ app = 'v', see = { 3 } }"))
+        self.assertIn("no argument me", self.fails(s, "kit.app.declare", "{ app = 'v', hear = { 'bus:x' }, me = true }"))
+        st = self.opens(s, "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'group', 'me' } }")
         self.assertEqual((st["on"], st["see"]), (True, ["me", "group"]))
         self.assertEqual(next(a for a in self.agent(s, "kit.apps") if a["id"] == "v")["see"], ["me", "group"])
         self.assertNotIn("see", next(a for a in self.agent(s, "kit.apps") if a["id"] == "guild"))   # none: not listed
@@ -106,8 +106,8 @@ class Declare(FacetCase):
 class Wakes(FacetCase):
     def test_each_wake_carries_the_state_read_then(self):
         s = self.probe(self.start())
-        self.agent(s, "kit.app.open", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'group', 'probe' } }")
-        self.agent(s, "kit.app.open", "{ app = 'plain', hear = { 'bus:demo.*' } }")
+        self.opens(s, "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'group', 'probe' } }")
+        self.opens(s, "{ app = 'plain', hear = { 'bus:demo.*' } }")
         s.lua.execute(b"WuxianKit:Emit('demo.x', 1)")
         [w] = self.wakes(s, "v")
         me = w["state"]["me"]
@@ -127,7 +127,7 @@ class Wakes(FacetCase):
 
     def test_kit_app_state_reads_at_once_and_is_a_heartbeat(self):
         s = self.probe(self.start())
-        self.agent(s, "kit.app.open", "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'probe', 'me' } }")
+        self.opens(s, "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'probe', 'me' } }")
         s.run(30)
         r = self.agent(s, "kit.app.state", "{ app = 'v' }")
         now = s.lua.eval(b"time()")
@@ -147,7 +147,7 @@ class Wakes(FacetCase):
 		end""")
         s.run(0.1)
         see = ", ".join(f"'fat{i}'" for i in range(1, 9))
-        self.agent(s, "kit.app.open", f"{{ app = 'v', hear = {{ 'bus:demo.*' }}, see = {{ {see} }}, "
+        self.opens(s, f"{{ app = 'v', hear = {{ 'bus:demo.*' }}, see = {{ {see} }}, "
                                       f"digest = {{ gather = 0, every = 10, most = 30 }} }}")
         for i in range(6):
             s.lua.execute(f"WuxianKit:Emit('demo.x', ('y'):rep(300))".encode())
@@ -194,12 +194,12 @@ class OnOff(FacetCase):
         self.assertEqual(self.counts(s), (0, 0))                           # declared, not running: nobody looks
         self.agent(s, "kit.app.open", "{ app = 'a' }")
         self.assertEqual(self.counts(s), (1, 0))
-        self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        self.opens(s, "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'probe' } }")
         self.agent(s, "kit.app.open", "{ app = 'a' }")                     # goes on: still one look of a's
         self.assertEqual(self.counts(s), (1, 0))
         self.agent(s, "kit.app.stop", "{ app = 'a' }")
         self.assertEqual(self.counts(s), (1, 0))
-        self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'me' } }")   # b no longer sees it
+        self.opens(s, "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'me' } }")   # b no longer sees it
         self.assertEqual(self.counts(s), (1, 1))
         self.agent(s, "kit.app.open", "{ app = 'a' }")
         self.assertEqual(self.counts(s), (2, 1))
@@ -208,8 +208,8 @@ class OnOff(FacetCase):
 
     def test_its_extension_off_stops_the_apps_that_see_it(self):
         s = self.probe(self.start())
-        self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
-        self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'me' } }")
+        self.opens(s, "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        self.opens(s, "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'me' } }")
         s.ns.Switch(b"probe", False)
         self.assertEqual(self.counts(s), (1, 1))
         st = self.agent(s, "kit.app.status", "{ app = 'a' }")
@@ -226,7 +226,7 @@ class OnOff(FacetCase):
 
     def test_through_a_reload(self):
         s = self.probe(self.start())
-        self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        self.opens(s, "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
         s2 = self.start(s.reload())                                        # the run goes on; the facet comes later
         self.probe(s2)
         self.assertEqual(self.counts(s2), (1, 0))

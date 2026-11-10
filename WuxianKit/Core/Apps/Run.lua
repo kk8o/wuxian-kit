@@ -1,10 +1,11 @@
 -- Apps, runs (see Decl.lua for the apps and for how the four files share names): quiet hours and the pace (Retune),
--- what a run hears and sees (its sources subscribed, its facets watched), the run itself (Blocked, Start, Stop, Resume,
--- Drop, the ticker: the end of its time and of its lease), the player's commands and words (WuxianKit:AppControl,
--- WuxianKit:AppSay), and what else stops an app or resumes it (an extension going off, a source or a facet registered,
--- login).
--- Here by choice: Present, beside the ticker's own lease check (only Api.lua calls it); ns.QuietWindow and ns.InQuiet,
--- with Retune. The count of what was said today (kit.proposal) is in Api.lua, beside the status that reads it.
+-- what a run hears and sees (its sources subscribed, its facets watched), the one rule of the lease (Silence), and
+-- Reconcile: the one place that decides whether an app runs, waits or stops. Whatever may change that (a declaration,
+-- an extension switched, a source or a facet registered, login, kit.app.open, each second of the ticker) only calls
+-- it. Start, Stop and Drop make and end runs; WuxianKit:AppControl and WuxianKit:AppSay are the player's commands and
+-- words.
+-- Here by choice: Present, beside the lease's rule (only Api.lua calls it); ns.QuietWindow and ns.InQuiet, with
+-- Retune. The count of what was said today (kit.proposal) is in Api.lua, beside the status that reads it.
 local addonName, ns = ...
 local Kit = ns.Kit
 local A = ns.apps
@@ -14,6 +15,7 @@ local apps, order, Record, Owned, Run, Title, Paced, Digesting = A.apps, A.order
 local Deliver = A.Deliver
 
 local SAY_MAX = 255
+local GRACE = 30                -- seconds a run waits for what it needs (after a login or a reload) before it stops
 
 ------------------------------------------------------------------------------------------------------------------------
 -- quiet hours: "01:00-08:00" (also a full-width colon, ～ ~ – —, 至, 到, hours alone "1-8"; across midnight too)
@@ -69,8 +71,7 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- what a run hears and sees
 
--- the facets it sees counted as looked at (ns.FacetWatch: the first look turns one on); one not registered yet: once it
--- is
+-- the facets it sees counted as looked at (ns.FacetWatch: the first look turns one on); one registered again: that one
 local function Watch(app)
 	app.watching = app.watching or {}
 	for _, name in ipairs(app.decl.see) do
@@ -88,19 +89,19 @@ local function Unwatch(app)
 	app.watching = nil
 end
 
--- each entry of a registered source subscribed (one of a source not registered yet: when it is), and the facets it sees
--- watched; what a source gives while its extension is off is not heard
+-- each entry subscribed at its source and the facets it sees watched (Reconcile: only once all of them are there);
+-- what a source gives while its extension is off is not heard
 local function Subscribe(app)
 	if app.subs then return end
-	app.subs = {}
-	for _, entry in ipairs(Trim(app.decl.hear)) do
+	app.subs = { decl = app.decl }
+	for _, entry in ipairs(Trim(app.decl.hear)) do            -- (again: a source's covers is there only once it is)
 		local name, what = Split(entry)
 		local src = name and ns.sources[name]
 		if src then
 			local ok, t = pcall(src.spec.on, src.ext, what, function(item)
 				if src.ext.active then Deliver(app, name, item, false) end
 			end)
-			if ok then app.subs[#app.subs + 1] = { src = src, token = t } else geterrorhandler()(t) end
+			if ok then app.subs[#app.subs + 1] = { name = name, src = src, token = t } else geterrorhandler()(t) end
 		end
 	end
 	Watch(app)
@@ -112,31 +113,47 @@ local function Unsubscribe(app)
 	Unwatch(app)
 end
 
--- whether the app sees a facet of extension ext
-local function SeesOf(app, ext)
-	for _, name in ipairs(app.decl.see) do
-		local facet = ns.facets[name]
-		if facet and facet.ext.id == ext then return true end
-	end
-	return false
-end
-
--- whether the app hears an entry of source name
-local function HearsFrom(app, name)
-	for _, entry in ipairs(app.decl.hear) do
-		if Split(entry) == name then return true end
+-- whether what it is subscribed to is no longer what it should hear: its declaration changed, or a source it hears was
+-- registered again
+local function Stale(app)
+	if app.subs.decl ~= app.decl then return true end
+	for _, sub in ipairs(app.subs) do
+		if ns.sources[sub.name] ~= sub.src then return true end
 	end
 	return false
 end
 
 ------------------------------------------------------------------------------------------------------------------------
--- runs: start, stop, the ticker
+-- the lease, one rule: how long the agent has not been heard from (its last kit.app.* call, or the start), against the
+-- run's lease. A run with a lease stops once that is over (Lapsed); the agent is present while it has called and is
+-- within the lease (a run with none: within the default)
+
+local function Silence(s, now)
+	return now - math.max(tonumber(s.seen) or 0, tonumber(s.started) or 0)
+end
+
+local function Lapsed(s, now)
+	return s.lease ~= nil and Silence(s, now) > s.lease
+end
+
+local function Present(s, now)
+	return s ~= nil and s.seen ~= nil and Silence(s, now) <= (s.lease or LEASE)
+end
+
+------------------------------------------------------------------------------------------------------------------------
+-- runs: stop, what a run needs, Reconcile, the ticker, start
 
 local ticker
+local Tick
 
--- the app goes (a temporary one once it stops, one the player removed)
+local function Ticking()
+	if not ticker then ticker = C_Timer.NewTicker(1, Tick) end
+end
+
+-- the app goes (a temporary one once it stops, one forgotten or removed)
 local function Drop(app)
 	Unsubscribe(app)
+	app.waiting, app.waitFrom = nil, nil
 	if apps[app.id] ~= app then return end
 	apps[app.id] = nil
 	for i, x in ipairs(order) do
@@ -148,29 +165,143 @@ local function Drop(app)
 	ns.Changed("app", app.id)
 end
 
-local STOP_WORDS = { stopped = "STOPPED", player = "STOPPED", expired = "EXPIRED", left = "LEFT", extension = "EXT_STOPPED" }
+local STOP_WORDS = { stopped = "STOPPED", player = "STOPPED", forgotten = "STOPPED", extension = "STOPPED",
+	expired = "EXPIRED", left = "LEFT" }
 
--- stops this character's run (why: stopped, player, expired, left, extension, replaced); quiet: no chat line. A
--- temporary app goes with its run (unless it is replaced: a new run of it follows)
-local function Stop(app, why, quiet)
+-- stops this character's run (why: stopped, player, expired, left, extension, forgotten, replaced); quiet: no chat
+-- line; detail: what it needed, for the player (why extension). A temporary app goes with its run (unless it is
+-- replaced: a new run of it follows)
+local function Stop(app, why, quiet, detail)
 	local c = A.Char(app)
 	local s = c and c.run
 	if type(s) ~= "table" then return false end
 	c.run = nil
 	c.last = { why = why }
 	Unsubscribe(app)
+	app.waiting, app.waitFrom = nil, nil
 	if not quiet and not app.decl.hidden and STOP_WORDS[why] then
-		ns.Say(W[STOP_WORDS[why]]:format(ns.Escape(Title(app))))
+		local title = ns.Escape(Title(app))
+		if detail then
+			ns.Say(W.STOPPED_WHY:format(title, ns.Escape(detail)))
+		else
+			ns.Say(W[STOP_WORDS[why]]:format(title))
+		end
 	end
 	Kit:Emit("kit.app", { app = app.id, on = false, why = why })
 	if app.temp and why ~= "replaced" then Drop(app) end
 	return true
 end
 
-local function Present(s, now)
-	if not s then return false end
-	if s.lease then return now - math.max(tonumber(s.seen) or 0, tonumber(s.started) or 0) <= s.lease end
-	return s.seen ~= nil and now - s.seen <= LEASE
+-- the extensions that were on this session: one registered and not on that never was is on its way (another addon's is
+-- turned on a frame after it registers), one that was, or that the player keeps off, is off
+local wasOn = {}
+
+-- an extension an app needs: nil when it is on, "wait" when it is not there yet, "stop" when it is off
+local function Lacks(ext)
+	if not ext then return "wait" end
+	if ext.active then return nil end
+	if wasOn[ext.id] or not ns.IsOn(ext.id) then return "stop" end
+	return "wait"
+end
+
+-- what keeps the app from running now: "wait" (something it needs is not registered yet) or "stop" (an extension it
+-- needs is off, or its check says no), why (for the player), and whether its check said so; nil when nothing does.
+-- light: without asking its check
+local function Verdict(app, light)
+	local d = app.decl
+	if d.extension then
+		local ext = ns.extensions[d.extension]
+		local lacks = Lacks(ext)
+		if lacks then
+			return lacks, (ext and W.EXT_OFF or W.EXT_MISSING):format(ext and ns.T(ext.title) or d.extension)
+		end
+	end
+	for _, entry in ipairs(d.hear) do
+		local name = Split(entry)
+		local src = name and ns.sources[name]
+		if not src then return "wait", W.NEEDS_SOURCE:format(ns.Text(name or entry)) end
+		local lacks = Lacks(src.ext)
+		if lacks then return lacks, W.NEEDS:format(ns.T(src.ext.title)) end
+	end
+	for _, name in ipairs(d.see) do
+		local facet = ns.facets[name]
+		if not facet then return "wait", W.NEEDS_FACET:format(ns.Text(name)) end
+		local lacks = Lacks(facet.ext)
+		if lacks then return lacks, W.NEEDS:format(ns.T(facet.ext.title)) end
+	end
+	if d.check and not light then
+		local ok, why = pcall(d.check, app)
+		if not ok then
+			geterrorhandler()(why)
+		elseif why ~= nil and why ~= false then
+			return "stop", ns.Text(why), true
+		end
+	end
+end
+
+-- why the app cannot start now (for the player), or nil
+local function Blocked(app)
+	local _, why = Verdict(app)
+	return why
+end
+
+local loginAt = 0
+
+-- the one entry: what the app's run of this character's should be now, and made so.
+--   run   everything it needs is there: subscribed as its declaration says now, its facets watched
+--   wait  something it needs is not registered yet (after a login or a reload: another addon's has not loaded): the run
+--         is kept, nothing subscribed, app.waiting says why (kit.app.status's waiting; on stays true); it runs once that
+--         is registered, and stops, why "extension", when it still is not GRACE seconds on
+--   stop  its time is over ("expired"), its agent left ("left"), or an extension it needs is off or its check says no
+--         ("extension")
+-- light (the ticker, and Start right after kit.app.open asked): the addon's check is not asked again, but for a run
+-- that waits. A check that says no within GRACE seconds of the login waits (what it reads may not be loaded yet).
+-- Nothing before the login: a run is this character's
+local function Reconcile(app, light)
+	if not A.loggedIn or apps[app.id] ~= app then return end
+	local s, now = Owned(app), time()
+	if not s then
+		Unsubscribe(app)
+		app.waiting, app.waitFrom = nil, nil
+		return
+	end
+	if (tonumber(s.ends) or 0) <= now then
+		Stop(app, "expired")
+		return
+	end
+	if Lapsed(s, now) then
+		Stop(app, "left")
+		return
+	end
+	local verdict, why, check = Verdict(app, light and not app.waiting)
+	if verdict == "stop" and check and now - loginAt < GRACE then verdict = "wait" end
+	if verdict == "wait" then
+		app.waitFrom = app.waitFrom or now
+		if now - app.waitFrom >= GRACE then verdict = "stop" end
+	end
+	if verdict == "stop" then
+		Stop(app, "extension", nil, why)
+		return
+	end
+	if verdict == "wait" then
+		Unsubscribe(app)
+		if app.waiting ~= why then
+			app.waiting = why
+			Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends, waiting = why })
+		end
+		Ticking()
+		return
+	end
+	local waited = app.waiting ~= nil
+	app.waiting, app.waitFrom = nil, nil
+	if app.subs and Stale(app) then Unsubscribe(app) end
+	if not app.subs then
+		Subscribe(app)
+		Retune(app, s)
+	end
+	Watch(app)
+	if waited then Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends }) end
+	Ticking()
 end
 
 -- the ids now (a stop may take a temporary app out of order)
@@ -180,21 +311,26 @@ local function Ids()
 	return ids
 end
 
-local function Tick()
-	local now, any = time(), false
+local function All()
 	for _, id in ipairs(Ids()) do
 		local app = apps[id]
-		local s = app and Owned(app)
-		if s then
-			if (tonumber(s.ends) or 0) <= now then
-				Stop(app, "expired")
-			elseif s.lease and now - math.max(tonumber(s.seen) or 0, tonumber(s.started) or 0) > s.lease then
-				Stop(app, "left")
-			else
+		if app then Reconcile(app) end
+	end
+end
+
+function Tick()
+	local any = false
+	for _, id in ipairs(Ids()) do
+		local app = apps[id]
+		if app and Owned(app) then
+			Reconcile(app, true)
+			local s = apps[id] == app and Owned(app)
+			if s then
 				any = true
-				if not app.subs then Subscribe(app) end
-				if Paced(app) and ns.InQuiet(app:Get("quiet")) ~= (s.quiet == true) then Retune(app, s) end
-				if Digesting(app) then ns.Safe(ns.Digest.Due, app.host, s) end
+				if not app.waiting then
+					if Paced(app) and ns.InQuiet(app:Get("quiet")) ~= (s.quiet == true) then Retune(app, s) end
+					if Digesting(app) then ns.Safe(ns.Digest.Due, app.host, s) end
+				end
 			end
 		end
 	end
@@ -204,79 +340,35 @@ local function Tick()
 	end
 end
 
-local function Ticking()
-	if not ticker then ticker = C_Timer.NewTicker(1, Tick) end
-end
-
--- why the app cannot start now (for the player: its extension, a source or a facet missing or its extension off, its
--- check), or nil
-local function Blocked(app)
-	local d = app.decl
-	if d.extension then
-		local ext = ns.extensions[d.extension]
-		if not (ext and ext.active) then return W.EXT_OFF:format(ext and ns.T(ext.title) or d.extension) end
-	end
-	for _, entry in ipairs(d.hear) do
-		local name = Split(entry)
-		local src = name and ns.sources[name]
-		if not src then return W.NEEDS_SOURCE:format(ns.Text(name or entry)) end
-		if not src.ext.active then return W.NEEDS:format(ns.T(src.ext.title)) end
-	end
-	for _, name in ipairs(d.see) do
-		local facet = ns.facets[name]
-		if not facet then return W.NEEDS_FACET:format(ns.Text(name)) end
-		if not facet.ext.active then return W.NEEDS:format(ns.T(facet.ext.title)) end
-	end
-	if d.check then
-		local ok, why = pcall(d.check, app)
-		if not ok then
-			geterrorhandler()(why)
-		elseif why ~= nil and why ~= false then
-			return ns.Text(why)
-		end
-	end
-end
-
--- starts the app's run; one running goes on with the new time and lease (kit.app on = true again, no stop), and with
--- what its declaration now says
+-- starts the app's run; one running goes on with the new time and lease (kit.app on = true again, no stop). The
+-- caller (kit.app.open) reconciled it and asked Blocked first
 local function Start(app, minutes, lease, agent)
-	local why = Blocked(app)
-	if why then Fail("app %s cannot start: %s", app.id, why) end
 	local rec = Record(app)
 	if not rec or not Me() then Fail("app %s cannot start before the player is in the world", app.id) end
 	local now = time()
-	local old = Owned(app)
-	if old and (tonumber(old.ends) or 0) <= now then
-		Stop(app, "expired")
-	elseif old then
-		old.ends, old.lease = now + math.floor(minutes * 60), lease or nil
-		if agent then old.seen = now end
-		Retune(app, old)
-		Subscribe(app)
-		Kit:Emit("kit.app", { app = app.id, on = true, ends = old.ends })
-		Ticking()
-		return old
-	end
-	local s = { started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0,
-		wakes = 0, buffer = {}, options = { digest = {} }, seen = agent and now or nil }
-	A.Char(app).run = s
-	Retune(app, s)
-	Subscribe(app)
-	if not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends))) end
-	Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends })
-	Ticking()
-	return s
-end
-
--- a run kept from before a reload (or a login) goes on: heard again, retuned, ticked
-local function Resume(app)
 	local s = Owned(app)
-	if not s then return end
-	if (tonumber(s.ends) or 0) > time() then
-		Subscribe(app)
-		Retune(app, s)
+	if s and (tonumber(s.ends) or 0) <= now then
+		Stop(app, "expired")
+		s = nil
 	end
-	Ticking()
+	if apps[app.id] ~= app then Fail("app %s is gone", app.id) end   -- (a temporary app went with its run)
+	if s then
+		s.ends, s.lease = now + math.floor(minutes * 60), lease or nil
+		if agent then s.seen = now end
+		Retune(app, s)
+	else
+		s = { started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0, wakes = 0,
+			buffer = {}, options = { digest = {} }, seen = agent and now or nil }
+		A.Char(app).run = s
+		Retune(app, s)
+		if not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends))) end
+	end
+	local waiting = app.waiting
+	Reconcile(app, true)
+	if Owned(app) == s and app.waiting == waiting then   -- (a change of waiting: Reconcile said so)
+		Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends, waiting = waiting })
+	end
+	return s
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -311,53 +403,30 @@ function Kit:AppSay(id, text)
 end
 
 ------------------------------------------------------------------------------------------------------------------------
--- what else stops an app or starts it again
+-- what else may change what an app's run should be: each only reconciles (a declaration does in Decl.lua, kit.app.open
+-- in Api.lua)
 
--- its extension going off stops it, and so does one whose sources it hears or whose facets it sees
-Kit:On("kit.extension", function(_, e)
-	if type(e) ~= "table" or e.on ~= false then return end
-	for _, id in ipairs(Ids()) do
-		local app = apps[id]
-		local hears = false                              -- one of its sources is that extension's: it would hear nothing
-		for _, entry in ipairs(app and app.decl.hear or {}) do
-			local name = Split(entry)
-			local src = name and ns.sources[name]
-			if src and src.ext.id == e.id then hears = true end
-		end
-		if app and (app.decl.extension == e.id or hears or SeesOf(app, e.id)) then Stop(app, "extension") end
-	end
-end)
-
--- a source registered (another addon's, once its files have run): kit.app.open's doc tells of it, and an app running
--- that hears it is heard again; a facet the same, and an app running that sees it watches it
-ns.OnChange(function(what, source)
-	if what == "facet" then                              -- a facet registered: kit.app.open's doc, and apps that see it
-		A.DeclareOpen()
-		for _, id in ipairs(Ids()) do
-			local app = apps[id]
-			if app.subs and Run(app) then Watch(app) end
-		end
+-- an extension registered, turned on or off; a source or a facet registered (another addon's, once its files have
+-- run: kit.app.declare's doc tells of it too)
+ns.OnChange(function(what, x)
+	if what == "extension" then
+		if type(x) == "table" and x.active then wasOn[x.id] = true end
+	elseif what == "source" or what == "facet" then
+		if A.Redeclare then A.Redeclare() end
+	else
 		return
 	end
-	if what ~= "source" then return end
-	A.DeclareOpen()
-	for _, id in ipairs(Ids()) do
-		local app = apps[id]
-		if type(source) == "table" and HearsFrom(app, source.name) and Run(app) then
-			Unsubscribe(app)
-			Subscribe(app)
-		end
-	end
+	All()
 end)
 
+-- the runs kept from before a reload (or the last time this character was here) go on, wait or end
 ns.When("login", function()
-	A.loggedIn = true
-	for _, id in ipairs(order) do Resume(apps[id]) end
+	A.loggedIn, loginAt = true, time()
+	All()
 end)
 
 ------------------------------------------------------------------------------------------------------------------------
 -- shared with the other files
 
-A.Retune, A.Unsubscribe = Retune, Unsubscribe
-A.Drop, A.Stop, A.Present = Drop, Stop, Present
-A.Blocked, A.Start, A.Resume = Blocked, Start, Resume
+A.Retune, A.Present = Retune, Present
+A.Drop, A.Stop, A.Blocked, A.Start, A.Reconcile = Drop, Stop, Blocked, Start, Reconcile

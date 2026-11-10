@@ -159,7 +159,7 @@ class Chat06(unittest.TestCase):
 
     def test_once_and_a_copy_for_an_app(self):
         s = self.start()
-        s.lua.execute(b"__answer = WuxianKit:Call('kit.app.open', { app = 'ear', hear = { 'chat:guild' }, lease = 0 })")
+        s.lua.execute(b"__answer = WuxianKit:Call('kit.app.open', { app = 'ear', lease = 0, temp = { hear = { 'chat:guild' } } })")
         self.subscribe(s, "guild", "__g")
         args = self.args("one", "A-Realm", ASKER)
         s.fire("CHAT_MSG_GUILD", *args)
@@ -193,7 +193,7 @@ class Chat06(unittest.TestCase):
             self.assertIn(b"channel is", err)
 
     def heard(self, s):
-        """the items of the app ear's wakes (kit.app.open { app = 'ear', hear = ... }: no digest, one each)"""
+        """the items of the app ear's wakes (kit.app.open { app = 'ear', temp = { hear = ... } }: no digest, one each)"""
         return [i for e in py(s.g("__events")) or [] if e["topic"] == "app.ear" for i in e["data"]["items"]]
 
     # -- ids --------------------------------------------------------------------------------------------------------------

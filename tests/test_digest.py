@@ -68,7 +68,7 @@ class Digest(unittest.TestCase):
 
     def test_ids_and_times(self):
         s = self.start()
-        self.call(s, "kit.app.open", "{ app = 'p', hear = { 'dg:a' }, lease = 0 }")
+        self.call(s, "kit.app.open", "{ app = 'p', lease = 0, temp = { hear = { 'dg:a' } } }")
         a = s.lua.eval(b"WuxianKit:NewId()")
         for item in ("{ a = 1 }", "{ id = 500 }", "{ b = 2 }", "{ time = 5 }"):
             s.lua.execute(f"__push('a', {item})".encode())
@@ -87,8 +87,8 @@ class Digest(unittest.TestCase):
 
     def test_urgent_full_and_batch(self):
         s = self.start()
-        self.call(s, "kit.app.open", "{ app = 't', hear = { 'dg:a' }, lease = 0, urgent = { 'question' }, "
-                                     "digest = { gather = 3, every = 20, most = 4 } }")
+        self.call(s, "kit.app.open", "{ app = 't', lease = 0, temp = { hear = { 'dg:a' }, urgent = { 'question' }, "
+                                     "digest = { gather = 3, every = 20, most = 4 } } }")
         self.push(s, "a", "hi")
         self.push(s, "a", "help?", why="question")
         s.run(1.5)
@@ -110,8 +110,8 @@ class Digest(unittest.TestCase):
 
     def test_every_false_and_idle(self):
         s = self.start()
-        self.call(s, "kit.app.open", "{ app = 'q', hear = { 'dg:b' }, lease = 0, "
-                                     "digest = { every = false, idle = 30, most = 2 } }")
+        self.call(s, "kit.app.open", "{ app = 'q', lease = 0, temp = { hear = { 'dg:b' }, "
+                                     "digest = { every = false, idle = 30, most = 2 } } }")
         self.push(s, "b", "x")
         s.run(25)
         self.assertEqual(self.wakes(s, "q"), [])                         # only full, urgent or idle
@@ -129,9 +129,12 @@ class Digest(unittest.TestCase):
         s.lua.execute(TICKERS)
         s = self.start(s)
         self.assertEqual(self.live(s), [])                              # no app runs
-        self.call(s, "kit.app.open", "{ app = 'p', hear = { 'dg:a' }, lease = 0 }")
+        self.call(s, "kit.app.declare", "{ app = 'p', hear = { 'dg:a' }, lease = 0 }")
+        self.call(s, "kit.app.declare", "{ app = 'q', hear = { 'dg:b' }, lease = 0, digest = { every = 20 } }")
+        self.assertEqual(self.live(s), [])                              # declared: none runs yet
+        self.call(s, "kit.app.open", "{ app = 'p' }")
         self.assertEqual(self.live(s), [True])
-        self.call(s, "kit.app.open", "{ app = 'q', hear = { 'dg:b' }, lease = 0, digest = { every = 20 } }")
+        self.call(s, "kit.app.open", "{ app = 'q' }")
         self.call(s, "kit.app.open", "{ app = 'p' }")                    # one, however many run
         self.assertEqual(self.live(s), [True])
         self.call(s, "kit.app.stop", "{ app = 'p' }")
@@ -152,7 +155,8 @@ class Digest(unittest.TestCase):
 
     def test_the_lease_through_a_reload(self):
         s = self.start(saved={"WoWBridge": bridge("0.9.7")})
-        self.agent(s, "kit.app.open", "{ app = 'l', title = 'L', hear = { 'dg:a' }, lease = 60 }")
+        self.agent(s, "kit.app.declare", "{ app = 'l', title = 'L', hear = { 'dg:a' }, lease = 60 }")
+        self.agent(s, "kit.app.open", "{ app = 'l' }")
         s.run(40)
         self.agent(s, "kit.app.status", "{ app = 'l' }")                 # the heartbeat, kept in its run
         s2 = self.start(s.reload())

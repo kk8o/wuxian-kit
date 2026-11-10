@@ -31,7 +31,7 @@ class Chat05(unittest.TestCase):
         return err.decode()
 
     def heard(self, s):
-        """the items of the app ear's wakes (kit.app.open { app = 'ear', hear = ... }: no digest, one each)"""
+        """the items of the app ear's wakes (kit.app.open { app = 'ear', temp = { hear = ... } }: no digest, one each)"""
         return [i for e in py(s.g("__events")) or [] if e["topic"] == "app.ear" for i in e["data"]["items"]]
 
     def say(self, s, event, text, sender, guid):
@@ -49,7 +49,7 @@ class Chat05(unittest.TestCase):
 
     def test_ids_go_on_through_a_reload(self):
         s = self.start()
-        self.call(s, "kit.app.open", "{ app = 'ear', hear = { 'chat:guild' }, lease = 0 }")
+        self.call(s, "kit.app.open", "{ app = 'ear', lease = 0, temp = { hear = { 'chat:guild' } } }")
         a = self.say(s, "CHAT_MSG_GUILD", "one", "Asker-Realm", ASKER)
         b = self.say(s, "CHAT_MSG_GUILD", "two", "Asker-Realm", ASKER)
         c = self.say(s, "CHAT_MSG_PARTY", "three", "Asker-Realm", ASKER)     # not listened to: still read, still an id

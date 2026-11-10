@@ -1,7 +1,7 @@
 """游戏动态 (Game events, ARCHITECTURE section 11): the source game (an app that hears game:<topic>, game:<kind> or
 game:*), WuxianKit.Game:On / Off, the guild topic, and laziness (a topic's events are registered only while something
 hears it). The detectors of the other topics are in test_game_combat.py and test_game_progress.py, the facet today in
-test_game_today.py; GameTest here drives them all, through a temporary app (kit.app.open temp = true) named probe."""
+test_game_today.py; GameTest here drives them all, through a temporary app (kit.app.open's temp) named probe."""
 import unittest
 
 from kitmock import Session, lupa, py
@@ -28,15 +28,19 @@ class Game:
         return bool(self.s.g("__ok")), py(self.s.g("__answer"))
 
     def open_args(self, topics=None, minutes=60, temp=True):
+        """kit.app.open's arguments for the app probe; temp: with its declaration (it hears the topics; all: game:*)"""
         hear = ["game:" + t for t in topics] if topics is not None else ["game:*"]
-        args = [f"app = 'probe', minutes = {minutes}, lease = 0", "hear = { " + ", ".join(repr(h) for h in hear) + " }"]
-        if temp:
-            args.append("temp = true")
-        return "{ " + ", ".join(args) + " }"
+        decl = "hear = { " + ", ".join(repr(h) for h in hear) + " }"
+        if not temp:
+            return decl
+        return f"{{ app = 'probe', minutes = {minutes}, lease = 0, temp = {{ {decl} }} }}"
 
     def listen(self, topics=None, minutes=60, temp=True):
-        """the app probe hears the topics (all: game:*), a temporary one unless temp is false; no lease"""
-        return self.call("kit.app.open", self.open_args(topics, minutes, temp))
+        """the app probe hears the topics (all: game:*), a temporary one unless temp is false (declared, kept); no lease"""
+        if temp:
+            return self.call("kit.app.open", self.open_args(topics, minutes))
+        self.call("kit.app.declare", f"{{ app = 'probe', {self.open_args(topics, temp=False)} }}")
+        return self.call("kit.app.open", f"{{ app = 'probe', minutes = {minutes}, lease = 0 }}")
 
     def stop(self):
         return self.call("kit.app.stop", "{ app = 'probe' }")

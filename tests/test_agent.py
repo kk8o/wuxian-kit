@@ -103,7 +103,7 @@ class Agent(unittest.TestCase):
         with self.assertRaises(ApiError) as cm:
             self.call("tune.cvar.set", {"name": "secureThing", "value": 0})
         self.assertIn("secureThing is secure", cm.exception.message)
-        self.call("kit.app.open", {"app": "ear", "temp": True, "hear": ["chat:guild"], "minutes": 5})
+        self.call("kit.app.open", {"app": "ear", "minutes": 5, "temp": {"hear": ["chat:guild"]}})
         s.lua.globals()[b"__fire"](b"CHAT_MSG_GUILD", b"anyone know the way?", b"Asker-Realm", b"", b"", b"", b"", 0, 0, b"", 1,
                                    90, b"Player-1-00000002")
         s.run(4)

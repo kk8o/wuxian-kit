@@ -1,6 +1,6 @@
 """任务指引 (Quest guide, Extensions/Route): the source route (route.step / progress / arrive / done), the state route,
 WuxianKit.Route:Provide and the choice of provider, and the provider game (Native.lua: the game's own quest tracking).
-RouteApp drives it through a temporary app (kit.app.open temp = true) named probe; test_guides.py uses it for RestedXP."""
+RouteApp drives it through a temporary app (kit.app.open's temp) named probe; test_guides.py uses it for RestedXP."""
 import unittest
 
 from kitmock import ROUTE, Session, lupa, py
@@ -32,7 +32,7 @@ class RouteApp:
 
     def listen(self, hear=("route:*",), app="probe"):
         hears = ", ".join(repr(h) for h in hear)
-        answer = self.call("kit.app.open", f"{{ app = {app!r}, minutes = 60, lease = 0, temp = true, hear = {{ {hears} }} }}")
+        answer = self.call("kit.app.open", f"{{ app = {app!r}, minutes = 60, lease = 0, temp = {{ hear = {{ {hears} }} }} }}")
         self.run(0.5)
         return answer
 
@@ -202,7 +202,7 @@ class Native(RouteTest):
 
     def test_what_a_hear_entry_takes(self):
         a = self.app()
-        ok, why = a.try_call("kit.app.open", "{ app = 'p', temp = true, hear = { 'route:steps' } }")
+        ok, why = a.try_call("kit.app.open", "{ app = 'p', temp = { hear = { 'route:steps' } } }")
         self.assertFalse(ok)
         self.assertIn("a route source is step, progress, arrive, done or *", why)
         self.assertTrue(a.listen(["route:*", "route:done"])["on"])
@@ -344,8 +344,8 @@ class State(RouteTest):
         if not a.eval("WuxianKit:Extension('route').Facet ~= nil"):
             self.skipTest("the core has no ext:Facet yet (K4)")
         a.lua_("__track(3001)")
-        a.call("kit.app.open", "{ app = 'viewer', temp = true, minutes = 60, lease = 0, see = { 'route' }, "
-                               "hear = { 'route:done' } }")
+        a.call("kit.app.open", "{ app = 'viewer', minutes = 60, lease = 0, temp = { see = { 'route' }, "
+                               "hear = { 'route:done' } } }")
         a.run(0.5)
         state = a.call("kit.app.state", "{ app = 'viewer' }")["state"]["route"]
         self.assertEqual((state["provider"], state["key"]), ("game", "game|3001"))

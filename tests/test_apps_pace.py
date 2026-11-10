@@ -28,7 +28,7 @@ class Pace(AppCase):
 
     def test_normal_then_quiet_then_lively(self):
         s = self.start()
-        st = self.agent(s, "kit.app.open", CHAT)
+        st = self.opens(s, CHAT)
         self.assertEqual((st["pace"], st["quiet"]), ("normal", False))
         o = py(s.ns.AppOptionList(b"g"))
         self.assertEqual((o["activity"]["value"], o["activity"]["kind"], [c["value"] for c in o["activity"]["choices"]],
@@ -75,7 +75,7 @@ class Pace(AppCase):
 
     def test_its_own_pace(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'g', hear = { 'chat:guild' }, lease = 0, "
+        self.opens(s, "{ app = 'g', hear = { 'chat:guild' }, lease = 0, "
                                       "pace = { normal = { every = 10, wake = { 'question', 'guild.join' } } } }")
         self.say(s, "plain")
         s.run(12)
@@ -89,7 +89,7 @@ class Pace(AppCase):
 
     def test_retuned_after_a_reload(self):
         s = self.start()
-        self.agent(s, "kit.app.open", CHAT)
+        self.opens(s, CHAT)
         s.ns.SetAppOption(b"g", b"activity", b"lively")
         s.lua.execute(b"WuxianKitDB.apps.g.chars[UnitGUID('player')].run.options.digest.every = 999")   # as an older version kept it
         s2 = self.start(s.reload())
@@ -117,7 +117,7 @@ class Quiet(AppCase):
 
     def test_across_midnight_and_out_at_its_end(self):
         s = self.start(Session(self, saved={"WoWBridge": bridge("0.9.7")}, t0=at(6, 58)))
-        self.agent(s, "kit.app.open", CHAT)
+        self.opens(s, CHAT)
         s.ns.SetAppOption(b"g", b"quiet", b"23:00-07:00")                 # now: in it at once
         self.assertTrue(self.agent(s, "kit.app.status", "{ app = 'g' }")["quiet"])
         self.assertTrue(self.lua(s, "WuxianKitDB.apps.g.chars[UnitGUID('player')].run.quiet"))
@@ -137,7 +137,7 @@ class Quiet(AppCase):
 
     def test_into_it_at_its_start(self):
         s = self.start(Session(self, saved={"WoWBridge": bridge("0.9.7")}, t0=at(0, 59)))
-        self.agent(s, "kit.app.open", CHAT)
+        self.opens(s, CHAT)
         s.ns.SetAppOption(b"g", b"quiet", b"1-8")
         self.assertFalse(self.agent(s, "kit.app.status", "{ app = 'g' }")["quiet"])
         s.run(65)                                                         # 01:00

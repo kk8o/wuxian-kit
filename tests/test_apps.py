@@ -1,5 +1,6 @@
-"""Apps (ARCHITECTURE section 10): an agent's declaration (kit.app.open, checked, remembered, at most 8) and an addon's
-(WuxianKit:App, with check, urgent, enrich: it wins); status, the heartbeat and the lease, stop, recent, kit.apps; runs
+"""Apps (ARCHITECTURE section 10): an agent's declaration (kit.app.declare, checked, remembered, at most 8; kit.app.open
+starts it) and an addon's (WuxianKit:App, with check, urgent, enrich: it wins); status, the heartbeat and the lease, stop,
+recent, kit.apps; runs
 through reloads and per character; the sources (chat, game and bus as the extensions register them, addon, control,
 player) with fakes of Chat:On and Game:On; digest, urgent lists, controls and the player's words; said; the extension an app belongs to; options; the
 manifest's apps. Pace and quiet hours are in test_apps_pace.py."""
@@ -61,6 +62,12 @@ class AppCase(unittest.TestCase):
         s.lua.execute(f"__r = __fns[{cap!r}]({args})".encode())
         return py(s.g("__r"))
 
+    def opens(self, s, decl, run=""):
+        """an agent declares an app that is kept (decl: kit.app.declare's arguments, the whole declaration) and starts
+        it (run: kit.app.open's other arguments, minutes and lease of this run); the status kit.app.open answers"""
+        app = self.agent(s, "kit.app.declare", decl)["app"]
+        return self.agent(s, "kit.app.open", f"{{ app = {app!r}, {run} }}")
+
     def fails(self, s, cap, args="{}"):
         ok, err = s.lua.eval(f"pcall(__fns[{cap!r}], {args})".encode())
         self.assertFalse(ok, args)
@@ -85,9 +92,13 @@ class Basics(AppCase):
     def test_open_status_recent_stop(self):
         s = self.start()
         now = s.lua.eval(b"time()")
-        st = self.agent(s, "kit.app.open", "{ app = 'notes', title = 'Notes', hear = { 'bus:demo.*' } }")
+        st = self.agent(s, "kit.app.declare", "{ app = 'notes', title = 'Notes', hear = { 'bus:demo.*' } }")
+        self.assertEqual((st["on"], st["changed"], st["lease"]), (False, True, 600))   # kept, not started
+        self.assertEqual(self.events(s, "kit.app"), [])
+        st = self.agent(s, "kit.app.open", "{ app = 'notes' }")
         self.assertEqual((st["app"], st["title"], st["by"], st["on"], st["lease"], st["hear"], st["seen"], st["present"]),
                          ("notes", "Notes", "agent", True, 600, ["bus:demo.*"], now, True))
+        self.assertNotIn("waiting", st)
         self.assertEqual(st["ends"], now + 7200)
         self.assertEqual((st["heard"], st["wakes"], st["said"], st["next"]), (0, 0, 0, 0))
         self.assertNotIn("pace", st)
@@ -132,31 +143,40 @@ class Basics(AppCase):
     def test_reopen_goes_on_and_a_new_declaration_too(self):
         s = self.start()
         decl = "{ app = 'r', hear = { 'bus:demo.*' }, digest = { every = false } }"
-        self.agent(s, "kit.app.open", decl)
+        self.opens(s, decl)
         s.lua.execute(b"WuxianKit:Emit('demo.a', 1)")
         s.run(10)
         st = self.agent(s, "kit.app.open", "{ app = 'r', minutes = 30 }")  # goes on: on again, no stop
         self.assertEqual((st["heard"], st["ends"]), (1, s.lua.eval(b"time()") + 1800))
-        st = self.agent(s, "kit.app.open", decl)                         # the same declaration: goes on too
-        self.assertEqual(st["heard"], 1)
-        self.assertEqual([e["on"] for e in self.events(s, "kit.app")], [True, True, True])
-        st = self.agent(s, "kit.app.open", "{ app = 'r', hear = { 'bus:other.*' } }")   # changed: goes on, hears that
-        self.assertEqual(st["heard"], 1)
-        self.assertEqual([e["on"] for e in self.events(s, "kit.app")], [True, True, True, True])
+        st = self.agent(s, "kit.app.declare", decl)                        # the same declaration: nothing changed
+        self.assertEqual((st["heard"], st["changed"], st["on"]), (1, False, True))
+        self.assertEqual([e["on"] for e in self.events(s, "kit.app")], [True, True])
+        st = self.agent(s, "kit.app.declare", "{ app = 'r', hear = { 'bus:other.*' } }")   # changed: goes on, hears that
+        self.assertEqual((st["heard"], st["changed"], st["on"]), (1, True, True))
+        self.assertEqual([e["on"] for e in self.events(s, "kit.app")], [True, True])   # neither a stop nor a start
         s.lua.execute(b"WuxianKit:Emit('demo.b', 2) WuxianKit:Emit('other.c', 3)")
         self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'r' }")["heard"], 2)
 
     def test_hidden(self):
-        """hidden: listed by kit.apps (hidden true), no chat line when it starts or stops"""
+        """hidden (a temporary app's only): listed by kit.apps while it runs (hidden true), no chat line when it starts
+        or stops"""
         s = self.start()
         s.lines.clear()
-        self.agent(s, "kit.app.open", "{ app = 'pipe', title = 'Pipe', hear = { 'bus:demo.*' }, temp = true, "
-                                      "hidden = true, lease = 0 }")
+        st = self.agent(s, "kit.app.open", "{ app = 'pipe', lease = 0, temp = { title = 'Pipe', hear = { 'bus:demo.*' }, "
+                                           "hidden = true } }")
+        self.assertEqual((st["on"], st["temp"], st["hidden"]), (True, True, True))
         self.assertEqual([a.get("hidden") for a in self.agent(s, "kit.apps", "{}") if a["id"] == "pipe"], [True])
+        self.assertEqual([a.get("hidden") for a in py(s.ns.AppList()) if a["id"] == "pipe"], [True])
         self.agent(s, "kit.app.stop", "{ app = 'pipe' }")
         self.assertEqual(s.chat(), "")
-        self.agent(s, "kit.app.open", "{ app = 'seen', hear = { 'bus:demo.*' }, temp = true, lease = 0 }")
+        self.assertEqual([a for a in py(s.ns.AppList()) if a["id"] == "pipe"], [])
+        self.agent(s, "kit.app.open", "{ app = 'seen', lease = 0, temp = { hear = { 'bus:demo.*' } } }")
         self.assertIn("seen", s.chat())
+        self.assertIn("hidden is a temporary app's only",                 # an app that is kept has its card
+                      self.fails(s, "kit.app.declare", "{ app = 'kept', hidden = true }"))
+        self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.kept"))
+        self.agent(s, "kit.app.declare", "{ app = 'kept', hidden = false }")   # false is no mark at all
+        self.assertNotIn("hidden", self.agent(s, "kit.app.status", "{ app = 'kept' }"))
 
     def test_validation(self):
         s = self.start()
@@ -194,23 +214,41 @@ class Basics(AppCase):
                  "at most 8 options"),
                 ("{ app = 'a', color = 'red' }", "no argument color"),
                 ("{ app = 'a', minutes = -1, title = 'x' }", "minutes is a number of minutes"),
-                ("{ app = 'ghost' }", "no app ghost: the first kit.app.open"),
+                ("{ app = 'help' }", "an app's id is not help: /wk help is the window's own command"),
+                ("{ app = 'yes', title = 'Yes' }", "an app's id is not yes"),
+                ("{ app = 'a', controls = { { cmd = 'brief', label = 'Stop' } } }",
+                 "controls[1].label: Stop is one of the core's words"),
+                ("{ app = 'a', controls = { { cmd = 'brief', label = '静音' } } }", "is one of the core's words"),
+                ("{ app = 'a', controls = { { cmd = 'brief', label = 'Go' }, { cmd = 'more2', label = 'Go' } } }",
+                 "controls[1].label: Go is also controls[2]'s label"),
+                ("{ app = 'a', controls = { { cmd = 'brief', label = 'Go' }, { cmd = 'go', label = 'Run' } } }",
+                 "controls[1].label: Go is also controls[2]'s cmd"),
+        ):
+            self.assertIn(why, self.fails(s, "kit.app.declare", args), args)
+        for args, why in (
+                ("{ app = 'ghost' }", "no app ghost: kit.app.declare declares one that is kept"),
+                ("{ app = 'a', title = 'x' }", "kit.app.open: no argument title"),     # a declaration is not open's
+                ("{ app = 'a', temp = true }", "temp is a table"),
+                ("{ app = 'a', temp = { hear = { 'radio:x' } } }", "radio:x: no source radio"),
+                ("{ app = 'a', temp = { minutes = 5, color = 'red' } }", "the declaration: no field color"),
+                ("{ app = 'lang', temp = {} }", "an app's id is not lang"),
+                ("{ app = 'a', minutes = 0, temp = {} }", "minutes is a number of minutes"),
         ):
             self.assertIn(why, self.fails(s, "kit.app.open", args), args)
         self.assertIn("no app ghost (kit.apps lists them)", self.fails(s, "kit.app.status", "{ app = 'ghost' }"))
         self.assertEqual([a["id"] for a in self.agent(s, "kit.apps")], ["guild"])   # nothing kept of a refused one
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.a"))
 
-        st = self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'game:quest', 'game:quest.turnin', 'chat:*', "
+        st = self.opens(s, "{ app = 'a', hear = { 'game:quest', 'game:quest.turnin', 'chat:*', "
                                            "'chat:guild', 'game:combat', 'bus:x.y', 'bus:x.y' }, lease = 10, minutes = 9999 }")
         self.assertEqual(st["hear"], ["game:quest", "chat:*", "game:combat", "bus:x.y"])   # covered ones go
         self.assertEqual(st["lease"], 60)                                  # at least 60
         self.assertEqual(st["ends"] - s.lua.eval(b"time()"), 720 * 60)      # at most 720 minutes
-        self.assertEqual(self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'game:*' }, lease = 0 }")["lease"], 0)
+        self.assertEqual(self.opens(s, "{ app = 'b', hear = { 'game:*' }, lease = 0 }")["lease"], 0)
         for i in range(6):
-            self.agent(s, "kit.app.open", f"{{ app = 'n{i}', title = 'N{i}' }}")
-        self.assertIn("at most 8 apps an agent declared", self.fails(s, "kit.app.open", "{ app = 'ninth', title = '9' }"))
-        self.agent(s, "kit.app.open", "{ app = 'n0', title = 'again' }")     # a known one may be declared again
+            self.opens(s, f"{{ app = 'n{i}', title = 'N{i}' }}")
+        self.assertIn("at most 8 apps an agent declared", self.fails(s, "kit.app.declare", "{ app = 'ninth', title = '9' }"))
+        self.opens(s, "{ app = 'n0', title = 'again' }")     # a known one may be declared again
 
         ok, err = s.lua.eval(b"pcall(WuxianKit.App, WuxianKit, 'Nope', {})")
         self.assertFalse(ok)
@@ -220,7 +258,7 @@ class Basics(AppCase):
 
     def test_agent_texts_kept_raw(self):
         s = self.start()
-        st = self.agent(s, "kit.app.open", "{ app = 't', title = '|cffff0000Red|r', options = { o = { kind = 'choice', "
+        st = self.opens(s, "{ app = 't', title = '|cffff0000Red|r', options = { o = { kind = 'choice', "
                                            "title = 'Pick|n', choices = { { value = 'a', label = '|TAny|t' }, { value = 'b' } } } } }")
         self.assertEqual(st["title"], "|cffff0000Red|r")                   # whoever draws it escapes it
         options = py(s.ns.AppOptionList(b"t"))
@@ -241,14 +279,18 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
 
     def test_an_addons_declaration_wins(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'club', title = 'Mine', hear = { 'bus:x.*' } }")
+        self.opens(s, "{ app = 'club', title = 'Mine', hear = { 'bus:x.*' } }")
         self.assertIsNotNone(s.lua.eval(b"WuxianKitDB.apps.club.decl"))
         s.lua.execute(self.ADDON)
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.club.decl"))      # the agent's gives way
         self.assertEqual(self.events(s, "kit.app")[-1]["on"], True)        # its run goes on, the addon's now
-        st = self.agent(s, "kit.app.open", "{ app = 'club', title = 'Other', hear = { 'bus:y' }, lease = 120 }")
-        self.assertEqual((st["title"], st["by"], st["hear"], st["lease"], st["ignored"]),
-                         ("Club chat", "addon", ["chat:guild", "game:guild"], 120, ["hear", "title"]))
+        self.assertIn("app club is an addon's (WxClub): its declaration is the addon's",   # not the agent's to declare
+                      self.fails(s, "kit.app.declare", "{ app = 'club', title = 'Other', hear = { 'bus:y' } }"))
+        self.assertIn("app club is an addon's", self.fails(s, "kit.app.open", "{ app = 'club', temp = { title = 'T' } }"))
+        self.assertIn("only an app an agent declared is forgotten", self.fails(s, "kit.app.forget", "{ app = 'club' }"))
+        st = self.agent(s, "kit.app.open", "{ app = 'club', lease = 120 }")
+        self.assertEqual((st["title"], st["by"], st["hear"], st["lease"]),
+                         ("Club chat", "addon", ["chat:guild", "game:guild"], 120))
         self.assertEqual(self.agent(s, "kit.apps")[1], {"id": "club", "title": "Club chat", "by": "addon",
                                                         "addon": "WxClub", "on": True, "ends": st["ends"],
                                                         "present": True, "prompt": "club-chat",
@@ -278,7 +320,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
 
     def test_sources_copy_and_dedupe(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'c', hear = { 'chat:*', 'game:*', 'game:quest' }, see = { 'me' } }")
+        self.opens(s, "{ app = 'c', hear = { 'chat:*', 'game:*', 'game:quest' }, see = { 'me' } }")
         self.assertEqual(self.lua(s, "__count(__chatsubs)"), 1)
         self.assertEqual(self.lua(s, "__count(__gamesubs)"), 1)
         s.lua.execute(b"__msg = __say('party', { plain = 'hi', why = 'question' })")
@@ -315,7 +357,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
 class Runs(AppCase):
     def test_through_a_reload_and_per_character(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'keep', title = 'Keep', hear = { 'bus:demo.*' }, lease = 0 }")
+        self.opens(s, "{ app = 'keep', title = 'Keep', hear = { 'bus:demo.*' }, lease = 0 }")
         s.lua.execute(b"WuxianKit:Emit('demo.a', 1)")
         before = self.wakes(s, "keep")[0]["items"][0]["id"]
         ends = self.agent(s, "kit.app.status", "{ app = 'keep' }")["ends"]
@@ -353,7 +395,7 @@ class Runs(AppCase):
 
     def test_lease_and_time(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'l', title = 'L', lease = 60 }")
+        self.opens(s, "{ app = 'l', title = 'L', lease = 60 }")
         s.run(50)
         self.assertTrue(self.agent(s, "kit.app.status", "{ app = 'l' }")["present"])   # a heartbeat
         s.run(50)
@@ -383,7 +425,7 @@ class Runs(AppCase):
         self.assertIs(py(s.ns.AppStatus(b"xa"))["extension"], True)
         s.ns.Switch(b"xg", False)
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "xa", "on": False, "why": "extension"})
-        self.assertIn("XA: its extension was turned off, stopped", s.chat())
+        self.assertIn("XA: stopped. Its extension XG is off", s.chat())
         self.assertEqual(self.agent(s, "kit.app.open", "{ app = 'xa' }")["blocked"], "Its extension XG is off")
         st = py(s.ns.AppStatus(b"xa"))
         self.assertEqual((st["extension"], st["blocked"], st["why"]), (False, "Its extension XG is off", "extension"))
@@ -394,7 +436,7 @@ class Runs(AppCase):
         self.assertTrue(self.agent(s, "kit.app.open", "{ app = 'xa' }")["on"])
         s.ns.Switch(b"chat", False)                                       # a source's extension off: cannot start
         self.agent(s, "kit.app.stop", "{ app = 'xa' }")
-        st = self.agent(s, "kit.app.open", "{ app = 'cc', hear = { 'chat:guild' } }")
+        st = self.opens(s, "{ app = 'cc', hear = { 'chat:guild' } }")
         self.assertEqual(st["on"], False)
         self.assertIn("Needs the Chat extension on", st["blocked"])
 
@@ -402,7 +444,7 @@ class Runs(AppCase):
 class Wakes(AppCase):
     def test_urgent_lists_and_the_digest(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'u', hear = { 'chat:guild', 'game:guild' }, lease = 0, "
+        self.opens(s, "{ app = 'u', hear = { 'chat:guild', 'game:guild' }, lease = 0, "
                                       "digest = { gather = 2, every = false, most = 3 }, urgent = { 'question', 'guild.join' } }")
         s.lua.execute(b"__say('guild', { plain = 'just talk' })")
         s.run(30)
@@ -423,7 +465,7 @@ class Wakes(AppCase):
 
     def test_a_wake_kept_under_its_size(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'big', hear = { 'bus:demo.*' }, digest = { every = 5, most = 10 } }")
+        self.opens(s, "{ app = 'big', hear = { 'bus:demo.*' }, digest = { every = 5, most = 10 } }")
         for i in range(8):
             s.lua.execute(f"WuxianKit:Emit('demo.x', '{i}' .. string.rep('y', 1000))".encode())
         s.run(6)
@@ -435,7 +477,7 @@ class Wakes(AppCase):
 
     def test_controls_and_the_players_words(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'v', title = 'Voice', controls = { 'mute', 'stop' }, say = true, "
+        self.opens(s, "{ app = 'v', title = 'Voice', controls = { 'mute', 'stop' }, say = true, "
                                       "hear = { 'bus:demo.*' }, digest = { every = false } }")
         s.lua.execute(b"WuxianKit:Emit('demo.a', 1)")
         self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'mute')"), True)
@@ -456,7 +498,7 @@ class Wakes(AppCase):
         self.assertEqual(self.wakes(s, "v")[-1]["items"][0]["cmd"], "stop")    # told, then stopped
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "v", "on": False, "why": "player"})
         self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'mute')"), False)  # not running
-        self.agent(s, "kit.app.open", "{ app = 'w', controls = { 'test' } }")
+        self.opens(s, "{ app = 'w', controls = { 'test' } }")
         self.assertIs(s.lua.eval(b"WuxianKit:AppSay('w', 'hi')"), False)        # no say
         s.lua.execute(b"WuxianKit:AppControl('w', 'test')")
         self.assertEqual(self.wakes(s, "w")[-1]["reason"], "item")              # no digest: an item
@@ -465,7 +507,7 @@ class Wakes(AppCase):
     def test_controls_of_the_apps_own(self):
         """{cmd, label}: a button of the app's own, told as {cmd}; the label (or the cmd) names it too"""
         s = self.start(locale="zhCN")
-        self.agent(s, "kit.app.open", "{ app = 'v', controls = { 'test', { cmd = 'brief', label = '任务播报' }, 'stop' }, "
+        self.opens(s, "{ app = 'v', controls = { 'test', { cmd = 'brief', label = '任务播报' }, 'stop' }, "
                                       "hear = { 'bus:demo.*' } }")
         self.assertEqual([(c["cmd"], c["label"]) for c in py(s.ns.AppControls(b"v"))],
                          [("test", "试音"), ("brief", "任务播报"), ("stop", "停止")])
@@ -479,15 +521,15 @@ class Wakes(AppCase):
 
     def test_control_labels_in_chinese(self):
         s = self.start(locale="zhCN")
-        self.agent(s, "kit.app.open", "{ app = 'v', controls = { 'less', 'stop' } }")
+        self.opens(s, "{ app = 'v', controls = { 'less', 'stop' } }")
         self.assertEqual([c["label"] for c in py(s.ns.AppControls(b"v"))], ["少说", "停止"])
         self.assertEqual(s.ns.CONTROL_WORDS["离开".encode()], b"stop")
 
     def test_said(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'g', hear = { 'chat:guild', 'chat:whisper' } }")
-        self.agent(s, "kit.app.open", "{ app = 'p', hear = { 'chat:*' } }")
-        self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'bus:x' } }")
+        self.opens(s, "{ app = 'g', hear = { 'chat:guild', 'chat:whisper' } }")
+        self.opens(s, "{ app = 'p', hear = { 'chat:*' } }")
+        self.opens(s, "{ app = 'b', hear = { 'bus:x' } }")
         emit = ("WuxianKit:Emit('kit.proposal', {{ id = {id}, state = {state!r}, source = {source!r}, steps = {{ "
                 "{{ cap = 'chat.send', args = {{ channel = 'guild', text = 'a' }} }}, "
                 "{{ cap = 'chat.send', args = {{ channel = 'party', text = 'b' }} }}, "
@@ -520,14 +562,15 @@ class Manifest(AppCase):
         self.assertEqual(m["apps"], [guild])                               # the kit's own
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
-                         {"app": "string", "on": "boolean", "ends": "number?", "why": "string?"})
+                         {"app": "string", "on": "boolean", "ends": "number?", "why": "string?", "waiting": "string?"})
         self.assertNotIn("kit.app.launch", [e["topic"] for e in events])
         self.assertNotIn("kit.feed", [e["topic"] for e in events])
         caps = [c["id"] for c in next(e for e in m["extensions"] if e["id"] == "kit")["capabilities"]]
-        for cap in ("kit.app.open", "kit.app.declare", "kit.app.status", "kit.app.stop", "kit.app.recent", "kit.apps"):
+        for cap in ("kit.app.open", "kit.app.declare", "kit.app.stop", "kit.app.forget", "kit.app.describe",
+                    "kit.app.status", "kit.app.state", "kit.app.recent", "kit.apps"):
             self.assertIn(cap, caps)
         rev = m["revision"]
-        self.agent(s, "kit.app.open", "{ app = 'mm', title = 'MM', hear = { 'bus:demo.*' }, prompt = 'mm-skill' }")
+        self.opens(s, "{ app = 'mm', title = 'MM', hear = { 'bus:demo.*' }, prompt = 'mm-skill' }")
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', hear = { 'game:quest' } })")
         m = self.lua(s, "WuxianKit:Manifest()")
         self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
@@ -538,8 +581,8 @@ class Manifest(AppCase):
         self.assertNotEqual(m["revision"], rev)
         s.run(1)
         self.assertEqual(self.events(s, "kit.changed")[-1]["revision"], m["revision"])
-        self.assertIs(s.ns.ForgetApp(b"ad"), False)                       # an addon's stays
-        self.assertIs(s.ns.ForgetApp(b"mm"), True)
+        self.assertIs(s.ns.ForgetApp(b"ad", True), False)                 # an addon's stays
+        self.assertIs(s.ns.ForgetApp(b"mm", True), True)                  # the player removes it: all of it
         self.assertEqual([a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]], ["guild", "ad"])
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.mm"))
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "mm", "on": False, "why": "player"})
@@ -549,9 +592,9 @@ class Manifest(AppCase):
         the language in force, its title as it is (an agent's raw: it is data); none without a prompt; a change of
         language changes it and the revision"""
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'tt', title = 'Tea \"time\" |cff00ff00ok|r', hear = { 'bus:t.*' }, "
+        self.opens(s, "{ app = 'tt', title = 'Tea \"time\" |cff00ff00ok|r', hear = { 'bus:t.*' }, "
                                       "prompt = 'tea-time' }")
-        self.agent(s, "kit.app.open", "{ app = 'np', title = 'No prompt', hear = { 'bus:n.*' } }")
+        self.opens(s, "{ app = 'np', title = 'No prompt', hear = { 'bus:n.*' } }")
         want = START["en"].format('Tea "time" |cff00ff00ok|r', "tea-time")
         apps = {a["id"]: a for a in self.agent(s, "kit.apps")}
         self.assertEqual(apps["tt"]["start"], want)
@@ -576,7 +619,7 @@ class Manifest(AppCase):
 class Options(AppCase):
     def test_options(self):
         s = self.start()
-        self.agent(s, "kit.app.open", "{ app = 'o', options = { topics = { kind = 'list', title = 'Topics' }, "
+        self.opens(s, "{ app = 'o', options = { topics = { kind = 'list', title = 'Topics' }, "
                                       "volume = { kind = 'number', min = 0, max = 10, default = 3, unit = 'pt' }, "
                                       "mode = { kind = 'choice', choices = { { value = 'a', label = 'A' }, { value = 'b' } } }, "
                                       "name = { kind = 'text', default = 'Bob' }, loud = {} } }")

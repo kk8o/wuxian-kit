@@ -1,8 +1,8 @@
 """Sources (ext:Source, the layered kit): what apps hear is what the extensions register. The registry (a name is the
 whole kit's: another extension's of the same name is an error; the same extension's again replaces it), the core's bus
 and the chat and game extensions' own sources heard through apps, a new declaration of a source nobody registered
-refused while a remembered one stays (blocked until the source is there, then heard), kit.app.open's doc and the
-manifest made from the registry."""
+refused while a remembered one stays (blocked, and a run of it waiting, until the source is there, then heard),
+kit.app.declare's doc and the manifest made from the registry."""
 import unittest
 
 from kitmock import Session, lupa, py
@@ -69,8 +69,9 @@ class Sources(unittest.TestCase):
 
     def test_heard_through_an_app(self):
         s = self.start(before=RADIO)
-        st = self.agent(s, "kit.app.open", "{ app = 'mix', hear = { 'radio:jazz', 'chat:guild', 'game:quest', "
-                                           "'bus:demo.*' }, lease = 0 }")
+        self.agent(s, "kit.app.declare", "{ app = 'mix', hear = { 'radio:jazz', 'chat:guild', 'game:quest', "
+                                         "'bus:demo.*' }, lease = 0 }")
+        st = self.agent(s, "kit.app.open", "{ app = 'mix' }")
         self.assertEqual(st["hear"], ["radio:jazz", "chat:guild", "game:quest", "bus:demo.*"])
         s.lua.execute(b"__radio('jazz', { tune = 'So What' }) __radio('news', { story = 'x' })")
         s.fire("CHAT_MSG_GUILD", "hello", "Asker-Realm", "", "", "", "", 0, 0, "", 1, 4242, "Player-1-00000002")
@@ -79,9 +80,9 @@ class Sources(unittest.TestCase):
         got = [(i["source"], i.get("tune") or i.get("plain") or i.get("kind") or i.get("topic")) for i in self.items(s, "mix")]
         self.assertEqual(got, [("radio", "So What"), ("chat", "hello"), ("game", "quest.turnin"), ("bus", "demo.ping")])
         self.assertIn("radio:rock: a station is jazz or news",
-                      self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'radio:rock' } })"))
+                      self.fails(s, "__fns['kit.app.declare']({ app = 'r', hear = { 'radio:rock' } })"))
         self.assertIn("pop:x: no source pop (the sources: bus, chat, game, radio, route)",
-                      self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'pop:x' } })"))
+                      self.fails(s, "__fns['kit.app.declare']({ app = 'r', hear = { 'pop:x' } })"))
         s.ns.Switch(b"rx", False)                                        # its extension off: the app stops
         st = self.agent(s, "kit.app.status", "{ app = 'mix' }")
         self.assertEqual((st["on"], st["why"]), (False, "extension"))
@@ -92,36 +93,38 @@ class Sources(unittest.TestCase):
 
     def test_a_remembered_declaration_waits_for_its_source(self):
         s = self.start(before=RADIO)
-        self.agent(s, "kit.app.open", "{ app = 'fan', title = 'Fan', hear = { 'radio:news' }, lease = 0 }")
-        self.agent(s, "kit.app.open", "{ app = 'mix', hear = { 'radio:jazz', 'bus:demo.*' }, lease = 0 }")
-        self.agent(s, "kit.app.stop", "{ app = 'fan' }")
+        self.agent(s, "kit.app.declare", "{ app = 'fan', title = 'Fan', hear = { 'radio:news' }, lease = 0 }")
+        self.agent(s, "kit.app.declare", "{ app = 'mix', hear = { 'radio:jazz', 'bus:demo.*' }, lease = 0 }")
+        self.agent(s, "kit.app.open", "{ app = 'mix' }")
         s2 = self.start(s.reload())                                      # the radio's addon is not loaded (yet)
         st = self.agent(s2, "kit.app.status", "{ app = 'fan' }")
         self.assertEqual((st["on"], st["hear"], st["blocked"]), (False, ["radio:news"], "Needs the source radio"))
         st = self.agent(s2, "kit.app.open", "{ app = 'fan' }")
         self.assertEqual((st["on"], st["blocked"]), (False, "Needs the source radio"))
         self.assertIn("radio:news: no source radio",
-                      self.fails(s2, "__fns['kit.app.open']({ app = 'new', hear = { 'radio:news' } })"))
-        self.assertTrue(self.agent(s2, "kit.app.status", "{ app = 'mix' }")["on"])   # a run goes on, hearing the rest
+                      self.fails(s2, "__fns['kit.app.declare']({ app = 'new', hear = { 'radio:news' } })"))
+        st = self.agent(s2, "kit.app.status", "{ app = 'mix' }")         # a run waits for it: on, nothing heard yet
+        self.assertEqual((st["on"], st["waiting"]), (True, "Needs the source radio"))
         s2.lua.execute(b"WuxianKit:Emit('demo.a', 1)")
         s2.lua.execute(RADIO)                                            # the radio's addon loads after all
         s2.run(0.5)
         self.assertNotIn("blocked", self.agent(s2, "kit.app.status", "{ app = 'fan' }"))
+        self.assertNotIn("waiting", self.agent(s2, "kit.app.status", "{ app = 'mix' }"))
         self.assertTrue(self.agent(s2, "kit.app.open", "{ app = 'fan' }")["on"])
         s2.lua.execute(b"__radio('news', { story = 'up' }) __radio('jazz', { tune = 'late' })")
         self.assertEqual([i["story"] for i in self.items(s2, "fan")], ["up"])
-        self.assertEqual([i["source"] for i in self.items(s2, "mix")], ["bus", "radio"])   # heard once it is there
+        self.assertEqual([i["source"] for i in self.items(s2, "mix")], ["radio"])   # heard once all of it is there
 
     def test_the_doc_and_the_manifest(self):
         s = self.start()
-        doc = py(s.lua.eval(b"WuxianKit:Capability('kit.app.open')"))["doc"]
+        doc = py(s.lua.eval(b"WuxianKit:Capability('kit.app.declare')"))["doc"]
         for want in ("chat:<channel>", "game:<topic>", "bus:<topic>", "(*|guild|officer|", "(combat|aura|growth|"):
             self.assertIn(want, doc)
         self.assertNotIn("radio:", doc)
         rev = py(s.lua.eval(b"WuxianKit:Manifest()"))["revision"]
         s.lua.execute(RADIO)
         s.run(1)
-        doc = py(s.lua.eval(b"WuxianKit:Capability('kit.app.open')"))["doc"]
+        doc = py(s.lua.eval(b"WuxianKit:Capability('kit.app.declare')"))["doc"]
         self.assertIn("radio:<station>: what a station plays (jazz|news)", doc)   # the doc follows the registry
         m = py(s.lua.eval(b"WuxianKit:Manifest()"))
         rx = next(e for e in m["extensions"] if e["id"] == "rx")
