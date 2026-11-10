@@ -43,7 +43,7 @@ class Chat05(unittest.TestCase):
         return py(s.lua.eval(b"function(...) return WuxianKit.Chat.Read(...) end")(event.encode(), *enc))
 
     def aliases(self, s, text):
-        """the player's aliases as saved (a list option: a table; a core without lists: the text)"""
+        """the player's aliases as saved (a list option: a table; a text saved by 0.5 reads as a list)"""
         s.lua.execute(f"WuxianKitDB.ext.chat.options = WuxianKitDB.ext.chat.options or {{}} "
                       f"WuxianKitDB.ext.chat.options.aliases = {text}".encode())
 
@@ -88,7 +88,7 @@ class Chat05(unittest.TestCase):
         self.assertFalse(m("Wuxian here", guid="Player-1-00000001"))       # the player's own
         self.assertTrue(m("psst", event="CHAT_MSG_WHISPER", guid=FRIEND))  # a whisper to the player
         self.assertFalse(m("on my way", event="CHAT_MSG_WHISPER_INFORM", guid=FRIEND))
-        self.aliases(s, "'老王，Boss、 ,小王'")                               # the text a core without lists keeps
+        self.aliases(s, "'老王，Boss、 ,小王'")                               # a text, as 0.5 saved it
         self.assertEqual(py(s.lua.eval(b"WuxianKit.Chat.Names()")), ["Wuxian Forever", "Wuxian", "Forever", "老王", "Boss",
                                                                      "小王"])
         self.assertTrue(m("老王在吗"))

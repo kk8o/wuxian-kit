@@ -69,8 +69,8 @@ local L = Kit:Words {
 local game = Kit:Extension("game", { title = L"TITLE", version = Kit.VERSION, docs = "Extensions/Game",
 	notes = "What happens in the game (combat, quests, levels, zones, the guild), told as it happens; today's tally",
 	defaults = {},
-	setup = function() if ns.game then ns.game.Refresh() end end,
-	teardown = function() if ns.game then ns.game.Refresh() end end })
+	setup = function() ns.game.Refresh() end,
+	teardown = function() ns.game.Refresh() end })
 
 local G = { ext = game, active = {}, topics = {} }
 ns.game = G

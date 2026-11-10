@@ -86,23 +86,12 @@ local REPLY_SECONDS = 180              -- a reply answers a message at most this
 local YIELD_SECONDS = 8                -- after the player's own message in a channel, the agent's waits this long
 local MUTED = "|cff9c9ea6%s|r"
 
--- a scope with its suggested budget where the core takes one (0.5: ext:Scope(name, { title, budget })), else its title
-local TABLE_SCOPES = false
-if type(Kit.Requires) == "function" then
-	local ok, yes = pcall(Kit.Requires, Kit, "0.5.0")
-	TABLE_SCOPES = ok and yes == true
-end
-local function Scope(name, title, budget)
-	if TABLE_SCOPES then return chat:Scope(name, { title = title, budget = budget }) end
-	return chat:Scope(name, title)
-end
-
 local HEARABLE, CAN_GRANT, EVENT_LIST = {}, {}, {}
 for _, c in ipairs(HEARD) do HEARABLE[c] = true end
 for _, c in ipairs(GRANTABLE) do
 	CAN_GRANT[c] = true
-	Scope(c, function() return L.SCOPE[c] end, { per = 600, most = 4 })
-	Scope(c .. ".reply", function() return L.REPLY[c] end, { per = 600, most = 3 })
+	chat:Scope(c, { title = function() return L.SCOPE[c] end, budget = { per = 600, most = 4 } })
+	chat:Scope(c .. ".reply", { title = function() return L.REPLY[c] end, budget = { per = 600, most = 3 } })
 end
 for event in pairs(EVENTS) do EVENT_LIST[#EVENT_LIST + 1] = event end
 table.sort(EVENT_LIST)
@@ -117,20 +106,6 @@ local function Chars(s)
 	return select(2, s:gsub("[^\128-\191]", ""))
 end
 
--- the aliases as a list: a list option gives a table; a core without lists keeps the text ("a, b，c、d")
-local function Aliases()
-	local v = chat:Get("aliases")
-	local out = {}
-	if type(v) == "table" then
-		for _, a in ipairs(v) do
-			if type(a) == "string" then out[#out + 1] = a end
-		end
-	elseif type(v) == "string" then
-		for part in (v:gsub("，", ","):gsub("、", ",") .. ","):gmatch("([^,]*),") do out[#out + 1] = part end
-	end
-	return out
-end
-
 local function WholeName()
 	local ok, name = pcall(function()
 		if GetUnitName then return GetUnitName("player", true) end
@@ -142,7 +117,7 @@ end
 
 -- the names as shown, built when what they come from changed (aliases, the name once the client knows it)
 local function Names()
-	local whole, aliases = WholeName(), Aliases()
+	local whole, aliases = WholeName(), chat:Get("aliases")     -- (a list option: a table of strings)
 	local key = (whole or "") .. "\0" .. table.concat(aliases, "\0")
 	if names and key == namesKey then return names end
 	local list, seen = {}, {}
