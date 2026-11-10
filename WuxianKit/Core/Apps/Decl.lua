@@ -43,11 +43,12 @@
 --   ns.CONTROL_WORDS              word (English and Chinese) -> cmd, for /wk <app> <word>
 -- ns.Changed("app", id) tells it when an app is declared or removed.
 --
--- Storage: WuxianKitDB.apps[id] = { decl (an agent's declaration, as it was given and checked), run (this run: who =
--- the character's GUID, ends, started, seen, lease, heard, wakes, lastWake, pace, quiet, and the digest's options,
--- buffer, first, last, urgentAt), recent = { who, n, items } (the last RING items of the character's), options (the
--- player's), said = { d, n } }. An addon's declaration is kept in memory only (it may carry functions) and wins over an
--- agent's of the same id; a temporary app's whole record is in memory.
+-- Storage: WuxianKitDB.apps[id] = { decl (an agent's declaration, as it was given and checked), options (the player's),
+-- chars = { [the character's GUID] = { run (this run: ends, started, seen, lease, heard, wakes, lastWake, pace, quiet,
+-- and the digest's options, buffer, first, last, urgentAt), recent = { n, items } (the last RING items), last = { why }
+-- (how the last run ended), said = { d, n } } } }: what is the account's is at the top, what is a character's under its
+-- GUID (A.Char). An addon's declaration is kept in memory only (it may carry functions) and wins over an agent's of the
+-- same id; a temporary app's whole record is in memory.
 --
 -- The runtime is four files (Core/Apps/, in load order), split by what they do:
 --   Decl.lua     (this one) declarations checked and normalized, the stored record, the app object and its options,
@@ -584,11 +585,47 @@ end
 local App = {}
 App.__index = App
 
+-- this character's part of the app's record ({ run, recent, last, said }; made when asked), or nil before there is a
+-- character or the saved variables
+local function Char(app)
+	local rec, me = Record(app), Me()
+	if not rec or me == nil then return nil end
+	if type(rec.chars) ~= "table" then rec.chars = {} end
+	local c = rec.chars[me]
+	if type(c) ~= "table" then
+		c = {}
+		rec.chars[me] = c
+	end
+	return c
+end
+
+-- a record as a kit before 0.6's release kept it (run, recent, last with who at the top): each goes under its character
+local function Migrate(rec)
+	for _, k in ipairs({ "run", "recent", "last" }) do
+		local v = rec[k]
+		if type(v) == "table" and type(v.who) == "string" then
+			if type(rec.chars) ~= "table" then rec.chars = {} end
+			local c = rec.chars[v.who]
+			if type(c) ~= "table" then
+				c = {}
+				rec.chars[v.who] = c
+			end
+			if c[k] == nil then
+				v.who = nil
+				c[k] = v
+			end
+		end
+		rec[k] = nil
+	end
+	rec.said = nil
+	if type(rec.chars) ~= "table" then rec.chars = nil end
+end
+
 -- its run of this character's, ended or not
 local function Owned(app)
-	local rec = Record(app)
-	local s = rec and rec.run
-	if type(s) == "table" and s.who ~= nil and s.who == Me() then return s end
+	local c = Char(app)
+	local s = c and c.run
+	if type(s) == "table" then return s end
 end
 
 -- its run while it runs
@@ -750,7 +787,10 @@ ns.When("load", function()
 		if type(rec) ~= "table" then
 			store[id] = nil
 		else
-			if type(rec.recent) == "table" then ns.BumpId(rec.recent.n) end
+			Migrate(rec)
+			for _, c in pairs(rec.chars or {}) do
+				if type(c) == "table" and type(c.recent) == "table" then ns.BumpId(c.recent.n) end
+			end
 			if rec.decl ~= nil then
 				if apps[id] and apps[id].by == "addon" then
 					rec.decl = nil
@@ -775,6 +815,6 @@ A.Copy, A.Set, A.Me, A.Fail = Copy, Set, Me, Fail
 A.Split, A.Trim = Split, Trim
 A.CheckId, A.LeaseOf, A.MinutesOf, A.Given = CheckId, LeaseOf, MinutesOf, Given
 A.apps, A.order, A.App = apps, order, App
-A.Record, A.Owned, A.Run, A.Title = Record, Owned, Run, Title
+A.Record, A.Char, A.Owned, A.Run, A.Title = Record, Char, Owned, Run, Title
 A.Paced, A.Digesting, A.Bound = Paced, Digesting, Bound
 A.Declare = Declare

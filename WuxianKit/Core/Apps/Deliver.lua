@@ -6,7 +6,7 @@
 local addonName, ns = ...
 local Kit = ns.Kit
 local A = ns.apps
-local Me, Record, App, Owned, Run, Digesting = A.Me, A.Record, A.App, A.Owned, A.Run, A.Digesting
+local Char, App, Owned, Run, Digesting = A.Char, A.App, A.Owned, A.Run, A.Digesting
 
 local RING = 100                                        -- the items an app keeps
 
@@ -58,12 +58,12 @@ end
 -- the ring
 
 local function Ring(app)
-	local rec = Record(app)
-	if not rec then return nil end
-	local r, me = rec.recent, Me()
-	if type(r) ~= "table" or r.who ~= me or type(r.items) ~= "table" then
-		r = { who = me, n = 0, items = {} }
-		rec.recent = r
+	local c = Char(app)
+	if not c then return nil end
+	local r = c.recent
+	if type(r) ~= "table" or type(r.items) ~= "table" then
+		r = { n = 0, items = {} }
+		c.recent = r
 	end
 	return r
 end

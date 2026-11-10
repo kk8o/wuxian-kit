@@ -153,11 +153,11 @@ local STOP_WORDS = { stopped = "STOPPED", player = "STOPPED", expired = "EXPIRED
 -- stops this character's run (why: stopped, player, expired, left, extension, replaced); quiet: no chat line. A
 -- temporary app goes with its run (unless it is replaced: a new run of it follows)
 local function Stop(app, why, quiet)
-	local rec = Record(app)
-	local s = rec and rec.run
-	if type(s) ~= "table" or s.who ~= Me() then return false end
-	rec.run = nil
-	rec.last = { who = s.who, why = why }
+	local c = A.Char(app)
+	local s = c and c.run
+	if type(s) ~= "table" then return false end
+	c.run = nil
+	c.last = { why = why }
 	Unsubscribe(app)
 	if not quiet and not app.decl.hidden and STOP_WORDS[why] then
 		ns.Say(W[STOP_WORDS[why]]:format(ns.Escape(Title(app))))
@@ -257,9 +257,9 @@ local function Start(app, minutes, lease, agent)
 		Ticking()
 		return old
 	end
-	local s = { who = Me(), started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0,
+	local s = { started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0,
 		wakes = 0, buffer = {}, options = { digest = {} }, seen = agent and now or nil }
-	rec.run = s
+	A.Char(app).run = s
 	Retune(app, s)
 	Subscribe(app)
 	if not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends))) end

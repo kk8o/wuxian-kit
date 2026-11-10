@@ -34,8 +34,8 @@ end
 -- what the agent and the window read
 
 local function Said(app)
-	local rec = Record(app)
-	local said = rec and rec.said
+	local c = A.Char(app)
+	local said = c and c.said
 	if type(said) ~= "table" or said.d ~= date("%Y-%m-%d", time()) then return 0 end
 	return tonumber(said.n) or 0
 end
@@ -54,9 +54,9 @@ local function Status(app)
 	else
 		out.present = false
 		out.blocked = Blocked(app)
-		local rec = Record(app)
-		local last = rec and rec.last
-		if type(last) == "table" and last.who == Me() then out.why = last.why end
+		local c = A.Char(app)
+		local last = c and c.last
+		if type(last) == "table" then out.why = last.why end
 	end
 	if d.extension then
 		local ext = ns.extensions[d.extension]
@@ -382,10 +382,10 @@ Kit:On("kit.proposal", function(_, p)
 				step.args.channel
 			if channel and (channels[channel] or channels["*"]) then n = n + 1 end
 		end
-		local rec = n > 0 and Record(app)
-		if rec then
-			if type(rec.said) ~= "table" or rec.said.d ~= day then rec.said = { d = day, n = 0 } end
-			rec.said.n = (tonumber(rec.said.n) or 0) + n
+		local c = n > 0 and A.Char(app)
+		if c then
+			if type(c.said) ~= "table" or c.said.d ~= day then c.said = { d = day, n = 0 } end
+			c.said.n = (tonumber(c.said.n) or 0) + n
 		end
 	end
 end)

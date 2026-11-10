@@ -84,16 +84,16 @@ class Pace(AppCase):
         s.run(4)
         self.assertEqual(len(self.wakes(s, "g")), 1)
         s.ns.SetAppOption(b"g", b"activity", b"quiet")                    # the core's quiet, as it gave none
-        run = self.lua(s, "WuxianKitDB.apps.g.run.options.digest")
+        run = self.lua(s, "WuxianKitDB.apps.g.chars[UnitGUID('player')].run.options.digest")
         self.assertEqual(run, {"gather": 6, "every": False, "idle": False, "most": 30})
 
     def test_retuned_after_a_reload(self):
         s = self.start()
         self.agent(s, "kit.app.open", CHAT)
         s.ns.SetAppOption(b"g", b"activity", b"lively")
-        s.lua.execute(b"WuxianKitDB.apps.g.run.options.digest.every = 999")   # as an older version kept it
+        s.lua.execute(b"WuxianKitDB.apps.g.chars[UnitGUID('player')].run.options.digest.every = 999")   # as an older version kept it
         s2 = self.start(s.reload())
-        self.assertEqual(self.lua(s2, "WuxianKitDB.apps.g.run.options.digest.every"), 20)
+        self.assertEqual(self.lua(s2, "WuxianKitDB.apps.g.chars[UnitGUID('player')].run.options.digest.every"), 20)
         self.assertEqual(self.agent(s2, "kit.app.status", "{ app = 'g' }")["pace"], "lively")
 
 
@@ -120,7 +120,7 @@ class Quiet(AppCase):
         self.agent(s, "kit.app.open", CHAT)
         s.ns.SetAppOption(b"g", b"quiet", b"23:00-07:00")                 # now: in it at once
         self.assertTrue(self.agent(s, "kit.app.status", "{ app = 'g' }")["quiet"])
-        self.assertTrue(self.lua(s, "WuxianKitDB.apps.g.run.quiet"))
+        self.assertTrue(self.lua(s, "WuxianKitDB.apps.g.chars[UnitGUID('player')].run.quiet"))
         s.lua.execute(b"__say('guild', { plain = 'who?', why = 'question' })")
         s.run(65)
         self.assertEqual(self.wakes(s, "g"), [])                          # no question, no batch
@@ -142,7 +142,7 @@ class Quiet(AppCase):
         self.assertFalse(self.agent(s, "kit.app.status", "{ app = 'g' }")["quiet"])
         s.run(65)                                                         # 01:00
         self.assertTrue(self.agent(s, "kit.app.status", "{ app = 'g' }")["quiet"])
-        self.assertIs(self.lua(s, "WuxianKitDB.apps.g.run.options.digest.every"), False)
+        self.assertIs(self.lua(s, "WuxianKitDB.apps.g.chars[UnitGUID('player')].run.options.digest.every"), False)
 
 
 if __name__ == "__main__":
