@@ -14,7 +14,7 @@
 --   Bridge.lua     the AI agent, through 无限工坊's WoWBridge when it is there
 --   UI/            the proposal window, the core's window (/wk) and OptionsPanel, the copy box (WuxianKit:Copy)
 --   Builtins.lua   the core's own extension, "kit"
---   Apps.lua       the apps: declarations, runs, what they hear (through the extensions' sources), kit.app.*
+--   Apps/          the apps: declarations, runs, what they hear (through the extensions' sources), kit.app.*
 -- Extensions/<Name>/<Name>.lua are the built-in extensions (on unless the player turned one off). Another addon becomes
 -- an extension with the same calls; its .toc says ## Dependencies: WuxianKit, ## X-WuxianKit-Extension: <id> and
 -- ## LoadOnDemand: 1, and the core loads it at login unless it was turned off.

@@ -46,7 +46,7 @@ WuxianKit/
     Bridge.lua             经 WoWBridge 交给 Agent
     UI/                    提案窗口、扩展框架窗口（/wk）、应用卡片（AppPanel）、样式（WuxianKit.Skin）
     Builtins.lua           核心自己的扩展 kit：扩展开关、提案查询、撤销、清单、称呼；来源 bus、状态面 me
-    Apps.lua               应用运行时（第 10 节）：kit.app.*、WuxianKit:App
+    Apps/                  应用运行时（第 10 节）：kit.app.*、WuxianKit:App
   Extensions/<名称>/        零件：<名称>.lua 等代码、AGENT.md、可选 skills/
   Extensions/Route/        系统扩展「任务指引」（第 13 节）
     Route.lua              接口 Route:Provide、来源 route、状态面 route、选择提供者
@@ -66,7 +66,7 @@ WuxianKit_Guides/          自定义扩展「任务指引适配」（guides，�
   RestedXP.lua             RestedXP 的适配器
 ```
 
-- 载入顺序（.toc）：核心（最后是 `Builtins.lua`、`Apps.lua`），然后各扩展，最后各应用（`Apps\Guild\App.lua`）。应用载入时，它要听的来源、要看的状态面已经登记。
+- 载入顺序（.toc）：核心（最后是 `Builtins.lua`、`Apps/`），然后各扩展，最后各应用（`Apps\Guild\App.lua`）。应用载入时，它要听的来源、要看的状态面已经登记。
 - 说明文件夹（docs）：扩展的和应用的是同一个约定，一份可选的 `AGENT.md`（给 Agent 的说明）加上可选的 `skills/*.md`（技能，第 7 节）。
 
 ## 3. 扩展

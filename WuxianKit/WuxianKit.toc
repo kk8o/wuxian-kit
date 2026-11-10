@@ -26,7 +26,10 @@ Core\UI\Window.lua
 Core\UI\AppPanel.lua
 Core\UI\Copy.lua
 Core\Builtins.lua
-Core\Apps.lua
+Core\Apps\Decl.lua
+Core\Apps\Deliver.lua
+Core\Apps\Run.lua
+Core\Apps\Api.lua
 Extensions\Tune\Tune.lua
 Extensions\Tune\Options.lua
 Extensions\Tune\Bindings.lua
