@@ -254,31 +254,32 @@ class AppPanel(unittest.TestCase):
 
     def test_waiting(self):
         """an app that runs but waits for what it hears to be there (its addon has not loaded) says so and why, in
-        gold with a hint, not that the agent is here; the reason is the status's, else the row's; its stop is there"""
+        gold with a hint, not that the agent is here; the reason is the status's, else the row's: the runtime's own
+        sentence (Core/Apps/Run.lua's), shown as it is, never put together again here; its stop is there"""
         s = start(self)
         s.lua.execute(b"__add('quest', { by = 'agent', decl = { title = 'Quest' }, controls = { 'stop' }, "
-                      b"status = { app = 'quest', on = true, said = 0, waiting = 'source rxp' } })")
+                      b"status = { app = 'quest', on = true, said = 0, waiting = 'Needs the source rxp' } })")
         p = self.panel(s, "quest")
-        self.assertEqual(texts(p), ["Waiting · source rxp not ready", "Starts by itself once ready"])
+        self.assertEqual(texts(p), ["Waiting · Needs the source rxp", "Starts by itself once ready"])
         self.ink(s, self.first(p), "gold")
         self.assertEqual(labels(p), ["Stop"])
         st = s.g("__apps")[b"quest"][b"status"]
-        for why, line in (("facet guild:roster", "Waiting · state guild:roster not ready"),
-                          ("extension", "Waiting · extension not loaded"),
-                          ("extension:Guide |cff00ff00x|r", "Waiting · extension Guide ||cff00ff00x||r not loaded"),
+        for why, line in (("Needs the state guild:roster", "Waiting · Needs the state guild:roster"),
+                          ("source rxp", "Waiting · source rxp"),                       # (no words of its own for any)
+                          ("extension", "Waiting · extension"),
                           ("Its addon is |cffff0000late|r", "Waiting · Its addon is ||cffff0000late||r"),
                           (True, "Waiting")):
             st[b"waiting"] = why if why is True else why.encode()
             self.assertEqual(self.redraw(s)[0], line)
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
-        st[b"waiting"] = b"source rxp"
-        self.assertEqual(self.redraw(s), ["等待中 · 来源 rxp 未就绪", "就绪后自动开始"])
-        st[b"waiting"] = b"extension guide"
-        self.assertEqual(self.redraw(s)[0], "等待中 · 扩展「guide」未载入")
+        st[b"waiting"] = "需要来源「rxp」".encode()
+        self.assertEqual(self.redraw(s), ["等待中 · 需要来源「rxp」", "就绪后自动开始"])
+        st[b"waiting"] = "所属扩展「guide」未载入".encode()
+        self.assertEqual(self.redraw(s)[0], "等待中 · 所属扩展「guide」未载入")
         s.lua.execute(b"__ns.SetLanguage('enUS')")
         st[b"waiting"] = None                                                   # it hears now
         self.assertTrue(self.redraw(s)[0].startswith("Agent here"))
-        st[b"on"], st[b"waiting"] = False, b"source rxp"                        # not running: nothing waits
+        st[b"on"], st[b"waiting"] = False, b"Needs the source rxp"              # not running: nothing waits
         self.assertEqual(self.redraw(s)[0], "Ready to connect an agent")
         s.lua.execute(b"__online = false")
         st[b"on"] = True

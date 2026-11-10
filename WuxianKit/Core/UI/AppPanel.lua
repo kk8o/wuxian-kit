@@ -188,16 +188,13 @@ local function Blocked(app, st, by)
 	end
 end
 
--- why an app that runs waits, as the player reads it ("等待中 · 来源 quest 未就绪"), or nil when it does not. why is
--- the runtime's: "<what> <name>" or "<what>", what a source, a facet or an extension that is not there yet (its addon
--- has not loaded); any other text is shown as it is, anything else that is not false with no reason
+-- why an app that runs waits, as the player reads it ("等待中 · 需要来源「quest」"), or nil when it does not. why is
+-- the runtime's (kit.app.status's waiting): a sentence for the player, in their language, shown as it is; anything
+-- else that is not false goes with no reason
 local function Waiting(why)
 	if why == nil or why == false or why == "" then return nil end
 	if type(why) ~= "string" then return A.WAITING end
-	local what, name = why:match("^(%a+)[%s:]+(.-)%s*$")
-	local words = A.WAIT[what or why]
-	if not words then return A.WAITING .. " · " .. ns.Escape(ns.Cut(why, 60)) end
-	return A.WAITING .. " · " .. (name and name ~= "" and words[1]:format(ns.Escape(name)) or words[2])
+	return A.WAITING .. " · " .. ns.Escape(ns.Cut(why, 60))
 end
 
 -- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready.

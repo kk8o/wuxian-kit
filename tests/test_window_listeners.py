@@ -90,11 +90,11 @@ class WindowListeners(unittest.TestCase):
         """an app that runs but waits: the list says so, not that it runs; its page as its card"""
         s = start(self)
         s.lua.execute(b"__add('quest', { by = 'agent', decl = { title = 'Quest' }, "
-                      b"status = { app = 'quest', on = true, said = 0, waiting = 'source rxp' } })")
+                      b"status = { app = 'quest', on = true, said = 0, waiting = 'Needs the source rxp' } })")
         w = self.window(s, "quest")
         self.assertEqual(self.item(w, "Quest")[b"state"][b"text"], b"Waiting")
         self.assertEqual(texts(w[b"body"])[:4],
-                         ["Quest", "Declared by an agent", "Waiting · source rxp not ready", "Starts by itself once ready"])
+                         ["Quest", "Declared by an agent", "Waiting · Needs the source rxp", "Starts by itself once ready"])
         self.assertEqual(labels(w), ["Stop", "Remove"])
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
         self.assertEqual(self.item(w, "Quest")[b"state"][b"text"].decode(), "等待中")
@@ -103,7 +103,7 @@ class WindowListeners(unittest.TestCase):
         s.lua.execute(b"WuxianKit:Emit('kit.app', { app = 'quest', on = true })")
         s.run(0.1)
         self.assertEqual(self.item(w, "Quest")[b"state"][b"text"].decode(), "运行中")
-        st[b"on"], st[b"waiting"] = False, b"source rxp"                        # stopped: nothing waits
+        st[b"on"], st[b"waiting"] = False, b"Needs the source rxp"              # stopped: nothing waits
         s.lua.execute(b"WuxianKit:Emit('kit.app', { app = 'quest', on = false })")
         s.run(0.1)
         self.assertEqual(self.item(w, "Quest")[b"state"][b"text"].decode(), "未运行")
