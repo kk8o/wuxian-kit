@@ -196,6 +196,47 @@ class Cursor(DeliveryCase):
         missed = self.agent(s, "kit.app.recent", f"{{ app = 'c', since = {ws[2]['next']} }}")
         self.assertEqual(([i["text"] for i in missed["items"]], missed["next"]), (["d", "e"], again[0]["next"]))
 
+    def test_status_says_where_the_wakes_are(self):
+        """sent: the next of the run's last wake that went. The ring has an item at once, the wake later, so next runs
+        ahead of sent while items are gathered; one who joins a run starts from sent"""
+        s = self.start()
+        self.opens(s, "{ app = 'c', hear = { 'dg:a' }, lease = 0, digest = { every = 5, most = 10 } }")
+        st = self.agent(s, "kit.app.status", "{ app = 'c' }")
+        self.assertEqual((st["sent"], st["next"]), (0, 0))                # nothing yet
+        self.push(s, "a", "b")
+        st = self.agent(s, "kit.app.status", "{ app = 'c' }")             # gathered, not sent
+        ring = self.agent(s, "kit.app.recent", "{ app = 'c' }")
+        self.assertEqual((st["sent"], st["next"]), (0, ring["next"]))
+        self.assertLess(st["sent"], st["next"])
+        self.assertEqual(self.got(s, "c"), [])
+        s.run(6)
+        ws = self.got(s, "c")
+        st = self.agent(s, "kit.app.status", "{ app = 'c' }")
+        self.assertEqual((st["sent"], st["next"]), (ws[0]["next"], ws[0]["next"]))
+        # from sent on, the wakes bring everything: what was gathered when it was read is in the next wake
+        self.push(s, "c")
+        joined = self.agent(s, "kit.app.status", "{ app = 'c' }")["sent"]
+        self.take(s, False)                                               # a wake that does not go: sent stays
+        s.run(6)
+        st = self.agent(s, "kit.app.status", "{ app = 'c' }")
+        self.assertEqual((st["sent"], st["sent"] < st["next"]), (joined, True))
+        self.take(s, True)
+        s.run(2)
+        ws = self.got(s, "c")
+        self.assertEqual((ws[1]["after"], self.texts(ws[1:])), (joined, [["c"]]))
+        self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'c' }")["sent"], ws[1]["next"])
+
+        self.push(s, "d")                                                 # gathered, never sent: the run stops
+        self.assertNotIn("sent", self.agent(s, "kit.app.stop", "{ app = 'c' }"))
+        st = self.agent(s, "kit.app.status", "{ app = 'c' }")
+        self.assertNotIn("sent", st)                                      # not running: no wakes, no cursor of them
+        opened = self.agent(s, "kit.app.open", "{ app = 'c' }")           # a new run begins where the ring is
+        self.assertEqual((opened["sent"], opened["next"]), (st["next"], st["next"]))
+        self.assertEqual(self.state(s, "c")["sent"], st["next"])
+        self.push(s, "e")
+        s.run(6)
+        self.assertEqual(self.got(s, "c")[2]["after"], opened["sent"])
+
     def test_the_buffer_is_capped(self):
         s = self.start()
         self.opens(s, "{ app = 'b', hear = { 'dg:a' }, lease = 0, digest = { every = false, most = 3 } }")

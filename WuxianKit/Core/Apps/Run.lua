@@ -359,8 +359,9 @@ local function Start(app, minutes, lease, agent)
 		if agent then s.seen = now end
 		Retune(app, s)
 	else
+		-- sent: the run's cursor, the next of its last wake that went; before the first, the newest item there was
 		s = { started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0, wakes = 0,
-			buffer = {}, options = { digest = {} }, seen = agent and now or nil }
+			buffer = {}, options = { digest = {} }, seen = agent and now or nil, sent = A.Recent(app, nil, 1).next }
 		A.Char(app).run = s
 		Retune(app, s)
 		if not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends))) end

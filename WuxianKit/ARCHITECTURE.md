@@ -537,7 +537,7 @@ WuxianKit:App("officers", {
 
 `control` 与 `player` 条目总是立即唤醒（不等 `gather`）。
 
-条目号：`id` 由核心在条目进应用时发，来源给的 `id` 不认（来源自己的编号在别的字段，如 `ref`）。号取自核心的一个计数器（聊天消息的编号、`WuxianKit:NewId()` 也从它取），存在 SavedVariables 里，重载后接着数，永不重号。它是 Agent 唯一要记的数：唤醒的 `after`、`next`，`kit.app.recent` 的 `since`，`kit.app.status` 的 `next`，`wuxian listen --since`，都是它。条目在进应用时净化（文本最长 500 字节、最多 6 层），回看的环里和唤醒里是同一份。
+条目号：`id` 由核心在条目进应用时发，来源给的 `id` 不认（来源自己的编号在别的字段，如 `ref`）。号取自核心的一个计数器（聊天消息的编号、`WuxianKit:NewId()` 也从它取），存在 SavedVariables 里，重载后接着数，永不重号。它是 Agent 唯一要记的数：唤醒的 `after`、`next`，`kit.app.recent` 的 `since`，`kit.app.status` 的 `sent`、`next`，`wuxian listen --since`，都是它。条目在进应用时净化（文本最长 500 字节、最多 6 层），回看的环里和唤醒里是同一份。
 
 ### 事件
 
@@ -562,7 +562,7 @@ WuxianKit:App("officers", {
 - `kit.app.stop { app }`（存储）：停止。
 - `kit.app.forget { app }`（存储）：撤回 Agent 声明的应用：停止（`why = "forgotten"`）、删声明；玩家给它设的选项留着，再声明时接回。插件声明的报错。玩家在窗口里「移除」更彻底：声明、选项、记录全删。
 - `kit.app.describe { app }`（读取）：`{ app, by, temp, decl }`，`decl` 是规范化后的声明（默认值填好）；把它原样再 `declare` 一次，`changed` 为 false。无限工坊对账时用它。
-- `kit.app.status { app }`（读取）：`{ app, title, by, temp, on, ends, started, next, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, see, controls, say, blocked?, waiting?, extension?, why?, start? }`；`next` 是最新的条目号；`lease` 没设为 0；`blocked` 是现在不能开始的原因，`waiting` 是在运行但还在等什么；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 对运行中的应用的每次 `kit.app.*` 调用（`kit.app.declare`、`kit.apps` 除外）都更新 `seen`。
+- `kit.app.status { app }`（读取）：`{ app, title, by, temp, on, ends, started, next, sent?, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, see, controls, say, blocked?, waiting?, extension?, why?, start? }`；`next` 是最新的条目号；`sent` 只在运行中有，是这次运行最后一个发出去的唤醒的 `next`（还没发过：运行开始那一刻的 `next`）。条目一到就进回看的环，之后才攒成唤醒，所以 `next` 会跑在 `sent` 前面：加入一个在跑的应用，起点取 `sent`；`lease` 没设为 0；`blocked` 是现在不能开始的原因，`waiting` 是在运行但还在等什么；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：Agent 对运行中的应用的每次 `kit.app.*` 调用（`kit.app.declare`、`kit.apps` 除外）都更新 `seen`。
 - `kit.app.state { app }`（读取）：`{ app, at, state }`，现在读一次应用所看的状态面（`at` 是读的时间），形状同唤醒的 `state`。它也是心跳。Agent 在两次唤醒之间要最新的现状时用它。
 - `kit.app.recent { app, since?, limit? }`（读取）：回看最近 100 个条目：`{ items, next }`，`items` 是条目号大于 `since` 的最近 `limit` 个，从旧到新，重载后仍在。
 - `kit.apps`（读取）：`[{ id, title, by = addon|agent, temp, hidden?, local?, addon?, see, on, ends, present, prompt?, start?, extension?, blocked?, waiting? }]`；`blocked` 只在停着时给。它不是心跳，不续应用的租期，所以工坊 App 的页面读它而不读 `kit.app.status`。
@@ -610,9 +610,9 @@ WuxianKit:App("officers", {
 
 - 无限工坊的 `wuxian listen <id> [--once] [--since N] [--max 秒]`：**只加入，不打开**。打开由 Agent 调 `kit.app.open`：先开，再等。
 - 开始时它读 `kit.app.status`：没在运行就打印 `END <why>` 退出；在运行就打印 `OPEN <状态>`。
-- 游标是条目号：`--since N`，没给就是状态的 `next`（从现在起）。Agent 第一次传 `kit.app.open` 回答的 `next`，之后传上一次的 `NEXT`。
+- 游标是条目号：`--since N`，没给就是状态的 `sent`（最后一个发出去的唤醒的 `next`；不是 `next`：比 `sent` 新的条目还在攒，会随唤醒到，从 `next` 起就把它们当成重复滤掉了）。Agent 第一次传 `kit.app.open` 回答的 `sent`，之后传上一次的 `NEXT`。
 - 输出：每个唤醒一行 JSON（`{ t, topic, data }`），每批之后 `NEXT <条目号>`，应用停了 `END <why>`，到 `--max` 先 `NEXT` 再 `TIMEOUT`。
-- 补读：开始时给了 `--since`，或收到的唤醒 `after` 大于游标（中间丢了），它调 `kit.app.recent { app, since = 游标 }`，把漏掉的条目合成一个 `reason = "catchup"` 的唤醒先打印；`next` 不大于游标的唤醒是重复，跳过。
+- 补读：开始时给了 `--since`，或收到的唤醒 `after` 大于游标（中间丢了），它调 `kit.app.recent { app, since = 游标 }`，把漏掉的条目合成一个 `reason = "catchup"` 的唤醒先打印；`next` 不大于游标的唤醒是重复，跳过。补读只读到状态的 `sent` 为止（`id ≤ sent`）：之后的条目还在攒，由应用自己的唤醒送到，不绕过节奏和免打扰。
 - 它自己按 max(30, lease/3) 秒心跳；`kit.ready`（登录或重载）后重读状态，不在运行了就 `END <why>`。
 - 给 Agent 的步骤只写在一处：技能 `kit-app` 的「Waiting for wakes」一节。
 

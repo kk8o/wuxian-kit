@@ -118,15 +118,19 @@ The workshop's command waits for an app's wakes outside a turn:
 It joins a running app; it never opens one. While it waits it sends the heartbeat.
 
 1. Open the app first (`wk_kit_app_open`), or check that `wk_kit_app_status` answers `on: true`.
-2. Run `wuxian listen <id> --once --since <next>` in the background. `<next>` the first time: the `next` of the
-   status you just read; after that: the number of the last `NEXT` line. It is an item id, the one number to
-   remember: a wake's `next`, the status's `next`, the `since` of `wk_kit_app_recent` and `--since` all count the
-   same items. Without `--since` it hears from now on, and what came before is not printed.
+2. Run `wuxian listen <id> --once --since <N>` in the background. `<N>` the first time: the `sent` of the status
+   you just read; after that: the number of the last `NEXT` line. It is an item id, the one number to remember: a
+   wake's `after` and `next`, the status's `sent` and `next`, the `since` of `wk_kit_app_recent` and `--since` all
+   count the same items. `sent` is where the app's wakes are: the `next` of the last wake it sent (before its first:
+   the newest item when the run began). `next` is the newest item it heard, and can be ahead of `sent`: those items
+   are gathered and come with a wake, so start from `sent`, never from `next`. Without `--since` the command starts
+   from `sent` itself, and what came before is not printed.
 3. Read its lines:
    - `OPEN <status>`: it joined; the app's status as JSON.
    - `{"t": ..., "topic": "app.<id>", "data": {...}}`: a wake, one JSON line each; `data` is The wake, below. Items
-     after `<next>` that no wake brought you (they came while nobody waited, or a wake was lost) come first, as a
-     wake with `reason: "catchup"`. Nothing is printed twice.
+     after `<N>` that no wake brought you (they came while nobody waited, or a wake was lost) come first, as a
+     wake with `reason: "catchup"`: the record is read up to the app's `sent` only, and the items after that come
+     with the app's own wakes, at its pace. Nothing is printed twice.
    - `NEXT <N>`: after each batch of wakes; with `--once` the command exits here. Act on the wakes, then run it again
      with `--since <N>`. Better: start the next wait first, then act.
    - `TIMEOUT` (after a `NEXT <N>`): nothing came within `--max` seconds (default 1500). Run it again as it was, with
@@ -172,7 +176,8 @@ the event `app.<id>`. Its data:
   wake before it (the first wake of a run: the newest item id when the run began, 0 if there was none). So wakes
   join end to end: a wake whose `after` is above the last `next` you read means you missed some. `wuxian listen`
   reads those for you (`catchup`); on your own, `wk_kit_app_recent` with `{"app": "<id>", "since": <your last
-  next>}`.
+  next>}`, and take only the items up to that wake's `after` (the later ones are in the wake). The status's `sent`
+  is the `next` of the last wake sent: joining an app that runs, that is where you start.
 - `skipped`: how many of the covered items, the oldest, were left out to keep the wake small (`state` counts too).
   They are in the record: `wk_kit_app_recent` with `{"app": "<id>", "since": <after>}`.
 - `state`: a snapshot of each facet in the app's `see`, read as the wake is sent: `{<facet>: {...}}`. A facet with

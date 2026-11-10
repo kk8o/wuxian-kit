@@ -61,6 +61,8 @@ local function Status(app)
 			s.wakes or 0, s.lastWake, s.seen
 		out.present = Present(s, now)
 		out.waiting = app.waiting                           -- (on, and not heard yet: what it waits for)
+		-- the wakes' cursor: the next of the last one that went (next runs ahead of it while items are gathered)
+		out.sent = ns.Finite(s.sent) and s.sent or out.next
 	else
 		out.present = false
 		out.blocked = Blocked(app)
@@ -238,9 +240,12 @@ kit:Keep("app.open", { title = "kit.app.open", args = { app = "string", minutes 
 		.. "most %d at once, gone once it stops or the UI reloads (temp for a kept app of yours makes it temporary: "
 		.. "kit.app why \"replaced\"). Answers its status as kit.app.status; when it cannot start now (its check, an "
 		.. "extension off, a source missing) it does not start and the status says why: blocked (on false). Its wakes "
-		.. "are the event app.<app>: {app, reason (item, urgent, full, batch, idle), items (oldest first; each {id, "
-		.. "time, source (the source's name, or addon, control, player), ...}), skipped (the oldest items left out to "
-		.. "keep a wake small; the state stays), state? (with see), pace?, quiet?}; kit.app {app, on, why?} says when it "
+		.. "are the event app.<app>: {app, seq (from 1 each run), reason (item, urgent, full, batch, idle), items "
+		.. "(oldest first; each {id, time, source (the source's name, or addon, control, player), ref? (the id the "
+		.. "source gave), ...}), after, next (item ids, the one cursor: the wake covers the run's items with after < id "
+		.. "<= next; after is the next of the wake before, or where the run began), skipped (how many of those, the "
+		.. "oldest, are not in items: too many were waiting; kit.app.recent has them), state? (with see), pace?, "
+		.. "quiet?}; a wake that does not get through is sent again. kit.app {app, on, why?} says when it "
 		.. "stops"):format(MOST.agent, MOST.temp) })
 
 -- kit.app.declare, its doc made from the fields and from the sources and facets registered: declared again whenever
@@ -307,9 +312,11 @@ kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 		.. "is, and it stops, why \"extension\", if that takes more than half a minute), why (while off: how its last "
 		.. "run ended), pace? (the player's activity), quiet? (in quiet hours), said (today's chat.send of yours that ran "
 		.. "into channels it hears), hear, see, controls, say, hidden?, local?, next (the newest item id: "
-		.. "kit.app.recent's since), blocked? (why it cannot start, while off), start? (with a prompt: the start line "
-		.. "the player hands an AI client, which reads the skill with wk_docs), temp (a temporary app)}. Call it at "
-		.. "least every lease / 3 seconds while you listen",
+		.. "kit.app.recent's since), sent? (while on: the next of the last wake sent, or where the run began; items "
+		.. "newer than it are gathered and come with a wake, so one who joins a run starts from sent and reads "
+		.. "kit.app.recent only up to it), blocked? (why it cannot start, while off), start? (with a prompt: the "
+		.. "start line the player hands an AI client, which reads the skill with wk_docs), temp (a temporary app)}. "
+		.. "Call it at least every lease / 3 seconds while you listen",
 	run = function(_, a, opts)
 		local app = Need(a.app)
 		Touch(app, opts)

@@ -258,7 +258,7 @@ Each wake is the event `app.<id>`. Its full shape, every field and every `reason
   instructions.
 
 Every item has `id`, `time` and `source`. The `id` is the kit's item id: one growing counter, never reused, kept
-through reloads. It is the one number you keep: `next`, `since` and `--since` all count it. A source's own number is
+through reloads. It is the one number you keep: `after`, `next`, `sent`, `since` and `--since` all count it. A source's own number is
 never the `id`; it comes in another field.
 
 - `chat`: the chat message (`channel`, `plain`, `sender`, `mention`, `why`: mention, followup, question, burst ...);
@@ -275,7 +275,8 @@ never the `id`; it comes in another field.
 
 Every `wk_kit_app_*` call of yours for a running app marks it as heard from (declaring does not). While you wait, call
 `wk_kit_app_status` (it answers `on`, `ends`, `seen`, `present`, `lease`, `pace`, `quiet`, `said` (your chat messages
-that ran today in its channels), `next` (the newest item id), `waiting` (above)) at least every lease / 3 seconds, or
+that ran today in its channels), `next` (the newest item id), `sent` (the `next` of the last wake it sent: where its
+wakes are; `next` runs ahead of it while items are gathered), `waiting` (above)) at least every lease / 3 seconds, or
 the app stops with `why = "left"`. To read its facets between wakes, call `wk_kit_app_state` with `{"app": "<id>"}`
 (`{app, at, state}`); it is a heartbeat too. When you are done, call `wk_kit_app_stop`. `kit.app` with `on = false`
 tells every stop, with `why`: `stopped` (by you), `player`, `expired`, `left`, `extension` (an extension it needs went
@@ -289,7 +290,8 @@ Run the workshop's command in the background:
     wuxian listen <app> [--once] [--since <N>] [--max <seconds>]
 
 It joins a running app and never opens one: open it first (`wk_kit_app_open`), then wait. `--since` takes an item id:
-the status's `next` the first time, then the last `NEXT` it printed. It prints `OPEN <status>`, each wake as one JSON
+the status's `sent` the first time (not `next`: the items between the two are gathered and come with a wake), then the
+last `NEXT` it printed. It prints `OPEN <status>`, each wake as one JSON
 line (first, as a `catchup` wake, the items after `--since` that you had not read), `NEXT <N>` after each batch,
 `TIMEOUT` after `--max` seconds (run it again as it was) and `END <why>` when the app does not run: then start no new
 wait, and there is nothing left to stop. It sends the heartbeat by itself. With `--once` it exits after the first
