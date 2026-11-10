@@ -8,10 +8,13 @@ import unittest
 from kitmock import Session, lupa
 
 
-def bridge(version, online=None, expose="__exposed[#__exposed + 1] = name __fns[name] = fn", emit="return true"):
+def bridge(version, online=None, expose="__exposed[#__exposed + 1] = name __fns[name] = fn", emit="return true",
+           depth=None):
     """a WoWBridge stub (a Lua literal): its VERSION, Online() answering the global __online (None: no Online), and what
-    its handle's Expose and Emit do; Bind counts in __binds"""
+    its handle's Expose and Emit do; Bind counts in __binds. depth: its EVENT_DEPTH (None: one that says none)"""
     on = "Online = function() return __online end," if online else ""
+    if depth is not None:
+        on += f" EVENT_DEPTH = {depth},"
     return (f"(function() __binds, __exposed, __emitted, __fns = 0, {{}}, {{}}, {{}} return {{ VERSION = {version!r}, {on} "
             f"Bind = function(addon) __binds = __binds + 1 return {{ "
             f"Expose = function(self, name, fn, doc) {expose} end, "

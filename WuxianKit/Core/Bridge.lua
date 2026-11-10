@@ -14,7 +14,10 @@
 -- DROPPED_EVERY seconds (kit.dropped). While 无限工坊 is not linked, WoWBridge itself keeps only its last few events.
 -- An app's wake (app.<id>) is neither kept here nor dropped: ns.SendWake answers whether it went, and its digest
 -- (Digest.lua) holds the items of one that did not and sends them again.
---   ns.WireSize(v, depth)      the bytes of v as WoWBridge writes an event's data (JSON, to `depth` levels: 6)
+--   ns.EVENT_DEPTH             the levels of tables WoWBridge writes of an event's data (it says so from 0.9.13:
+--                              8; before, 6); a table past them goes as the text "<table>"
+--   ns.WireSize(v, depth)      the bytes of v as WoWBridge writes an event's data (JSON, to `depth` levels:
+--                              ns.EVENT_DEPTH)
 --   ns.Forward(topic, data)    a bus event to the agent; for app.*: whether it went (true without WoWBridge)
 --   ns.SendWake(topic, data)   an app's wake to the agent, then to the bus; false (and told to nobody) when it did not go
 local addonName, ns = ...
@@ -32,6 +35,7 @@ if type(WoWBridge) == "table" and type(WoWBridge.Bind) == "function" and Support
 	if ok and type(handle) == "table" then WB = handle end
 end
 ns.bound = WB ~= nil
+ns.EVENT_DEPTH = WB and tonumber(WoWBridge.EVENT_DEPTH) or 6
 local FEED_RATE, FEED_BURST, KEPT, DROPPED_EVERY = 6, 12, 50, 5
 local OPTIONS = { _title = "title", _ttl = "ttl", _after = "after" }
 local KIND_DOC = { see = "Read: runs at once, changes nothing.", keep = "Store: runs at once.",
@@ -117,7 +121,7 @@ local again = {}                                         -- the core's events Wo
 local tokens, at = FEED_BURST, 0                        -- the extensions' share
 local dropped, droppedAt = {}, 0                        -- topic -> how many of the extensions' went unsent
 
--- the bytes of v as WoWBridge's Json.Encode writes it (an event's data goes to 6 levels; a table past them is
+-- the bytes of v as WoWBridge's Json.Encode writes it (an event's data goes to ns.EVENT_DEPTH levels; a table past them is
 -- "<table>"): a table with a sequence (or empty) is an array, another an object with its keys as texts; a text has its
 -- quotes, backslashes and bytes below 32 escaped (six bytes each). WoWBridge sends an event's data of more than 8000
 -- such bytes as {cut = true}: what the digest keeps its wakes under
@@ -146,7 +150,7 @@ local function WireSize(v, depth)
 end
 
 function ns.WireSize(v, depth)
-	return WireSize(v, depth or 6)
+	return WireSize(v, depth or ns.EVENT_DEPTH)
 end
 
 local told                                               -- the wake ns.SendWake is telling the bus: it went already

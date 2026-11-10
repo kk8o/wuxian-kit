@@ -84,7 +84,7 @@ end
 local function Carried(app)
 	local state, sizes, total = State(app), {}, 2
 	for name, v in pairs(state) do
-		sizes[name] = ns.WireSize(v, 4) + #name + 4      -- (a facet is two levels inside its wake)
+		sizes[name] = ns.WireSize(v, ns.EVENT_DEPTH - 2) + #name + 4   -- (a facet is two levels inside its wake)
 		total = total + sizes[name]
 	end
 	while total > STATE_MAX do

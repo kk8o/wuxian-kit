@@ -28,7 +28,10 @@
 local _, ns = ...
 local Kit = ns.Kit
 
-local KEEP_MAX, ITEM_TEXT, ITEM_DEPTH = 200, 500, 6       -- 6: a route step goal's place and quest (item, data, goals, goal, place)
+-- ITEM_DEPTH 6: a route step goal's place and quest are at 5 (item, data, goals, goal, place). A wake carries its
+-- items two levels down, so all of one goes on the wire when WoWBridge writes 8 levels (ns.EVENT_DEPTH; one that
+-- writes 6 sends the tables at an item's levels 5 and 6 as "<table>": kit.app.recent has them)
+local KEEP_MAX, ITEM_TEXT, ITEM_DEPTH = 200, 500, 6
 local ITEM_TEXT_SHORT = 120                             -- the texts of an item that is too large
 local LEASE_MIN = 60
 -- 8000 is WoWBridge's line; 200 is room for seq, reason, skipped, after, next and the items' brackets
@@ -97,7 +100,7 @@ local function Small(v, depth, text)
 end
 
 local function ItemSize(v)                               -- (an item is two levels inside its wake)
-	return ns.WireSize(v, 4)
+	return ns.WireSize(v, ns.EVENT_DEPTH - 2)
 end
 
 -- v (a Small copy) as one item of a wake, at most ITEM_MAX bytes: one larger has its texts cut shorter, then loses the

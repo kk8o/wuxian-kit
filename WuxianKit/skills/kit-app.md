@@ -188,6 +188,8 @@ the event `app.<id>`. Its data:
     (`cmd`, the player's command), `player` (`text`, the player's words to the app).
   - Texts are cut to 500 bytes and tables to 6 levels, in the wake and in the record alike. An item still larger
     than about 1700 bytes has its texts cut shorter, then loses the tables in it; `cut: true` in it says so.
+    (With 无限工坊 before 0.9.13 a wake shows a table at an item's fifth or sixth level as the text `"<table>"`:
+    `wk_kit_app_recent` has it.)
 - `after`, `next`: the wake covers every item of this app with `after < id <= next`. `after` is the `next` of the
   wake before it (the first wake of a run: the newest item id when the run began, 0 if there was none). So wakes
   join end to end: a wake whose `after` is above the last `next` you read means you missed some. `wuxian listen`

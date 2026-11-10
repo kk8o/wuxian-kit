@@ -357,7 +357,35 @@ class Items(DeliveryCase):
                          {"kind": "deep", "source": "dg", "cut": True})  # then without its tables
         self.assertEqual([i["kind"] for w in self.got(s, "p") for i in w["items"]], ["wide", "deep"])
         for i in s.lua.eval(b"WuxianKitDB.apps.p.chars[UnitGUID('player')].recent.items").values():
-            self.assertLessEqual(s.ns.WireSize(i, 4), 1700)
+            self.assertLessEqual(s.ns.WireSize(i, s.ns.EVENT_DEPTH - 2), 1700)
+
+    DEEP = ("__push('a', { n = %d, data = { goals = { { op = 'go', place = { zone = ('z'):rep(300) }, "
+            "quest = { id = 7, name = ('q'):rep(300) } } } } })")
+
+    def deep(self, depth):
+        """the wakes of 30 items with tables at their fifth level (a route step's place and quest), sent through a
+        WoWBridge that writes `depth` levels of an event (None: one that does not say: 6)"""
+        s = self.start(saved={"WoWBridge": bridge("0.9.13", emit=TAKE, depth=depth)})
+        self.opens(s, "{ app = 'd', hear = { 'dg:a' }, lease = 0, digest = { every = 3, most = 100 } }")
+        for i in range(30):
+            s.lua.execute((self.DEEP % i).encode())
+        s.run(12)
+        ws = self.got(s, "d")
+        self.assertEqual([i["n"] for w in ws for i in w["items"]], list(range(30)))
+        self.assertEqual(ws[0]["items"][0]["data"]["goals"][0]["place"], {"zone": "z" * 300})   # (the ring's)
+        return s, ws
+
+    def test_a_wake_is_sized_to_the_levels_the_bridge_writes(self):
+        s, ws = self.deep(8)                                             # all of an item goes: it counts whole
+        self.assertEqual(s.ns.EVENT_DEPTH, 8)
+        self.assertGreater(len(ws), 2)
+        for w in s.lua.eval(b"__got").values():
+            self.assertLessEqual(s.ns.WireSize(w), 7200)
+            self.assertEqual(s.ns.WireSize(w), s.ns.WireSize(w, 8))
+        s, ws = self.deep(None)                                          # the fifth level goes as "<table>"
+        self.assertEqual(s.ns.EVENT_DEPTH, 6)
+        self.assertEqual(len(ws), 1)
+        self.assertLessEqual(s.ns.WireSize(s.lua.eval(b"__got[1]"), 6), 7200)
 
     def test_a_wake_within_the_line_whatever_the_state(self):
         s = self.start()
