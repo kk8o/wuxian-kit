@@ -333,6 +333,8 @@ function Tick()
 					if Paced(app) and ns.InQuiet(app:Get("quiet")) ~= (s.quiet == true) then Retune(app, s) end
 					if Digesting(app) then ns.Safe(ns.Digest.Due, app.host, s) end
 				end
+				-- one without a digest: only its wake that did not go, or the rest of one (waiting or not)
+				if s.retry and not Digesting(app) then ns.Safe(ns.Digest.Due, app.host, s) end
 			end
 		end
 	end

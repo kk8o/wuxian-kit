@@ -136,20 +136,6 @@ local function Stamped(app, source, item)
 	return it
 end
 
--- an app without a digest has no ticker asking for it (Run.lua's asks ns.Digest.Due for those with one): its wake that
--- did not go, or the rest of one, is asked for here a second later
-local function Again(app)
-	if app.again then return end
-	app.again = true
-	C_Timer.After(1, function()
-		app.again = nil
-		local s = Run(app)
-		if not s or not s.retry or Digesting(app) then return end
-		ns.Safe(ns.Digest.Due, app.host, s)
-		if s.retry then Again(app) end
-	end)
-end
-
 -- an item heard while the app runs, from source (a registered source's name, or the app's own: addon, control,
 -- player): copied and stamped, kept, gathered or sent; immediate: the wake goes at once (control and player items)
 local function Deliver(app, source, item, immediate)
@@ -165,8 +151,8 @@ local function Deliver(app, source, item, immediate)
 		if immediate and #(s.buffer or {}) > 0 then ns.Digest.Wake(app.host, s, "urgent") end
 	else
 		ns.Digest.Hold(app.host, s, it)
-		if immediate or not s.retry then ns.Digest.Wake(app.host, s, "item") end   -- (one waits: this one behind it)
-		if s.retry then Again(app) end
+		-- (one waits: this one behind it; Run.lua's ticker asks ns.Digest.Due for a wake that did not go, or the rest)
+		if immediate or not s.retry then ns.Digest.Wake(app.host, s, "item") end
 	end
 	return true
 end
@@ -175,15 +161,6 @@ function App:Push(data)
 	if data == nil then return false end
 	return Deliver(self, "addon", { data = data })
 end
-
--- a wake kept through a reload goes on (the ticker asks for the apps with a digest)
-ns.When("login", function()
-	for _, id in ipairs(A.order) do
-		local app = A.apps[id]
-		local s = app and Owned(app)
-		if s and s.retry and not Digesting(app) then Again(app) end
-	end
-end)
 
 ------------------------------------------------------------------------------------------------------------------------
 -- shared with the other files
