@@ -138,8 +138,9 @@ ns.CONTROL_WORDS = {
 	["继续"] = "resume", ["离开"] = "stop", ["停止"] = "stop",
 }
 
--- /wk's own words (UI/Window.lua's slash handler takes them before an app's id): no app is named so
-local RESERVED = { help = true, lang = true, no = true, yes = true }
+-- /wk's own words (UI/Window.lua's, which loads before this: its slash handler takes them before an app's id): no app
+-- is named so
+local RESERVED = ns.SLASH_WORDS
 
 local function Copy(v)
 	if type(v) ~= "table" then return v end
