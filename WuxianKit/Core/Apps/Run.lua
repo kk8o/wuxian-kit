@@ -124,9 +124,9 @@ local function Stale(app)
 end
 
 ------------------------------------------------------------------------------------------------------------------------
--- the lease, one rule: how long the agent has not been heard from (its last kit.app.* call, or the start), against the
--- run's lease. A run with a lease stops once that is over (Lapsed); the agent is present while it has called and is
--- within the lease (a run with none: within the default)
+-- the lease, one rule: how long the agent has not been heard from (its last kit.app.open, status, state or
+-- recent, or the start), against the run's lease. A run with a lease stops once that is over (Lapsed); the agent is
+-- present while it has called and is within the lease (a run with none: within the default)
 
 local function Silence(s, now)
 	return now - math.max(tonumber(s.seen) or 0, tonumber(s.started) or 0)

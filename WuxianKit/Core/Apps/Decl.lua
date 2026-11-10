@@ -622,7 +622,8 @@ Field { name = "say", type = "boolean?", status = true,
 	check = function(v) return Bool(v, "say") end, default = false }
 
 Field { name = "lease", type = "number?",
-	doc = ("seconds without a kit.app.* call of yours before it stops, default %d, 0 none, at least %d, at most %d")
+	doc = ("seconds without a heartbeat of yours (kit.app.open, status, state or recent) before it stops, default %d, "
+		.. "0 none, at least %d, at most %d")
 		:format(LEASE, ns.Lease(1), LEASE_MOST),
 	check = function(v) return LeaseOf(v, "lease") or 0 end, default = LEASE,
 	build = function(n, v) n.lease = v > 0 and v or nil end }
