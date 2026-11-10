@@ -1,7 +1,8 @@
 -- The app card (0.6): WuxianKit:AppPanel(id, parent, width) draws app `id` in another addon's window, the same card the
 -- window's 应用 page shows (UI.AppCard, on the canvas being drawn): its state, one line of the first that holds (no
--- 无限工坊 link, its extension off, its check()'s reason, running: the agent here until, last heard from, said today;
--- else ready), its main button, stop, its controls, and its options (the core's 活跃度 / 免打扰时段 when it has pace)
+-- 无限工坊 link, its extension off, its check()'s reason, running but waiting for what it hears to be there, running:
+-- the agent here until, last heard from, said today; else ready), its main button, stop, its controls (each drawn and
+-- told apart by its cmd: UI.AppControlList), and its options (the core's 活跃度 / 免打扰时段 when it has pace)
 -- with the window's controls. Returns a frame (its height set by its content) with :Refresh(), or nil when there is no
 -- such app. Cards and the window's app page redraw on kit.app, kit.option, kit.changed and app.<id>, and every few
 -- seconds while they show. The zhCN font has no arrows, squares or check marks: the state is told by the text's colour.
@@ -9,15 +10,16 @@
 -- The main button, while it does not run: an app with a prompt has 交给 AI (the copy box with its start line: any AI
 -- client with 无限工坊's MCP tools starts from it, Claude Code too); one without has none. A temporary app (an agent's,
 -- kept in memory only) has no 交给 AI; the window's page marks it.
--- The ns functions it reads are Apps.lua's (package K2): ns.AppList (with temp), ns.App, ns.AppStatus, ns.AppStop,
--- ns.AppOptionList, ns.SetAppOption, ns.AppControls, ns.ForgetApp, ns.CONTROL_WORDS; and Kit:AppControl. One that is
--- not there counts as none.
+-- The ns functions it reads are Core/Apps/Api.lua's: ns.AppList (rows with on, temp, hidden, waiting, local), ns.App,
+-- ns.AppStatus (with waiting, hear), ns.AppStop, ns.AppOptionList, ns.SetAppOption, ns.AppControls, ns.ForgetApp(id,
+-- wipe), ns.CONTROL_WORDS; and Kit:AppControl. One that is not there, or a field a row lacks, counts as none.
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
 local C = UI.Skin.C
 local A, CV = UI.AppWords, UI.Canvas
 
 local TICK = 5                            -- seconds between redraws while a card shows ("last answer n min ago")
+local HEARS = 2                           -- of what a listener hears, how many are named on its line
 local CORE_OPTIONS = { activity = 1, quiet = 2 }   -- the core's options for an app with pace: first
 
 -- one of Apps.lua's functions, never breaking a draw (an error goes to the error handler)
@@ -39,7 +41,7 @@ end
 -- what the window and the slash command read of the apps
 
 -- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, on, ends, present, prompt, start,
--- temp }
+-- temp, from (its local extension's title), waiting (why it runs but hears nothing yet, as the runtime says it) }
 function UI.Apps()
 	local out = {}
 	local list = Call(ns.AppList)
@@ -47,10 +49,37 @@ function UI.Apps()
 		if type(a) == "table" and type(a.id) == "string" and not a.hidden then   -- (plumbing: not drawn)
 			local title = a.title
 			if a.by == "agent" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
+			local waiting = a.on and a.waiting or nil
+			if waiting == "" then waiting = nil end
 			out[#out + 1] = { id = a.id, title = title ~= nil and title ~= "" and ns.Text(title) or a.id, by = a.by,
 				addon = a.addon, on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
 				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true,
-				from = type(a["local"]) == "table" and ns.Escape(ns.Text(a["local"].title or a["local"].id)) or nil }
+				from = type(a["local"]) == "table" and ns.Escape(ns.Text(a["local"].title or a["local"].id)) or nil,
+				waiting = waiting }
+		end
+	end
+	return out
+end
+
+-- the hidden apps that run (a program's plumbing: not in the list), as the window lists them under an app's page:
+-- { id, name (its local extension's title, else its id), hears (what it hears: the first few, and how many), ends }
+function UI.Listeners()
+	local out = {}
+	local list = Call(ns.AppList)
+	for _, a in ipairs(type(list) == "table" and list or {}) do
+		if type(a) == "table" and type(a.id) == "string" and a.hidden and a.on then
+			local st = Call(ns.AppStatus, a.id)
+			st = type(st) == "table" and st or {}
+			local from = type(a["local"]) == "table" and a["local"].title or nil
+			local heard = {}
+			for _, h in ipairs(type(a.hear) == "table" and a.hear or type(st.hear) == "table" and st.hear or {}) do
+				if type(h) == "string" then heard[#heard + 1] = ns.Escape(h) end
+			end
+			local hears = #heard > 0 and table.concat(heard, L.SEP, 1, math.min(#heard, HEARS)) or nil
+			if #heard > HEARS then hears = A.LISTEN_MORE:format(hears, #heard) end
+			local ends = tonumber(a.ends) or tonumber(st.ends)
+			out[#out + 1] = { id = a.id, name = ns.Escape(from ~= nil and from ~= "" and from or a.id), hears = hears,
+				ends = ends and ends > 0 and ends or nil }
 		end
 	end
 	return out
@@ -67,18 +96,56 @@ function UI.AppTitle(id)
 	return e and e.title or ns.Escape(id)
 end
 
--- its controls in order, { cmd, label } (the label ours, in the language in force)
+-- its controls in order, { cmd, label, own } (a core control's label ours, in the language in force). One of its own
+-- (own) has the label it declared, unless that could be taken for another control: a word of the core's
+-- (ns.CONTROL_WORDS: 离开 is the core's stop), another control's cmd, or the label of another of its own. Such a one is
+-- drawn, and typed, by its cmd, so no label ever names two controls and none of its own passes for stop
 function UI.AppControlList(id)
-	local out = {}
+	local out, cmds, times = {}, {}, {}
 	local list = Call(ns.AppControls, id)
 	for _, c in ipairs(type(list) == "table" and list or {}) do
 		local cmd = type(c) == "table" and (c.cmd or c[1]) or c
 		if type(cmd) == "string" then
 			local label = type(c) == "table" and (c.label or c[2]) or nil
-			out[#out + 1] = { cmd = cmd, label = A.CONTROL[cmd] or ns.Escape(label ~= nil and ns.T(label) or cmd) }
+			if label ~= nil then label = ns.Text(ns.T(label)) end
+			local own = not A.CONTROL[cmd]
+			out[#out + 1] = { cmd = cmd, label = label, own = own or nil }
+			cmds[cmd:lower()] = true
+			if own and label then times[label:lower()] = (times[label:lower()] or 0) + 1 end
+		end
+	end
+	local core = type(ns.CONTROL_WORDS) == "table" and ns.CONTROL_WORDS or {}
+	for _, c in ipairs(out) do
+		local label = c.label
+		local low = label and label:lower()
+		if not c.own then
+			c.label = A.CONTROL[c.cmd]
+		elseif not label or label == "" or core[low] or core[label] or times[low] > 1
+			or (cmds[low] and low ~= c.cmd:lower()) then
+			c.label = ns.Escape(c.cmd)
+		else
+			c.label = ns.Escape(label)
 		end
 	end
 	return out
+end
+
+-- the control of app id a word names, as the player types it after /wk <app>: a word of the core's (ns.CONTROL_WORDS)
+-- when the app has that control; else the cmd of one, or the label of one of its own as it is drawn. nil: no control
+function UI.AppControl(id, word)
+	if type(word) ~= "string" or word == "" then return nil end
+	local list, low = UI.AppControlList(id), word:lower()
+	local core = type(ns.CONTROL_WORDS) == "table" and ns.CONTROL_WORDS or {}
+	local cmd = core[low] or core[word]
+	for _, c in ipairs(list) do
+		if cmd and c.cmd == cmd then return c end
+	end
+	for _, c in ipairs(list) do
+		if c.cmd == word or c.cmd == low then return c end
+	end
+	for _, c in ipairs(list) do
+		if c.own and c.label == ns.Escape(word) then return c end
+	end
 end
 
 -- the words /wk <app> takes, as the player types them: Chinese ones in Chinese, else the commands
@@ -121,8 +188,21 @@ local function Blocked(app, st, by)
 	end
 end
 
--- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready
-local function State(app, st, by)
+-- why an app that runs waits, as the player reads it ("等待中 · 来源 quest 未就绪"), or nil when it does not. why is
+-- the runtime's: "<what> <name>" or "<what>", what a source, a facet or an extension that is not there yet (its addon
+-- has not loaded); any other text is shown as it is, anything else that is not false with no reason
+local function Waiting(why)
+	if why == nil or why == false or why == "" then return nil end
+	if type(why) ~= "string" then return A.WAITING end
+	local what, name = why:match("^(%a+)[%s:]+(.-)%s*$")
+	local words = A.WAIT[what or why]
+	if not words then return A.WAITING .. " · " .. ns.Escape(ns.Cut(why, 60)) end
+	return A.WAITING .. " · " .. (name and name ~= "" and words[1]:format(ns.Escape(name)) or words[2])
+end
+
+-- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready.
+-- waiting: the row's, for a status that does not say
+local function State(app, st, by, waiting)
 	if not Kit:AgentOnline() then return A.NO_LINK, C.gold, A.NO_LINK_HINT end
 	local why, ext, extId = Blocked(app, st, by)
 	if extId then
@@ -130,6 +210,9 @@ local function State(app, st, by)
 	end
 	if why then return why, C.muted end
 	if st.on then
+		if st.waiting ~= nil then waiting = st.waiting end
+		local waits = Waiting(waiting)                          -- on, but it hears nothing yet: not said to be listening
+		if waits then return waits, C.gold, A.WAIT_HINT end
 		local now, parts = time(), {}
 		if st.present == false then
 			parts[1] = A.LEFT
@@ -208,7 +291,7 @@ end
 function UI.AppCard(id, extra)
 	local app, entry, st, by = Facts(id)
 	if not app then return end
-	local text, color, hint, button, ready = State(app, st, by)
+	local text, color, hint, button, ready = State(app, st, by, entry.waiting)
 	CV.Put(0, color, text)
 	if hint then CV.Put(0, C.muted, hint) end
 	local row = {}
@@ -241,7 +324,7 @@ function UI.AppCard(id, extra)
 			local e = list[name]
 			if type(e) ~= "table" then return nil end
 			return agent and Escaped(e) or e, e.value
-		end, function(name, v) ns.Act("app.option", id, name, v) end)
+		end, function(name, v) ns.Act("app.option", id, name, v) end, nil, "app:" .. id)
 	end
 end
 
@@ -294,8 +377,8 @@ ns.AddAction("app.option", function(id, name, value)
 	UI.Refresh()
 	return ok and true or false
 end)
-ns.AddAction("app.forget", function(id)
-	Call(ns.ForgetApp, id)
+ns.AddAction("app.forget", function(id)                 -- the player's 移除: the declaration, its options, its records
+	Call(ns.ForgetApp, id, true)
 	UI.Refresh()
 	return true
 end)

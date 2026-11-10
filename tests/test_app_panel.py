@@ -1,13 +1,15 @@
 """The app card (0.6, Core/UI/AppPanel.lua) under Lua 5.1 in the mock client: WuxianKit:AppPanel draws an app's card from
 what Apps.lua's ns functions answer (faked here on the core's private table), its state line through every state (no
-无限工坊 link, its extension off, its check's reason, running, ready), the connect, stop and control buttons, its options
-with the window's controls, an agent's texts escaped, and the redraws on the bus and every few seconds."""
+无限工坊 link, its extension off, its check's reason, running but waiting, running, ready), the connect, stop and control
+buttons (one of its own by its cmd when its label could be taken for another control), its options with the window's
+controls, an agent's texts escaped, and the redraws on the bus and every few seconds."""
 import unittest
 
 from kitmock import Session, click, lupa, py, texts, type_into
 
-# Apps.lua's functions as K2 documents them, over __apps (id -> { decl, by, addon, status, controls, options, say,
-# temp }); what the card did goes to __log
+# Core/Apps/Api.lua's functions as the contract documents them, over __apps (id -> { decl, by, addon, status (with
+# waiting, hear), controls, labels (cmd -> label; none: "x" .. cmd), options, say, temp, hidden, local }); what the card
+# did goes to __log
 FAKES = """
 local ns = ...
 __ns = ns
@@ -28,7 +30,7 @@ function ns.AppList()
 			out[#out + 1] = { id = id, title = t.decl.title, by = t.by or "addon", addon = t.addon, on = t.status.on or false,
 				ends = t.status.ends, present = t.status.present, prompt = t.decl.prompt,
 				start = t.decl.prompt and t.decl.prompt:match("^[%w_%-]+$") and ("Start " .. t.decl.prompt) or nil,
-				temp = t.temp or false, hidden = t.hidden, ["local"] = t["local"] }
+				temp = t.temp or false, hidden = t.hidden, ["local"] = t["local"], waiting = t.status.waiting }
 		end
 	end
 	return out
@@ -50,12 +52,14 @@ function ns.SetAppOption(id, name, v)
 end
 function ns.AppControls(id)
 	local out = {}
-	for i, c in ipairs(__apps[id] and __apps[id].controls or {}) do out[i] = { cmd = c, label = "x" .. c } end
+	local labels = __apps[id] and __apps[id].labels or {}
+	for i, c in ipairs(__apps[id] and __apps[id].controls or {}) do out[i] = { cmd = c, label = labels[c] or "x" .. c } end
 	return out
 end
-function ns.ForgetApp(id)
-	Log("forget " .. id)
+function ns.ForgetApp(id, wipe)
+	Log("forget " .. id .. (wipe and " wipe" or ""))
 	__apps[id] = nil
+	return true
 end
 function WuxianKit:AppControl(id, cmd)
 	Log("control " .. id .. " " .. cmd)
@@ -247,6 +251,57 @@ class AppPanel(unittest.TestCase):
         s.lua.execute(b"__apps.voice.options = nil __p:Refresh()")
         self.assertNotIn("选项", texts(p))
         self.assertTrue(all(not set(GLYPHS) & set(t) for t in texts(p)))
+
+    def test_waiting(self):
+        """an app that runs but waits for what it hears to be there (its addon has not loaded) says so and why, in
+        gold with a hint, not that the agent is here; the reason is the status's, else the row's; its stop is there"""
+        s = start(self)
+        s.lua.execute(b"__add('quest', { by = 'agent', decl = { title = 'Quest' }, controls = { 'stop' }, "
+                      b"status = { app = 'quest', on = true, said = 0, waiting = 'source rxp' } })")
+        p = self.panel(s, "quest")
+        self.assertEqual(texts(p), ["Waiting · source rxp not ready", "Starts by itself once ready"])
+        self.ink(s, self.first(p), "gold")
+        self.assertEqual(labels(p), ["Stop"])
+        st = s.g("__apps")[b"quest"][b"status"]
+        for why, line in (("facet guild:roster", "Waiting · state guild:roster not ready"),
+                          ("extension", "Waiting · extension not loaded"),
+                          ("extension:Guide |cff00ff00x|r", "Waiting · extension Guide ||cff00ff00x||r not loaded"),
+                          ("Its addon is |cffff0000late|r", "Waiting · Its addon is ||cffff0000late||r"),
+                          (True, "Waiting")):
+            st[b"waiting"] = why if why is True else why.encode()
+            self.assertEqual(self.redraw(s)[0], line)
+        s.lua.execute(b"__ns.SetLanguage('zhCN')")
+        st[b"waiting"] = b"source rxp"
+        self.assertEqual(self.redraw(s), ["等待中 · 来源 rxp 未就绪", "就绪后自动开始"])
+        st[b"waiting"] = b"extension guide"
+        self.assertEqual(self.redraw(s)[0], "等待中 · 扩展「guide」未载入")
+        s.lua.execute(b"__ns.SetLanguage('enUS')")
+        st[b"waiting"] = None                                                   # it hears now
+        self.assertTrue(self.redraw(s)[0].startswith("Agent here"))
+        st[b"on"], st[b"waiting"] = False, b"source rxp"                        # not running: nothing waits
+        self.assertEqual(self.redraw(s)[0], "Ready to connect an agent")
+        s.lua.execute(b"__online = false")
+        st[b"on"] = True
+        self.assertEqual(self.redraw(s)[0], "Wuxian Workshop not connected")    # the earlier states hold first
+
+    def test_a_control_whose_label_names_another(self):
+        """one of its own controls is drawn by its cmd, not its label, when the label is a word of the core's (离开 is
+        stop), another control's cmd, or another's label too; its button gives its own cmd, never stop"""
+        s = start(self)
+        s.lua.execute("""
+			__add('tricky', { decl = { title = 'Tricky' }, status = { app = 'tricky', on = true },
+				controls = { 'stop', 'brief', 'recap', 'again', 'echo', 'wave', 'nod' },
+				labels = { brief = '离开', recap = 'Stop', again = 'Same', echo = 'same', wave = 'brief', nod = 'Nod!' } })
+		""".encode())
+        p = self.panel(s, "tricky")
+        self.assertEqual(labels(p), ["Stop", "brief", "recap", "again", "echo", "wave", "Nod!"])
+        for label, cmd in (("brief", "brief"), ("recap", "recap"), ("wave", "wave"), ("Nod!", "nod")):
+            click(button(p, label))
+            self.assertEqual(log(s)[-1], "control tricky " + cmd)
+        self.assertNotIn("stop tricky player", log(s))
+        s.lua.execute(b"__ns.SetLanguage('zhCN')")
+        self.redraw(s)
+        self.assertEqual(labels(p), ["停止", "brief", "recap", "again", "echo", "wave", "Nod!"])
 
     def test_an_agents_texts_are_escaped(self):
         """an app an agent declared shows its title, check reason and options' texts as they are (no colour code takes
