@@ -186,8 +186,8 @@ class GuildApp(unittest.TestCase):
                      "CLAUDE.md"):
             self.assertNotIn(gone, text)
         for there in ("https://wuxianwow.com/mcp", "https://wuxianwow.com/ai",
-                      "claude mcp add --transport http wuxianwow", "wuxian listen guild --once --since <next>",
-                      "0.9.13", "`notes`", "本机扩展「…」的补充", "wk_sense_guild", "wk_kit_app_stop", "report_issue", "guild/"):
+                      "claude mcp add --transport http wuxianwow", "wuxian listen guild --once --since <N>",
+                      "the `sent` in the answer", "0.9.13", "`notes`", "本机扩展「…」的补充", "wk_sense_guild", "wk_kit_app_stop", "report_issue", "guild/"):
             self.assertIn(there.replace(" ", ""), re.sub(r"\s+", "", text), there)
         # the app's docs folder holds it (the workshop reads <docs>/skills/*.md), not the chat extension's
         s = self.start()
