@@ -522,6 +522,28 @@ class Wakes(AppCase):
         status = self.agent(s, "kit.app.status", "{ app = 'v' }")
         self.assertEqual(status["controls"], ["test", "brief", "stop"])
 
+    def test_a_cmd_comes_before_a_label(self):
+        """a word that is a control's cmd gives that control, whatever another's label reads in the language now (an
+        addon's labels are texts of its own: the declaration saw them in one language only)"""
+        s = self.start()
+        s.lua.execute("""
+            local W = WuxianKit:Words { enUS = { GO = 'Walk', RUN = 'Faster' }, zhCN = { GO = '走', RUN = 'go' } }
+            WuxianKit:App('legs', { title = 'Legs', controls = { { cmd = 'go', label = W'GO' },
+                { cmd = 'run', label = W'RUN' }, 'stop' } })""".encode())
+        self.agent(s, "kit.app.open", "{ app = 'legs' }")
+        said = lambda: self.wakes(s, "legs")[-1]["items"][-1]["cmd"]
+        for word, cmd in (("go", "go"), ("Walk", "go"), ("Faster", "run"), ("GO", "go"), ("Run", "run")):
+            self.assertIs(s.lua.eval(f"WuxianKit:AppControl('legs', '{word}')".encode()), True, word)
+            self.assertEqual(said(), cmd, word)
+        s.ns.SetLanguage(b"zhCN")                                         # run's label now reads as go's cmd
+        self.assertEqual([(c[b"cmd"], s.ns.T(c[b"label"])) for c in s.ns.AppControls(b"legs").values()],
+                         [(b"go", "走".encode()), (b"run", b"go"), (b"stop", "停止".encode())])
+        for word, cmd in (("go", "go"), ("run", "run"), ("走", "go")):
+            self.assertIs(s.lua.eval(f"WuxianKit:AppControl('legs', '{word}')".encode()), True, word)
+            self.assertEqual(said(), cmd, word)
+        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('legs', 'STOP')"), True)   # the core's word, whatever its case
+        self.assertEqual(said(), "stop")
+
     def test_control_labels_in_chinese(self):
         s = self.start(locale="zhCN")
         self.opens(s, "{ app = 'v', controls = { 'less', 'stop' } }")

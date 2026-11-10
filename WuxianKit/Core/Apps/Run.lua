@@ -377,13 +377,18 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- the player's commands and words
 
--- cmd: one of the app's controls by its cmd, a word of ns.CONTROL_WORDS, or the label of one of its own
+-- cmd: one of the app's controls by its cmd, a word of ns.CONTROL_WORDS, or the label of one of its own. A cmd as it
+-- is declared comes first: the card and /wk give a control by its cmd, and no label takes that (a declaration is
+-- refused a label that is another's cmd, but an addon's label reads anew in each language)
 local function ControlOf(app, word)
 	if type(word) ~= "string" then return word end
+	local has = Set(app.decl.controls)
+	if has[word] then return word end
 	local cmd = ns.CONTROL_WORDS[word] or ns.CONTROL_WORDS[word:lower()]
 	if cmd then return cmd end
+	if has[word:lower()] then return word:lower() end
 	for c, label in pairs(app.decl.labels or {}) do
-		if c == word:lower() or ns.T(label) == word then return c end
+		if ns.T(label) == word then return c end
 	end
 	return word
 end
