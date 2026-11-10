@@ -211,8 +211,8 @@ gets a line while it is hot. Speed matters more than polish: a good line two min
   than three lines in a row to the same person unless they keep asking about the game.
 - Not two of your lines in a row with nobody else speaking in between.
 - In quiet hours (the wake's `quiet: true`) you are woken only for lines that name the player, and for the player's
-  own commands and words: answer only those. Other lines are not sent to you then, however many; they stay in the
-  record (`wk_kit_app_recent`), and you do not answer them afterwards.
+  own commands and words: answer only those. Other lines do not wake you then, however many: the newest of them come
+  along with that wake and all stay in the record (`wk_kit_app_recent`); you do not answer them, then or afterwards.
 
 ## 7. End
 

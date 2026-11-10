@@ -39,15 +39,20 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - whatever a preview, label or format shows of the args goes through `WuxianKit:Escape`;
    - `doc`: one English sentence starting with a verb (Returns... / Proposes to...), naming other capabilities by
      their id; errors in English; player-facing words short and plain;
-   - a source: a name no other extension uses; `check(what)` answers why a `what` is wrong; `on(self, what, fn)` hands
-     `fn` a new table for each item (apps write fields on it), plain data only; the source's `doc` says what
-     `<name>:<what>` hears. An item's `id` is the kit's: the core numbers every item as it reaches an app, and an
-     `id` the source gives is not kept as the `id`. A number of the source's own goes in another field, such as
-     `ref`;
+   - a source: a name no other extension uses (lowercase letters, digits, `_`, at most 24 bytes); `check(what)`
+     answers why a `what` is wrong; `on(self, what, fn)` hands `fn` a new table for each item (apps write fields on
+     it), plain data only, and returns a token; `off(self, token)` ends it; the source's `doc` says what
+     `<name>:<what>` hears. An item's `id` is the kit's: the core numbers every item as it reaches an app. An `id`
+     the source gives is handed on as the item's `ref` (unless the source gave a `ref` of its own): give there the
+     number an agent should name the thing by, as the source `chat` does with a message's number;
    - a facet: a name no other extension uses (lowercase letters, digits, `_`, at most 24 bytes); `read(self)` returns
      a small table of plain data, or nil when there is nothing now (a snapshot over 600 bytes is cut); `fields` lists
      its fields for the docs; `on(self)` and `off(self)` turn on and off what it needs while an app sees it (a count
-     counts only between them); its `doc` says what each field means.
+     counts only between them); its `doc` says what each field means;
+   - registering a source or a facet again from the same extension replaces it (the apps that hear the source
+     subscribe to the new one). `ext:Source(name, nil)` and `ext:Facet(name, nil)` take it back: an app that runs
+     and needs it waits half a minute for it to come again, then stops (`why` `extension`), and no app that needs
+     it can start meanwhile.
 5. Docs: an `AGENT.md` in the addon folder (what the tools are for, how to use them together, its sources and their
    items' fields, its facets and their fields, cautions), and
    `skills/<name>.md` only for a workflow that needs several tools in order (its front matter: `name`, `title`,
@@ -62,8 +67,8 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - for a source, hear it with a temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": {"title": "Peek",
      "hear": ["<source>:<what>"]}, "minutes": 15}` (`temp` is the temporary app's whole declaration), make the thing
      happen in the game, read `wk_kit_app_recent` with `{"app": "peek", "since": 0}`, then `wk_kit_app_stop`;
-   - for a facet, see it with a temporary app (`"see": ["<facet>"]` in its `temp`) and read its snapshot with the
-     capability kit.app.state and `{"app": "peek"}` (each wake's `state` holds the same);
+   - for a facet, see it with a temporary app (`"see": ["<facet>"]` in its `temp`) and read its snapshot with
+     `wk_kit_app_state` and `{"app": "peek"}` (each wake's `state` holds the same);
    - for a Change tool, tell the player first, make the proposal, `wk_wait` for the outcome, and offer `wk_kit_undo`
      afterwards.
 8. An adapter for an interface: the quest guide (section 13). The extension `route` (任务指引) takes the step the

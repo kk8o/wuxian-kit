@@ -35,15 +35,17 @@ Make the AI app {{app}}. What it should do: {{goal}}
      quests, kills, deaths, xp, zones), or a facet another addon registers. Facts come from the kit, what to say is the
      app's: take them from `state`, never work them out from items or parse game text.
    - How items become wakes: `pace: true` for talk the player tunes (the core adds the options 活跃度 Activity and
-     免打扰时段 Quiet hours; in quiet hours only urgent items wake, the rest stay in the record); else
-     `digest: {gather, every, idle, most}` with `urgent` (the `why` or `kind` values that wake at once); neither:
-     every item wakes at once (`reason = "item"`), only for rare items.
-   - `controls`: the commands the player can give it, only those the app honors (`mute`, `unmute`, `less`, `more`,
-     `test`, `pause`, `resume`, `stop`; the core itself carries out `stop`). `say: true` lets the player talk to it
-     with `/wk <id> <words>`.
-   - `lease`: seconds without a call to one of its tools (`wk_kit_app_status` and the others) before it counts as
-     gone and stops (default 600, at least 60). `minutes`: its longest run (default 120, at most 720).
-     `wk_kit_app_open` may give `minutes` and `lease` of its own for one run.
+     免打扰时段 Quiet hours; in quiet hours only an item whose `why` is `mention` wakes, and the player's own commands
+     and words: the rest wait for the next wake); else `digest: {gather, every, idle, most}` with `urgent` (the `why`
+     or `kind` values that wake at once); neither: every item wakes at once (`reason = "item"`), only for rare items.
+   - `controls`: the commands the player can give it (buttons on its card, and `/wk <id> <word>`), only those the app
+     honors: `mute`, `unmute`, `less`, `more`, `test`, `pause`, `resume`, `stop` (the core itself carries out `stop`),
+     or one of the app's own, `{"cmd": "<word>", "label": "<the button's text, one word>"}`; at most 12. `say: true`
+     lets the player talk to it with `/wk <id> <words>`.
+   - `lease`: seconds without a heartbeat before it counts as gone and stops (default 600, at least 60, 0 for none).
+     The heartbeat is a call of `wk_kit_app_open`, `wk_kit_app_status`, `wk_kit_app_state` or `wk_kit_app_recent`
+     for the app, and no other tool (`wuxian listen` sends it while it waits). `minutes`: its longest run (default
+     120, at most 720). `wk_kit_app_open` may give `minutes` and `lease` of its own for one run.
    - `options`: at most 8 settings the player sets on its card (`{kind, title, default, ...}` as extension options);
      read them with `wk_kit_options` and `{"app": "<id>"}`.
 4. An addon's declaration:
@@ -78,6 +80,9 @@ Make the AI app {{app}}. What it should do: {{goal}}
      line, and its card shows 交给 AI and says which local extension it comes from. When the extension is turned off
      or removed, 无限工坊 withdraws the app (it stops with `forgotten`); the options the player set stay and come
      back when the extension is on again. These apps do not count against your 8.
+   - To see what the game has: `wk_kit_app_describe` with `{"app": "<id>"}` answers the declaration as it is kept
+     (every field, defaults filled in), for any app. `wk_kit_app_forget` with `{"app": "<id>"}` withdraws by hand an
+     app an agent declared (one left behind, say); never an addon's.
    - A local extension may also add to an app, its own or another's, with the manifest's `adds`: a `wake` capability
      whose answer comes in each wake's `notes.<extension id>` (The wake, below), and a `skill` section that
      `wk_docs` puts after the app's skill. An app's `reactions` and a control's `call` are the manifest's too. All of
@@ -94,9 +99,10 @@ Make the AI app {{app}}. What it should do: {{goal}}
    the player sees it under 后台监听 on the Apps page and can stop it there. Not for an app the player uses.)
 7. Running an app in a conversation (through its skill, or a temporary app):
    - Open it first: `wk_kit_app_open` answers the app's status (`on`, `next`, `ends`, `lease`, ...). If `on` is
-     false, `blocked` says why (an extension off, its check): tell the player and do not open it again and again.
-     `on` true with `waiting`: it runs, but a source or facet it needs is not registered yet (an addon still
-     loading); it hears nothing until then and stops with `extension` if that never comes. Go on.
+     false, `blocked` says why (an extension off, a source or facet it needs not registered, its check): it did not
+     start; tell the player and do not open it again and again. `on` true with `waiting` is an app that ran already
+     (through a login or a reload, or an addon took its source back): a source or facet it needs is not registered
+     now; it hears nothing until that comes and stops with `extension` if that takes more than half a minute. Go on.
    - Then wait in the background (Waiting for wakes) and read each wake (The wake).
    - Act only through Send and Change proposals: `wk_chat_send` (for a chat item, `reply` = its `ref`, and `stale` so
      a late answer is dropped when the talk moved on), `wk_propose` for several steps, the UI guide's tools; then
@@ -115,7 +121,8 @@ The workshop's command waits for an app's wakes outside a turn:
 
     wuxian listen <id> [--once] [--since <N>] [--max <seconds>]
 
-It joins a running app; it never opens one. While it waits it sends the heartbeat.
+It joins a running app; it never opens one. While it waits it sends the heartbeat (it reads the app's status every
+third of its lease).
 
 1. Open the app first (`wk_kit_app_open`), or check that `wk_kit_app_status` answers `on: true`.
 2. Run `wuxian listen <id> --once --since <N>` in the background. `<N>` the first time: the `sent` of the status
@@ -124,26 +131,32 @@ It joins a running app; it never opens one. While it waits it sends the heartbea
    count the same items. `sent` is where the app's wakes are: the `next` of the last wake it sent (before its first:
    the newest item when the run began). `next` is the newest item it heard, and can be ahead of `sent`: those items
    are gathered and come with a wake, so start from `sent`, never from `next`. Without `--since` the command starts
-   from `sent` itself, and what came before is not printed.
+   from `sent` itself, and what came before is not printed. A `--since` above the app's newest item (another
+   character, saved variables that began again) is lowered to the status's `next`, with a `note:` line on stderr.
 3. Read its lines:
    - `OPEN <status>`: it joined; the app's status as JSON.
-   - `{"t": ..., "topic": "app.<id>", "data": {...}}`: a wake, one JSON line each; `data` is The wake, below. Items
-     after `<N>` that no wake brought you (they came while nobody waited, or a wake was lost) come first, as a
-     wake with `reason: "catchup"`: the record is read up to the app's `sent` only, and the items after that come
-     with the app's own wakes, at its pace. Nothing is printed twice.
+   - `{"t": ..., "topic": "app.<id>", "data": {...}}`: a wake, one JSON line each; `data` is The wake, below. The
+     line has no `id` of its own: the cursor is the `NEXT` line's. Items after `<N>` that no wake brought you (they
+     came while nobody waited, or a wake was lost) come first, as a wake with `reason: "catchup"`: the record is
+     read up to the app's `sent` only, and the items after that come with the app's own wakes, at its pace. Nothing
+     is printed twice, and a wake without items (`idle`) is printed like any other.
    - `NEXT <N>`: after each batch of wakes; with `--once` the command exits here. Act on the wakes, then run it again
      with `--since <N>`. Better: start the next wait first, then act.
    - `TIMEOUT` (after a `NEXT <N>`): nothing came within `--max` seconds (default 1500). Run it again as it was, with
      that `N`.
    - `END <why>`: the app does not run. Start no new wait and do not stop it (it is stopped: there is nothing to
-     stop, and a new wait would only print `END` again). Tell the player why:
-     `stopped` (a stop tool was called), `player` (the player stopped it), `expired` (its minutes ran out), `left`
-     (the lease ran out: no heartbeat), `extension` (an extension it needs is off, or a source or facet it needs
-     never came), `replaced` (another declaration took its place), `forgotten` (its declaration was removed).
+     stop, and a new wait would only print `END` again). `END` as the first line: it was not running when the
+     command began (open it first); for an id the game does not know that is `END stopped`, with exit code 1. Tell
+     the player why:
+     `stopped` (a stop tool was called, or it never ran), `player` (the player stopped it), `expired` (its minutes
+     ran out), `left` (the lease ran out: no heartbeat), `extension` (an extension it needs is off, a source or facet
+     it needs never came, or its addon's check says no), `replaced` (its id was declared again as another sort of
+     app, temporary or kept), `forgotten` (its declaration was removed).
 4. In a conversation the time between two commands must stay well under the lease: think and act, then wait again.
 
 Between wakes: `wk_kit_app_state` with `{"app": "<id>"}` reads the facets now; `wk_kit_app_recent` with
-`{"app": "<id>", "since": <N>}` reads the items after `N` again (it keeps the last 100, through reloads).
+`{"app": "<id>", "since": <N>}` reads the items after `N` again: the newest 50 of them, or `limit`, up to 100 (it
+keeps the last 100, through reloads).
 
 ## The wake
 
@@ -159,8 +172,10 @@ the event `app.<id>`. Its data:
   - `urgent`: an item that wakes at once came (its `why` or `kind` is in the app's `urgent` or the pace's wake
     list; a `control` or `player` item always is);
   - `batch`: items were gathered and their time is up;
-  - `full`: the buffer filled up (never in quiet hours: there the items only stay in the record);
-  - `idle`: nothing happened for the app's `idle` time; `items` is empty;
+  - `full`: the buffer filled up (never in quiet hours: there the newest wait for the next wake and the older
+    count as `skipped`);
+  - `idle`: nothing happened for the app's `idle` time; `items` is empty (unless the app's `every` is off: then it
+    brings what was gathered);
   - `catchup`: made by `wuxian listen`, never by the game: items you had not read, taken from the record. Older
     than a live wake's: answer only what is still worth it.
 - `items`: `[{id, time, source, ...}]`, oldest first.
@@ -171,17 +186,21 @@ the event `app.<id>`. Its data:
     `why`, `ref` ...), `game` (`kind`, `topic`, `data`), `route` (`kind`, `data`), `bus` (`topic`, `data`),
     another addon's source (the fields its guide gives), `addon` (`data`, pushed by the app's addon), `control`
     (`cmd`, the player's command), `player` (`text`, the player's words to the app).
-  - Texts are cut to 500 bytes and tables to 6 levels, in the wake and in the record alike.
+  - Texts are cut to 500 bytes and tables to 6 levels, in the wake and in the record alike. An item still larger
+    than about 1700 bytes has its texts cut shorter, then loses the tables in it; `cut: true` in it says so.
 - `after`, `next`: the wake covers every item of this app with `after < id <= next`. `after` is the `next` of the
   wake before it (the first wake of a run: the newest item id when the run began, 0 if there was none). So wakes
   join end to end: a wake whose `after` is above the last `next` you read means you missed some. `wuxian listen`
   reads those for you (`catchup`); on your own, `wk_kit_app_recent` with `{"app": "<id>", "since": <your last
   next>}`, and take only the items up to that wake's `after` (the later ones are in the wake). The status's `sent`
   is the `next` of the last wake sent: joining an app that runs, that is where you start.
-- `skipped`: how many of the covered items, the oldest, were left out to keep the wake small (`state` counts too).
-  They are in the record: `wk_kit_app_recent` with `{"app": "<id>", "since": <after>}`.
+- `skipped`: how many of the covered items, the oldest, are not in `items`: too many were waiting (more than 4
+  times the app's `most`; in quiet hours more than `most`). They are in the record: `wk_kit_app_recent` with
+  `{"app": "<id>", "since": <after>}`. Items that do not fit one wake (about 7200 bytes, `state` counted) are not
+  skipped: they stay and come with the next wake, a second later.
 - `state`: a snapshot of each facet in the app's `see`, read as the wake is sent: `{<facet>: {...}}`. A facet with
-  nothing now is left out; an app without `see` has no `state`.
+  nothing now is left out; an app without `see` has no `state`. Of a state too large for the wake the largest
+  facets come as `{cut: true}`: `wk_kit_app_state` reads them whole.
 - `pace`: the player's activity now (`quiet`, `normal`, `lively`), for an app with `pace`.
 - `quiet`: true in the player's quiet hours, for an app with `pace`.
 - `notes`: what local extensions of 无限工坊 added to this wake on this computer (the manifest's `adds`), by
