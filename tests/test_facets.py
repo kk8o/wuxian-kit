@@ -237,8 +237,8 @@ class OnOff(FacetCase):
 
     def test_registered_again_while_an_app_looks(self):
         s = self.probe(self.start())
-        self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
-        self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        self.opens(s, "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        self.opens(s, "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'probe' } }")
         s.lua.globals()[b"__ns"] = s.ns
         s.lua.execute(b"__facet = __ns.facets.probe")
         s.lua.execute(self.AGAIN)                                          # a hot reload of its addon

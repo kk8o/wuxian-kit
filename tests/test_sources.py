@@ -80,7 +80,7 @@ class Sources(unittest.TestCase):
     def test_registered_again_while_an_app_hears(self):
         s = self.start(before=RADIO)
         s.lua.globals()[b"__ns"] = s.ns
-        self.agent(s, "kit.app.open", "{ app = 'mix', hear = { 'radio:jazz', 'radio:news', 'bus:demo.*' }, lease = 0 }")
+        self.agent(s, "kit.app.open", "{ app = 'mix', lease = 0, temp = { hear = { 'radio:jazz', 'radio:news', 'bus:demo.*' } } }")
         self.assertEqual(s.lua.eval(b"__radio_n"), 2)
         old = s.ns.sources[b"radio"]
         s.lua.execute(self.RADIO2)                                       # a hot reload of the radio's addon
@@ -113,7 +113,7 @@ class Sources(unittest.TestCase):
         self.assertEqual(py(s.ns.sourceOrder), ["bus", "chat", "game", "route"])
         self.assertEqual(s.lua.eval(b"#__rx.sourceOrder"), 0)
         self.assertIn("pop:x: no source pop (the sources: bus, chat, game, route)",
-                      self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'pop:x' } })"))
+                      self.fails(s, "__fns['kit.app.declare']({ app = 'r', hear = { 'pop:x' } })"))
         self.assertIn("other: the source chat is extension chat's",
                       self.fails(s, "WuxianKit:Extension('other'):Source('chat', nil)"))
         s.lua.execute(RADIO)                                             # registered anew
