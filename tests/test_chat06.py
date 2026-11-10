@@ -167,7 +167,7 @@ class Chat06(unittest.TestCase):
         g = py(s.g("__g"))
         self.assertEqual([m["id"] for m in g], [msg["id"]])                 # told once
         [item] = self.heard(s)
-        self.assertEqual((item["id"], item["source"], item["plain"]), (msg["id"], "chat", "one"))
+        self.assertEqual((item["ref"], item["source"], item["plain"]), (msg["id"], "chat", "one"))
         self.assertIsNone(s.lua.eval(b"__g[1].source"))                     # the shared message is left alone
         self.assertTrue(s.lua.eval(b"(function() for _, e in ipairs(__events) do if e.topic == 'app.ear' then "
                                    b"return not rawequal(e.data.items[1], __g[1]) end end end)()"))

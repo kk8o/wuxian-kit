@@ -1,5 +1,5 @@
-"""The digest and what goes with it (Core/Digest.lua), as apps use it: ids and times of the items a source gives (an
-item's own id moves the core's one counter on; the rings move it on at load), urgent, full, batch and idle wakes, the
+"""The digest and what goes with it (Core/Digest.lua), as apps use it: ids and times of the items a source gives (the
+core numbers them, a source's own id goes as ref; the rings move the counter on at load), urgent, full, batch and idle wakes, the
 ticker that runs only while an app does, the lease kept through a reload; and the helpers themselves (ns.Digest.Params,
 ns.Digest.Small, ns.UrgentList, ns.Lease, ns.RingRecent)."""
 import unittest
@@ -70,15 +70,16 @@ class Digest(unittest.TestCase):
         s = self.start()
         self.call(s, "kit.app.open", "{ app = 'p', lease = 0, temp = { hear = { 'dg:a' } } }")
         a = s.lua.eval(b"WuxianKit:NewId()")
-        for item in ("{ a = 1 }", "{ id = 500 }", "{ b = 2 }", "{ time = 5 }"):
+        for item in ("{ a = 1 }", "{ id = 500 }", "{ b = 2, id = 'x7', ref = 'mine' }", "{ time = 5 }"):
             s.lua.execute(f"__push('a', {item})".encode())
         now = s.lua.eval(b"time()")
         items = [w["items"][0] for w in self.wakes(s, "p")]
-        self.assertEqual([(i["id"], i["time"], i["source"]) for i in items],
-                         [(a + 1, now, "dg"), (500, now, "dg"), (501, now, "dg"), (502, 5, "dg")])
-        self.assertEqual(s.lua.eval(b"WuxianKit:NewId()"), 503)             # an item's own id moved the counter on
-        recent = self.call(s, "kit.app.recent", "{ app = 'p', since = 500, limit = 1 }")
-        self.assertEqual((recent["items"][0]["id"], recent["next"]), (502, 502))
+        self.assertEqual([(i["id"], i["time"], i["source"], i.get("ref")) for i in items],
+                         [(a + 1, now, "dg", None), (a + 2, now, "dg", 500), (a + 3, now, "dg", "mine"),
+                          (a + 4, 5, "dg", None)])                        # the core's ids; a source's own goes as ref
+        self.assertEqual(s.lua.eval(b"WuxianKit:NewId()"), a + 5)           # which does not move the counter
+        recent = self.call(s, "kit.app.recent", f"{{ app = 'p', since = {a + 2}, limit = 1 }}")
+        self.assertEqual((recent["items"][0]["id"], recent["next"]), (a + 4, a + 4))
 
     def test_ids_go_on_from_the_rings(self):
         saved = {"WuxianKitDB": b"{ apps = { old = { recent = { who = 'Player-1-00000001', n = 900, items = {} } } } }"}

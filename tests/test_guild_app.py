@@ -152,7 +152,7 @@ class GuildApp(unittest.TestCase):
         self.assertEqual((line["source"], line["channel"], line["why"], line["plain"]),
                          ("chat", "guild", "question", "anyone know where the dungeon is?"))
         self.assertIsInstance(line["id"], int)
-        self.assertEqual(s.lua.eval(f"WuxianKit.Chat.Message({line['id']}).plain".encode()).decode(), line["plain"])
+        self.assertEqual(s.lua.eval(f"WuxianKit.Chat.Message({line['ref']}).plain".encode()).decode(), line["plain"])
         self.say(s, "hi wuxian")
         s.run(6)
         mention = self.wakes(s)[-1]["items"][-1]

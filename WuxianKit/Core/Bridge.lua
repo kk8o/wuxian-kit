@@ -12,6 +12,11 @@
 -- a proposal's end above all) wait here (the last KEPT) and are sent again when there is room, and the extensions' (a
 -- busy app) take at most FEED_RATE a second of it, so the core's find room; what was dropped is told every
 -- DROPPED_EVERY seconds (kit.dropped). While 无限工坊 is not linked, WoWBridge itself keeps only its last few events.
+-- An app's wake (app.<id>) is neither kept here nor dropped: ns.SendWake answers whether it went, and its digest
+-- (Digest.lua) holds the items of one that did not and sends them again.
+--   ns.WireSize(v, depth)      the bytes of v as WoWBridge writes an event's data (JSON, to `depth` levels: 6)
+--   ns.Forward(topic, data)    a bus event to the agent; for app.*: whether it went (true without WoWBridge)
+--   ns.SendWake(topic, data)   an app's wake to the agent, then to the bus; false (and told to nobody) when it did not go
 local addonName, ns = ...
 local Kit = ns.Kit
 
@@ -112,7 +117,49 @@ local again = {}                                         -- the core's events Wo
 local tokens, at = FEED_BURST, 0                        -- the extensions' share
 local dropped, droppedAt = {}, 0                        -- topic -> how many of the extensions' went unsent
 
+-- the bytes of v as WoWBridge's Json.Encode writes it (an event's data goes to 6 levels; a table past them is
+-- "<table>"): a table with a sequence (or empty) is an array, another an object with its keys as texts; a text has its
+-- quotes, backslashes and bytes below 32 escaped (six bytes each). WoWBridge sends an event's data of more than 8000
+-- such bytes as {cut = true}: what the digest keeps its wakes under
+local function WireSize(v, depth)
+	if issecretvalue and issecretvalue(v) then return 10 end
+	local t = type(v)
+	if t == "boolean" then return v and 4 or 5 end
+	if t == "number" then
+		if not ns.Finite(v) then return 4 end
+		if v == math.floor(v) and math.abs(v) <= 9007199254740992 then return #("%.0f"):format(v) end
+		return #("%.14g"):format(v)
+	end
+	if t == "string" then
+		local _, escaped = v:gsub('[%z\1-\31"\\]', "")
+		return #v + 2 + escaped * 5
+	end
+	if t ~= "table" then return t == "nil" and 4 or #ns.Text(v) + 2 end
+	if depth <= 0 then return 9 end
+	local n, size = #v, 1
+	if n > 0 or next(v) == nil then
+		for i = 1, n do size = size + WireSize(v[i], depth - 1) + 1 end
+		return math.max(2, size)
+	end
+	for k, x in pairs(v) do size = size + WireSize(tostring(k), 0) + WireSize(x, depth - 1) + 2 end
+	return size
+end
+
+function ns.WireSize(v, depth)
+	return WireSize(v, depth or 6)
+end
+
+local told                                               -- the wake ns.SendWake is telling the bus: it went already
+
 function ns.Forward(topic, data)
+	if topic:sub(1, 4) == "app." then                     -- a wake: it goes now or not at all, and its sender hears which
+		if not WB or (told ~= nil and told == data) then return true end
+		local now = GetTime()
+		tokens, at = math.min(FEED_BURST, tokens + (now - at) * FEED_RATE), now
+		if tokens < 1 or Send(topic, data) ~= "sent" then return false end
+		tokens = tokens - 1
+		return true
+	end
 	if not WB then return end
 	if topic == "kit.proposal" then data = Plainly(data) end
 	if topic:sub(1, 4) == "kit." then
@@ -129,6 +176,16 @@ function ns.Forward(topic, data)
 	elseif sent ~= "bad" then
 		dropped[topic] = (dropped[topic] or 0) + 1
 	end
+end
+
+-- an app's wake: to the agent first, and to the bus (the addons that listen) only when it went, so that nobody hears
+-- one twice when it is sent again
+function ns.SendWake(topic, data)
+	if not ns.Forward(topic, data) then return false end
+	told = data
+	Kit:Emit(topic, data)
+	told = nil
+	return true
 end
 
 if WB then

@@ -326,7 +326,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
         s.lua.execute(b"__msg = __say('party', { plain = 'hi', why = 'question' })")
         self.assertIsNone(s.lua.eval(b"__msg.source"))                    # the shared message is left alone
         item = self.wakes(s, "c")[0]["items"][0]
-        self.assertEqual((item["source"], item["why"], item["id"]), ("chat", "question", s.lua.eval(b"__msg.id")))
+        self.assertEqual((item["source"], item["why"], item["ref"]), ("chat", "question", s.lua.eval(b"__msg.id")))
         s.lua.execute(b"__moment('quest.turnin', 'quest', { id = 5 })")
         w = self.wakes(s, "c")[1]
         g = w["items"][0]
@@ -465,15 +465,18 @@ class Wakes(AppCase):
 
     def test_a_wake_kept_under_its_size(self):
         s = self.start()
-        self.opens(s, "{ app = 'big', hear = { 'bus:demo.*' }, digest = { every = 5, most = 10 } }")
-        for i in range(8):
+        self.opens(s, "{ app = 'big', hear = { 'bus:demo.*' }, digest = { every = 5, most = 30 } }")
+        for i in range(20):
             s.lua.execute(f"WuxianKit:Emit('demo.x', '{i}' .. string.rep('y', 1000))".encode())
-        s.run(6)
-        w = self.wakes(s, "big")[0]
-        self.assertEqual((w["reason"], w["app"]), ("batch", "big"))
-        self.assertGreater(w["skipped"], 0)
-        self.assertEqual(len(w["items"]) + w["skipped"], 8)
-        self.assertLessEqual(s.lua.eval(b"#WuxianKit.Comm.Serialize(__events[#__events].data)"), 5500)
+        s.run(9)
+        ws = self.wakes(s, "big")
+        self.assertEqual((ws[0]["reason"], ws[0]["app"]), ("batch", "big"))
+        self.assertLess(len(ws[0]["items"]), 20)                          # what did not fit waits: with the next wake
+        self.assertEqual(([x["reason"] for x in ws], sum(len(x["items"]) for x in ws), sum(x["skipped"] for x in ws)),
+                         (["batch"] * len(ws), 20, 0))
+        for x in s.lua.eval(b"__events").values():                        # as WoWBridge writes it: its line is 8000
+            if x.topic == b"app.big":
+                self.assertLessEqual(s.ns.WireSize(x.data), 7200)
 
     def test_controls_and_the_players_words(self):
         s = self.start()

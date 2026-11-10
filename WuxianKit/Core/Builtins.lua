@@ -10,7 +10,7 @@
 --   kit.undo              (Do)   undo a proposal that ran
 --   bus                   (Source) what addons emit on the bus, for apps to hear (bus:<topic or prefix.*>)
 --   me                    (Facet)  the player now (WuxianKit:Me()), for apps to see (see = { "me" }: state.me)
--- (The apps' capabilities, kit.app.* and kit.apps, are in Apps.lua.)
+-- (The apps' capabilities, kit.app.* and kit.apps, are in Apps/Api.lua.)
 local _, ns = ...
 local Kit, L = ns.Kit, ns.L
 
@@ -140,7 +140,8 @@ kit:Event("proposal", { doc = "a proposal changed state: pending, waiting (for i
 	data = { id = "number", state = "string", title = "string?", source = "string", error = "string?" } })
 kit:Event("extension", { doc = "an extension went on or off", data = { id = "string", on = "boolean" } })
 kit:Event("dropped", { doc = "extension events that were not sent because they came faster than the link carries "
-	.. "(the core's own always go): how many, by topic", data = { count = "number", topics = "table" } })
+	.. "(the core's own always go, and an app's wakes wait and are sent again): how many, by topic",
+	data = { count = "number", topics = "table" } })
 kit:Event("changed", { doc = "the manifest changed: an extension on or off, a capability, the language",
 	data = { revision = "string" } })
 kit:Event("ready", { doc = "WuxianKit is up, after a login or a reload", data = { version = "string", extensions = "table",
