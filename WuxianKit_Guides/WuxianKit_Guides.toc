@@ -5,6 +5,7 @@
 ## Notes-zhCN: 把任务指引插件（RestedXP）接到 WuxianKit 的任务指引：它们当前的一步，按统一的格式交给 AI 应用。
 ## Version: 0.1.0
 ## X-Wuxian-ID: wuxiankit_guides
+## X-Wuxian-Kit: 0.6.0
 ## X-Website: https://wuxianwow.com/workshop/extensions
 ## Dependencies: WuxianKit
 ## OptionalDeps: RXPGuides
