@@ -11,9 +11,10 @@ so call them freely.
 - `wk_sense_quests`: the quest log with each quest's objectives.
 - `wk_sense_professions`, `wk_sense_reputation`, `wk_sense_currency`, `wk_sense_group`.
 - `wk_sense_guild`: the player's guild: `name`, `rank` (the player's), `motd`, `total` and `online` member counts,
-  `classes` (`{"MAGE": 3, ...}`, of those online) and `levels` (`avg`, `median`, `atMax`: how many are at the level cap,
-  of those online), and `members`: the online members `{name, level, class, zone, rank, online}`, highest level first,
-  at most `limit` (default 100, up to 300); `{"members": false}` leaves the list out. `name` is whole, as for a whisper.
+  `classes` (`{"MAGE": 3, ...}`) and `levels` (`avg`, `median`, `atMax`: how many are at the level cap), both of all
+  members, online or not, and `members`: the online members only, `{name, level, class, zone, rank, online}`, highest
+  level first, at most `limit` (default 100, up to 300); `{"members": false}` leaves the list out. `name` is whole, as
+  for a whisper.
   Not in a guild: `{"guild": false}`. Guild notes are never read. The roster is the one the client has; right after
   login it may be incomplete for a moment.
 
