@@ -1,8 +1,8 @@
 """The window's apps (0.6, Core/UI/Window.lua) under Lua 5.1 in the mock client, over Apps.lua's ns functions faked as in
 test_app_panel: the group 应用 first, before the extensions, with each app's state, the window first open on the first
 app's page, an app's page (where it came from, its card; remove for an agent's; a temporary one marked), redrawn when
-apps change; /wk <app> [words] (its controls, its words, what it takes, its page), /wk help; and
-the core's page drawing the core's own options (称呼, 0.6)."""
+apps change; /wk <app> [words] (its controls, its words, what it takes, its page), /wk help, /wk's own words
+(ns.SLASH_WORDS) before any other's; and the core's page drawing the core's own options (称呼, 0.6)."""
 import unittest
 
 from kitmock import click, lupa, py, texts, type_into
@@ -52,14 +52,14 @@ class WindowApps(unittest.TestCase):
         self.assertEqual(body[:2], ["Voice", "Addon WxVoice"])
         self.assertEqual(w[b"pill"][b"text"][b"text"], b"App")
         self.assertTrue(body[2].startswith("Agent here"))
-        self.assertEqual(labels(w), ["Stop", "Mute", "Unmute"])
+        self.assertEqual(labels(w), ["Stop", "Mute", "Unmute", "Stop"])        # (the last: the hidden one's line)
         click(button(w, "Mute"))
         self.assertEqual(log(s), ["control voice mute"])
         click(bot)
         self.assertEqual(texts(w[b"body"])[:3], ["Bot", "Declared by an agent", "Ready to connect an agent"])
-        self.assertEqual(labels(w), ["Hand to AI", "Remove"])
+        self.assertEqual(labels(w), ["Hand to AI", "Remove", "Stop"])
         click(button(w, "Remove"))
-        self.assertEqual(log(s)[-1], "forget bot")
+        self.assertEqual(log(s)[-1], "forget bot wipe")                         # the player's remove: all of it
         self.assertEqual(texts(w[b"body"])[0], "Voice")                         # gone: the first app's page
         self.assertNotIn("Bot", [b[b"label"][b"text"].decode() for b in shown(w[b"items"])])
         s.lua.execute(b"__add('later', { decl = { title = 'Later' } }) "
@@ -112,9 +112,8 @@ class WindowApps(unittest.TestCase):
         self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"], b"Off")
         s.lua.execute(b"__add('pal', { by = 'agent', decl = { title = 'Pal' }, ['local'] = { id = 'voice', title = 'Voice' } })")
         w = self.window(s, "pal")
-        self.assertEqual(texts(w[b"body"])[1], "From the local extension Voice: turn it off or remove it on the "
-                                               "Extensions page of the 无限工坊 app")
-        self.assertNotIn("Remove", labels(w))
+        self.assertEqual(texts(w[b"body"])[1], "From the local extension Voice; added again while it is on")
+        self.assertEqual(labels(w), ["Remove"])                                 # one a local extension brought, too
         click(self.item(w, "Peek"))
         self.assertEqual(texts(w[b"body"])[:2], ["Peek", "Declared by an agent"])
         self.assertEqual(w[b"pill"][b"text"][b"text"], b"Temporary")
@@ -189,6 +188,62 @@ class WindowApps(unittest.TestCase):
         before = len(log(s))
         self.slash(s, "voice mute")
         self.assertEqual((s.g("__mine"), len(log(s))), (b"mute", before))      # the extension's own command
+
+    def test_the_words_of_the_slash_command(self):
+        """ns.SLASH_WORDS is the set of /wk's own words, and each comes before an extension's command and an app's id
+        of the same name (so neither takes it), whatever its case"""
+        s = self.setup()
+        words = s.lua.eval(b"(function() local t = {} for w, v in pairs(__ns.SLASH_WORDS) do assert(v == true) "
+                           b"t[#t + 1] = w end table.sort(t) return table.concat(t, ' ') end)()")
+        self.assertEqual(words, b"help lang no yes")
+        s.lua.execute(b"local x = WuxianKit:Extension('mine', { title = 'Mine' }) __mine = {} "
+                      b"for word in pairs(__ns.SLASH_WORDS) do "
+                      b"  x:Command(word, function(self, rest) __mine[#__mine + 1] = word end, 'Mine ' .. word) "
+                      b"  __add(word, { decl = { title = 'App ' .. word }, controls = { 'mute' }, say = true, "
+                      b"    status = { app = word, on = true } }) "
+                      b"end")
+        s.run(0.1)
+        self.assertIn("Apps:", self.slash(s, "help mute"))
+        self.assertIn("Apps:", self.slash(s, "HELP"))
+        self.assertNotIn("Mine help", self.slash(s, "help"))                    # a command no one can reach: not listed
+        self.assertIn("/wk lang", self.slash(s, "lang mute"))                   # its usage
+        self.slash(s, "lang zh")
+        self.assertEqual(s.lua.eval(b"__ns.Lang()"), b"zhCN")
+        self.slash(s, "lang en")
+        self.assertIn("No proposal awaiting confirmation", self.slash(s, "yes mute"))
+        self.assertIn("No pending proposals", self.slash(s, "no mute"))
+        self.assertEqual((py(s.g("__mine")) or [], log(s)), ([], []))
+        w = s.g("WuxianKitWindow")
+        self.assertIsNone(w)                                                    # none opened an app's page either
+
+    def test_a_label_that_names_another_control(self):
+        """/wk <app> <word>: a word of the core's is the core's control (离开 and Stop are stop, whatever one of its
+        own is labelled); one of its own answers to its cmd, and to its label only when that names nothing else"""
+        s = self.setup()
+        s.lua.execute("""
+			__add('tricky', { decl = { title = 'Tricky' }, status = { app = 'tricky', on = true },
+				controls = { 'stop', 'brief', 'recap', 'again', 'echo', 'wave', 'nod' },
+				labels = { brief = '离开', recap = 'Stop', again = 'Same', echo = 'same', wave = 'brief', nod = 'Nod!' } })
+		""".encode())
+        st = s.g("__apps")[b"tricky"][b"status"]
+        for word in ("离开", "Stop", "停止", "stop"):
+            st[b"on"] = True
+            self.assertIn("Told Tricky: Stop", self.slash(s, "tricky " + word), word)
+            self.assertEqual(log(s)[-2:], ["control tricky stop", "stop tricky player"], word)
+        st[b"on"] = True
+        self.assertIn("Told Tricky: brief", self.slash(s, "tricky brief"))      # its cmd: not the one labelled so
+        self.assertEqual(log(s)[-1], "control tricky brief")
+        self.assertIn("Told Tricky: Nod!", self.slash(s, "tricky Nod!"))
+        self.assertEqual(log(s)[-1], "control tricky nod")
+        self.assertIn("Told Tricky: echo", self.slash(s, "tricky ECHO"))
+        self.assertEqual(log(s)[-1], "control tricky echo")
+        usage = "Tricky takes: stop, brief, recap, again, echo, wave, nod"
+        self.assertIn(usage, self.slash(s, "tricky Same"))                      # a label two have: neither's
+        self.assertEqual(log(s)[-1], "say tricky Same")
+        s.lua.execute(b"__ns.SetLanguage('zhCN')")
+        self.assertIn("「Tricky」的指令：停止、brief、recap、again、echo、wave、Nod!", self.slash(s, "tricky 跳舞"))
+        w = self.window(s, "tricky")
+        self.assertEqual(labels(w), ["停止", "brief", "recap", "again", "echo", "wave", "Nod!"])
 
     def test_the_core_page_draws_the_cores_options(self):
         """the core's page draws the options the core declares (称呼, 0.6) as rows like its language row (the title on

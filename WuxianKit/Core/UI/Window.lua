@@ -9,8 +9,10 @@
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
 -- The groups in the player's order: 应用 (apps, 0.6) first, then the built-in extensions, then the custom ones; the
 -- window first opens on the first app's page (none: the core's). Each app's page is its card (UI.AppCard, AppPanel.lua:
--- 交给 AI for an app with a prompt), an app an agent declared with a remove button. /wk <app> [word or words] gives an
--- app the player's command or words.
+-- 交给 AI for an app with a prompt), an app an agent declared with a remove button (one a local extension brought too),
+-- and under it the hidden apps that run (后台监听: a program's plumbing is not in the list, but the player sees what
+-- listens and can stop it). /wk <app> [word or words] gives an app the player's command or words; the words /wk keeps
+-- for itself (ns.SLASH_WORDS) come first and are no app's id.
 -- UI.Canvas: the drawing pieces, for AppPanel.lua's card (one canvas drawn at a time).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
@@ -20,8 +22,12 @@ local S, C = UI.Skin, UI.Skin.C
 local A = Kit:Words {
 	zhCN = {
 		GROUP = "应用", PILL = "应用", TEMP = "临时", BY_ADDON = "插件 %s", BY_AGENT = "Agent 声明",
-		REMOVE = "移除", BY_LOCAL = "来自本机扩展「%s」，在无限工坊 App 的扩展页停用或删除",
+		REMOVE = "移除", BY_LOCAL = "来自本机扩展「%s」，扩展启用时自动添加",
 		LIST_ON = "运行中", LIST_OFF = "未运行",
+		WAITING = "等待中", WAIT_HINT = "就绪后自动开始",
+		WAIT = { source = { "来源 %s 未就绪", "来源未就绪" }, facet = { "状态 %s 未就绪", "状态未就绪" },
+			extension = { "扩展「%s」未载入", "扩展未载入" } },
+		LISTENERS = "后台监听", LISTEN_MORE = "%s 等 %d 项", LISTEN_UNTIL = "至 %s",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
 		EXT_OFF = "扩展「%s」未启用", EXT_OFF_HINT = "启用后才能接入", OPEN_EXT = "打开扩展页",
 		UNTIL = "Agent 在场至 %s", PRESENT = "Agent 在场", LEFT = "Agent 已离开",
@@ -36,9 +42,13 @@ local A = Kit:Words {
 	},
 	enUS = {
 		GROUP = "Apps", PILL = "App", TEMP = "Temporary", BY_ADDON = "Addon %s", BY_AGENT = "Declared by an agent",
-		BY_LOCAL = "From the local extension %s: turn it off or remove it on the Extensions page of the 无限工坊 app",
+		BY_LOCAL = "From the local extension %s; added again while it is on",
 		REMOVE = "Remove",
 		LIST_ON = "On", LIST_OFF = "Off",
+		WAITING = "Waiting", WAIT_HINT = "Starts by itself once ready",
+		WAIT = { source = { "source %s not ready", "source not ready" }, facet = { "state %s not ready", "state not ready" },
+			extension = { "extension %s not loaded", "extension not loaded" } },
+		LISTENERS = "Background listeners", LISTEN_MORE = "%s, %d in all", LISTEN_UNTIL = "until %s",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
 		EXT_OFF = "Extension %s is off", EXT_OFF_HINT = "Turn it on to connect", OPEN_EXT = "Open its page",
 		UNTIL = "Agent here until %s", PRESENT = "Agent here", LEFT = "Agent has left",
@@ -105,7 +115,24 @@ local function PutCheck(x, label, on, onClick, labelWidth)
 	return c
 end
 
-local function PutEdit(x, text, onCommit, width)
+-- ends the edit a box of canvas c holds: the keyboard let go, and what was typed (when it changed) given to what it was
+-- typed for (the box's own onCommit, as when it loses the keyboard by itself), once the draw is over (Finish: a commit
+-- draws again, and must not in the middle of this draw)
+local function EndEdit(c, e)
+	local typed, commit = e:GetText() or "", e.onCommit
+	local changed = typed ~= e.kept
+	e.kept = typed                                          -- (so losing the keyboard, below, commits nothing itself)
+	e:ClearFocus()
+	if changed and commit then
+		c.late = c.late or {}
+		c.late[#c.late + 1] = function() commit(typed) end
+	end
+end
+
+-- key: what the box edits (a page's option). The boxes are used again by their place, so one that holds the keyboard
+-- is still being typed in: for the same key it keeps its text (a redraw does not take it away); for another (another
+-- page, the options moved) its edit ends first, so nothing typed for one option is ever committed to another
+local function PutEdit(x, text, onCommit, width, key)
 	cv.nEdit = cv.nEdit + 1
 	local e = cv.edits[cv.nEdit]
 	if not e then
@@ -115,7 +142,8 @@ local function PutEdit(x, text, onCommit, width)
 	e:ClearAllPoints()
 	e:SetPoint("TOPLEFT", cv.body, "TOPLEFT", x, -cv.y)
 	e:SetWidth(width or (cv.width - 32 - x))
-	e.onCommit = onCommit
+	if e:HasFocus() and (key == nil or e.key ~= key) then EndEdit(cv, e) end
+	e.key, e.onCommit = key, onCommit
 	if not e:HasFocus() then
 		e.kept = text
 		e:SetText(text)
@@ -152,7 +180,8 @@ local function Heading(text)
 	Put(0, C.gold, text)
 end
 
--- drawing a canvas: Begin, its pieces, Finish (what it did not use of its pools hidden)
+-- drawing a canvas: Begin, its pieces, Finish (what it did not use of its pools hidden: a box no longer drawn ends its
+-- edit as one put to another use does; then, last, what the ended edits commit, each of which may draw again)
 local function Begin(c)
 	cv = c
 	c.nText, c.nCheck, c.nButton, c.nEdit, c.y = 0, 0, 0, 0, 0
@@ -162,7 +191,15 @@ local function Finish(c)
 	for i = c.nText + 1, #c.texts do c.texts[i]:Hide() end
 	for i = c.nCheck + 1, #c.checks do c.checks[i]:Hide() end
 	for i = c.nButton + 1, #c.buttons do c.buttons[i]:Hide() end
-	for i = c.nEdit + 1, #c.edits do c.edits[i]:Hide() end
+	for i = c.nEdit + 1, #c.edits do
+		local e = c.edits[i]
+		if e:HasFocus() then EndEdit(c, e) end
+		e.key = nil
+		e:Hide()
+	end
+	local late = c.late
+	c.late = nil
+	for _, commit in ipairs(late or {}) do commit() end
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -196,11 +233,13 @@ end
 -- options from a source: the names in order; entry(name) -> the option ({ title, kind, choices, unit, hint }) and its
 -- value; set(name, value) when the player changes it. Each with its control: a check box, a text box, a number box and
 -- its unit, a row of buttons (the chosen one gold), a text box of items. indent: each title on the left, its control
--- from there on the same row (the core's page: as its language row), its hint under the control
-local function Options(order, entry, set, indent)
+-- from there on the same row (the core's page: as its language row), its hint under the control. scope: whose options
+-- they are ("ext:tune", "app:guild"), for the boxes' keys (PutEdit)
+local function Options(order, entry, set, indent, scope)
 	local x = indent or 0
 	for _, name in ipairs(order) do
 		local o, value = entry(name)
+		local key = scope and (scope .. ":" .. name) or nil
 		local function Set(v) set(name, v) end
 		if type(o) ~= "table" then                             -- (gone meanwhile)
 		elseif o.kind == "boolean" or o.kind == nil then
@@ -216,7 +255,7 @@ local function Options(order, entry, set, indent)
 			end
 			if o.kind == "number" then
 				local y = cv.y
-				PutEdit(x, ValueText(o, value), Set, NUMBER_W)
+				PutEdit(x, ValueText(o, value), Set, NUMBER_W, key)
 				if o.unit ~= nil then
 					local after = cv.y
 					cv.y = y + 4
@@ -232,7 +271,7 @@ local function Options(order, entry, set, indent)
 				end
 				ButtonRow(row, x)
 			else                                                   -- text, list
-				PutEdit(x, ValueText(o, value), Set)
+				PutEdit(x, ValueText(o, value), Set, nil, key)
 				if o.kind == "list" and not o.hint then Put(x, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
 			end
 		end
@@ -244,7 +283,7 @@ end
 local function ExtOptions(ext, indent)
 	local id = ext.id
 	Options(ext.optionOrder, function(name) return ext.options[name], ext:Get(name) end,
-		function(name, v) ns.Act("option", id, name, v) end, indent)
+		function(name, v) ns.Act("option", id, name, v) end, indent, "ext:" .. id)
 end
 
 UI.Canvas = { Begin = Begin, Finish = Finish, Put = Put, PutButton = PutButton, ButtonRow = ButtonRow, Fit = Fit,
@@ -315,6 +354,23 @@ local function BudgetText(g)
 	local text = L.BUDGET:format(S.Duration(g.per), g.most)
 	if tonumber(g.used) then text = text .. " · " .. L.COUNT:format(g.used, g.most) end
 	return text
+end
+
+-- the hidden apps that run (UI.Listeners, AppPanel.lua), under their heading: a line each (its name, what it hears,
+-- until when) with a stop. None: nothing drawn
+local function Listeners()
+	local list = UI.Listeners()
+	if #list == 0 then return end
+	Heading(A.LISTENERS)
+	for _, a in ipairs(list) do
+		local parts = {}
+		if a.hears then parts[#parts + 1] = a.hears end
+		if a.ends then parts[#parts + 1] = A.LISTEN_UNTIL:format(date("%H:%M", a.ends)) end
+		local y = cv.y
+		Put(0, C.fg, #parts > 0 and ("%s  |cff9c9ea6%s|r"):format(a.name, table.concat(parts, " · ")) or a.name,
+			W - LEFT - 150, true)
+		PutButton(W - LEFT - 128, y - 2, L.STOP, false, function() ns.Act("app.stop", a.id) end, 70)
+	end
 end
 
 local function Page(e)
@@ -413,17 +469,19 @@ local function Page(e)
 			end
 		end
 	end
+	if #UI.Apps() == 0 then Listeners() end                 -- no app's page to list them on: here
 end
 
 -- an app's page: its title (a temporary one's capsule says so) and where it came from (a local extension, an agent's
--- declaration, an addon), then its card (with a remove button when an agent declared it)
+-- declaration, an addon), then its card (with a remove button when an agent declared it: one a local extension brought
+-- too, and the line above says it comes back), then the hidden apps that run
 local function AppPage(e)
 	local title = Put(0, C.fg, e.title, W - LEFT - 160, true)
 	f.pill.Set(e.temp and A.TEMP or A.PILL, "custom")
 	f.pill:ClearAllPoints()
 	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
 	f.pill:Show()
-	local agent = e.by == "agent" and not e.from
+	local agent = e.by == "agent"
 	if e.from then
 		Put(0, C.muted, A.BY_LOCAL:format(e.from))
 	elseif agent then
@@ -432,6 +490,7 @@ local function AppPage(e)
 		Put(0, C.muted, A.BY_ADDON:format(ns.Escape(e.addon)))
 	end
 	UI.AppCard(e.app, agent and { { A.REMOVE, false, function() ns.Act("app.forget", e.app) end } } or nil)
+	Listeners()
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -516,7 +575,7 @@ function UI.DrawWindow()
 	local groups = { { kind = "apps", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} } }
 	for _, a in ipairs(UI.Apps()) do                       -- the apps first
 		table.insert(groups[1].list, { id = "app:" .. a.id, app = a.id, title = a.title, by = a.by, addon = a.addon,
-			temp = a.temp, from = a.from, state = a.on and "on" or "off" })
+			temp = a.temp, from = a.from, state = a.on and "on" or "off", waiting = a.waiting ~= nil })
 	end
 	for _, e in ipairs(list) do table.insert(groups[e.builtin and 2 or 3].list, e) end   -- WuxianKit's own, other addons'
 	local current
@@ -548,7 +607,7 @@ function UI.DrawWindow()
 				b.id = e.id
 				b.label:SetText(e.title or e.id)
 				b.label:SetWidth(e.app and LEFT - 76 or LEFT - 30)
-				b.state:SetText(e.app and (e.state == "on" and A.LIST_ON or A.LIST_OFF) or "")
+				b.state:SetText(e.app and (e.waiting and A.WAITING or e.state == "on" and A.LIST_ON or A.LIST_OFF) or "")
 				b.state:SetShown(e.app ~= nil)
 				S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
 				S.Ink(b.label, e.state == "on" and C.fg or C.muted)
@@ -687,18 +746,16 @@ ns.AddAction("button", function(id, i)
 	return ok
 end)
 
--- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (ns.CONTROL_WORDS, or the
--- label or cmd of one of its own) the command; else the player's words, when it takes them; else what it takes
+-- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (UI.AppControl: a word of
+-- ns.CONTROL_WORDS, or the cmd or the label of one of its own) the command, given by its cmd; else the player's words,
+-- when it takes them; else what it takes
 local function AppCommand(id, rest)
 	if rest == "" then return Kit:Window("app:" .. id) end
 	local name = A.NAME:format(UI.AppTitle(id))
-	local word = rest:match("^(%S+)")
-	local cmd = ns.CONTROL_WORDS[word:lower()] or ns.CONTROL_WORDS[word]
-	for _, c in ipairs(UI.AppControlList(id)) do
-		if c.cmd == cmd or (not cmd and not A.CONTROL[c.cmd] and (c.cmd == word:lower() or c.label == ns.Escape(word))) then
-			if Kit:AppControl(id, c.cmd) then return ns.Say(A.SENT:format(name, c.label)) end
-			return ns.Say(A.NOT_RUNNING:format(name))
-		end
+	local c = UI.AppControl(id, rest:match("^(%S+)"))
+	if c then
+		if Kit:AppControl(id, c.cmd) then return ns.Say(A.SENT:format(name, c.label)) end
+		return ns.Say(A.NOT_RUNNING:format(name))
 	end
 	if Kit:AppSay(id, rest) then return ns.Say(A.SAID_TO:format(name)) end
 	local words = UI.AppWordList(id)
@@ -706,40 +763,59 @@ local function AppCommand(id, rest)
 	ns.Say(A.USAGE:format(name, words))
 end
 
+-- /wk's own words (lowercase), each with what it does with the rest of the line. They come before an extension's
+-- command and an app's id, so neither can take one. ns.SLASH_WORDS: the set of them, for whoever checks a name
+-- (Decl.lua's CheckId: an app's id is none of these)
+local SLASH = {}
+
+-- /wk yes | no [n]: the one numbered, the one shown, or the oldest
+local function Answer(yes, rest)
+	local id = tonumber(rest:match("^(%d+)"))
+	if yes and not id and UI.Settling() then return end     -- another just took the place of the one shown: not yet
+	id = id or UI.Current() or (yes and ns.Waiting() or ns.Open())[1]
+	if not id then return ns.Say(yes and L.NONE_PENDING or L.NONE_OPEN) end
+	local p = ns.Get(id)
+	if not (p and (p.state == "pending" or not yes and (p.state == "waiting" or p.state == "queued"))) then
+		return ns.Say(L.NOT_OPEN:format(id))
+	end
+	ns.Act(yes and "run" or "decline", id)
+end
+
+function SLASH.yes(rest) Answer(true, rest) end
+function SLASH.no(rest) Answer(false, rest) end
+
+function SLASH.lang(rest)
+	local want = ({ auto = "auto", zh = "zhCN", zhcn = "zhCN", en = "enUS", enus = "enUS" })[rest:lower()]
+	if not want then return ns.Say(L.LANG_USAGE) end
+	ns.Act("language", want)
+end
+
+function SLASH.help()
+	ns.Say(L.HELP)
+	local words = {}
+	for word, c in pairs(ns.Commands()) do
+		if c.ext.active and c.help and not SLASH[word] then words[#words + 1] = word end
+	end
+	table.sort(words)
+	for _, word in ipairs(words) do ns.Say(L.HELP_COMMAND:format(word, ns.T(ns.Commands()[word].help))) end
+	local apps = UI.Apps()
+	if #apps > 0 then ns.Say(A.HELP) end
+	for _, a in ipairs(apps) do
+		local takes = UI.AppWordList(a.id)
+		ns.Say(L.HELP_COMMAND:format(a.id, a.title .. (takes ~= "" and (" · " .. takes) or "")))
+	end
+end
+
+ns.SLASH_WORDS = {}
+for word in pairs(SLASH) do ns.SLASH_WORDS[word] = true end
+
 SLASH_WUXIANKIT1 = "/wk"
 SlashCmdList.WUXIANKIT = function(msg)
 	local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
 	cmd = cmd:lower()
 	local command = ns.Commands()[cmd]
-	if cmd == "yes" or cmd == "no" then                     -- the one numbered, the one shown, or the oldest
-		local yes = cmd == "yes"
-		local id = tonumber(rest:match("^(%d+)"))
-		if yes and not id and UI.Settling() then return end -- another just took the place of the one shown: not yet
-		id = id or UI.Current() or (yes and ns.Waiting() or ns.Open())[1]
-		if not id then return ns.Say(yes and L.NONE_PENDING or L.NONE_OPEN) end
-		local p = ns.Get(id)
-		if not (p and (p.state == "pending" or not yes and (p.state == "waiting" or p.state == "queued"))) then
-			return ns.Say(L.NOT_OPEN:format(id))
-		end
-		ns.Act(yes and "run" or "decline", id)
-	elseif cmd == "lang" then
-		local want = ({ auto = "auto", zh = "zhCN", zhcn = "zhCN", en = "enUS", enus = "enUS" })[rest:lower()]
-		if not want then return ns.Say(L.LANG_USAGE) end
-		ns.Act("language", want)
-	elseif cmd == "help" then
-		ns.Say(L.HELP)
-		local words = {}
-		for word, c in pairs(ns.Commands()) do
-			if c.ext.active and c.help then words[#words + 1] = word end
-		end
-		table.sort(words)
-		for _, word in ipairs(words) do ns.Say(L.HELP_COMMAND:format(word, ns.T(ns.Commands()[word].help))) end
-		local apps = UI.Apps()
-		if #apps > 0 then ns.Say(A.HELP) end
-		for _, a in ipairs(apps) do
-			local words = UI.AppWordList(a.id)
-			ns.Say(L.HELP_COMMAND:format(a.id, a.title .. (words ~= "" and (" · " .. words) or "")))
-		end
+	if SLASH[cmd] then                                      -- /wk's own, before any other's
+		SLASH[cmd](rest)
 	elseif command and command.ext.active then             -- an extension's own: /wk <word> ...
 		ns.Safe(command.fn, command.ext, rest)
 	elseif cmd ~= "" and ns.App(cmd) then                  -- an app's: /wk <app> [word or words]
