@@ -270,11 +270,11 @@ class Core(unittest.TestCase):
         self.assertEqual(py(s.g("WuxianKitDB"))["lang"], "zhCN")
         body = texts(w[b"body"])
         self.assertEqual(body[0], "调校")                                  # its kind a capsule after it, then the version
-        self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "系统扩展")
+        self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "内置")
         self.assertTrue(body[1].startswith("版本 "))
         self.assertIn("更改：客户端设置、系统设置选项、按键绑定、宏、编辑模式布局、导入布局、天赋配置、切换装备方案、保存装备方案、整理背包、"
                       "插件启用状态", body)
-        self.assertIn("系统扩展", texts(w[b"list"]))                       # the list: WuxianKit's own, then other addons'
+        self.assertIn("内置", texts(w[b"list"]))                       # the list: WuxianKit's own, then other addons'
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
