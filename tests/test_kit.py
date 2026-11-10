@@ -73,7 +73,7 @@ class Core(unittest.TestCase):
         self.assertEqual((exts["demo"]["addon"], exts["demo"]["version"]), ("WxDemo", "1.2.3"))
         caps = {c["id"]: c for c in py(s.lua.eval(b"WuxianKit:Capabilities()"))}
         for cap, kind in (("tune.cvar.get", "see"), ("tune.cvar.set", "do"), ("chat.send", "say"),
-                          ("kit.app.open", "see"), ("kit.app.declare", "see"), ("kit.extension.set", "do"),
+                          ("kit.app.open", "keep"), ("kit.app.declare", "keep"), ("kit.extension.set", "do"),
                           ("kit.undo", "do"), ("demo.volume.set", "do"), ("demo.note", "keep")):
             self.assertEqual(caps[cap]["kind"], kind, cap)
         self.assertEqual([c for c in caps if c.startswith(("chat.listen", "game.listen"))], [])   # apps hear instead

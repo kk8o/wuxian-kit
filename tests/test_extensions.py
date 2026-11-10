@@ -28,8 +28,8 @@ class Extensions(unittest.TestCase):
     def listen(self, s, channels, minutes=60):
         """the app ear hears the channels (an agent's declaration, kept; no lease)"""
         hear = ", ".join(repr("chat:" + c) for c in channels)
-        return self.call(s, "kit.app.open", f"{{ app = 'ear', title = 'Ear', hear = {{ {hear} }}, minutes = {minutes}, "
-                                            f"lease = 0 }}")
+        self.call(s, "kit.app.declare", f"{{ app = 'ear', title = 'Ear', hear = {{ {hear} }}, lease = 0 }}")
+        return self.call(s, "kit.app.open", f"{{ app = 'ear', minutes = {minutes} }}")
 
     def heard(self, s):
         """the items of the app ear's wakes (no digest: one each)"""
@@ -66,7 +66,7 @@ class Extensions(unittest.TestCase):
         self.assertEqual(len(self.heard(s2)), 1)
         self.assertFalse(self.call(s2, "kit.app.status", "{ app = 'ear' }")["on"])
         self.assertIn("chat:shout: a chat channel is guild, officer",
-                      self.fails(s2, "WuxianKit:Call('kit.app.open', { app = 'ear', hear = { 'chat:shout' } })"))
+                      self.fails(s2, "WuxianKit:Call('kit.app.declare', { app = 'ear', hear = { 'chat:shout' } })"))
         self.listen(s2, ["guild"])
         self.call(s2, "kit.app.stop", "{ app = 'ear' }")
         self.assertIn("Ear: stopped", "\n".join(s2.lines))

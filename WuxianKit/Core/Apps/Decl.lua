@@ -6,7 +6,7 @@
 -- items are gathered into wakes (a digest, Digest.lua; with pace, the player's activity and quiet hours run it), which
 -- commands the player can give it in the game, how long it may go unheard from before it counts as gone (lease),
 -- options the player sets for it, and its prompt: the skill an AI client follows to drive it.
--- K2 draws it (UI/AppPanel.lua, the window's 应用 page, /wk <app> ...). The contract is ARCHITECTURE.md section 10; in
+-- UI/AppPanel.lua draws it (the window's 应用 page, /wk <app> ...). The contract is ARCHITECTURE.md section 10; in
 -- short:
 --
 --   WuxianKit:App(id, decl) -> app       an addon declares an app (functions allowed: check, urgent, enrich; docs: the
@@ -18,53 +18,62 @@
 --   WuxianKit:AppControl(id, cmd) -> boolean   the player's command (one of the app's controls, by its cmd, a word of
 --                                        ns.CONTROL_WORDS or its own label; "stop" stops it too)
 --   WuxianKit:AppSay(id, text) -> boolean      the player's words to the app (decl.say)
---   WuxianKit:AppPanel(id, parent, width)      (UI/AppPanel.lua, K2) the app's card in another addon's window
+--   WuxianKit:AppPanel(id, parent, width)      (UI/AppPanel.lua) the app's card in another addon's window
 --
--- Capabilities (the core's extension "kit"): kit.app.open { app, ...decl, temp, minutes, lease }, kit.app.declare
--- { app, ...decl } (kept, not started, no heartbeat: 无限工坊 declares a local extension's apps so), kit.app.status
--- { app } (also the heartbeat), kit.app.state { app } (what it sees now: { app, at, state }; a heartbeat too),
--- kit.app.stop { app }, kit.app.recent { app, since, limit }, kit.apps. Events: app.<id> (the app's wakes: { app,
--- reason, items, skipped, state? (with see: { [facet] = its read at the wake }), pace?, quiet? }; an extension's event
--- as far as the link's rate goes), kit.app ({ app, on, why?, ends? } when one starts or stops).
--- see: at most SEE_MOST facet names; a facet is on (its spec's on) while an app that runs sees it, and its extension
--- going off stops the apps that see it, as for a source. temp = true (kit.app.open's): a temporary app, in memory only,
--- at most TEMP_MOST at once and not one of the AGENT_MOST kept, gone once it stops or the UI reloads; it does not count
--- when two declarations are compared.
+-- Capabilities (the core's extension "kit"; Api.lua). Keep: kit.app.declare { app, ...the declaration's fields } (the
+-- whole declaration of a kept app: a field not given is its default; not started, no heartbeat), kit.app.open { app,
+-- minutes?, lease?, temp? } (starts it, or goes on; temp: a table, the whole declaration of a temporary app, there for
+-- this run only), kit.app.stop { app }, kit.app.forget { app } (an agent's app withdrawn: stopped with why
+-- "forgotten", its declaration gone, the player's options kept). See: kit.app.describe { app } ({ app, by, temp, decl }:
+-- the declaration as normalized; declared again it changes nothing), kit.app.status { app } (also the heartbeat),
+-- kit.app.state { app }, kit.app.recent { app, since, limit }, kit.apps. Events: app.<id> (the app's wakes), kit.app
+-- ({ app, on, why?, ends?, waiting? } when one starts, stops, or waits for what it needs).
 --
--- For the window (K2):
---   ns.AppList()                  the apps as kit.apps answers (start: the start line, for an app with a prompt)
+-- One table says what a declaration is: FIELDS, a row a field ({ name, type, doc, check, default, status, list, addon,
+-- build }). kit.app.declare's arguments and doc, the check, the defaults, the declaration as data (what is compared,
+-- kept and described) and what the status and the lists copy all come from it: a new field is one row.
+-- hidden is a temporary app's only (plumbing: no card, no chat lines; listed while it runs); local = { id, title } is
+-- a label (the local extension of 无限工坊 an app comes with): such apps do not count among the AGENT_MOST an agent
+-- keeps, at most LOCAL_MOST of them. A temporary app is in memory only, at most TEMP_MOST at once, gone once it stops
+-- or the UI reloads.
+--
+-- For the window:
+--   ns.AppList()                  the apps as kit.apps answers (each row with on, temp, hidden, waiting, local; a
+--                                 hidden app only while it runs)
 --   ns.App(id)                    the app object, or nil
 --   ns.AppStatus(id)              as kit.app.status answers (without marking it heard from)
 --   ns.AppStop(id, why)           stops it ("player" from the window)
 --   ns.AppOptionList(id)          its options as kit.options answers ({ [name] = { title, kind, value, ... } })
 --   ns.SetAppOption(id, name, v)  the player set one: true and the value kept, or false
 --   ns.AppControls(id)            { { cmd, label } } in its declared order (label: the core's word, or the app's own)
---   ns.ForgetApp(id)              the player removes an app an agent declared (not one a local extension brings)
+--   ns.ForgetApp(id, wipe)        an agent's app goes: wipe = true is the player's remove (its declaration, options and
+--                                 every character's record), false is kit.app.forget (the options stay); true when gone
 --   ns.CONTROL_WORDS              word (English and Chinese) -> cmd, for /wk <app> <word>
 -- ns.Changed("app", id) tells it when an app is declared or removed.
 --
--- Storage: WuxianKitDB.apps[id] = { decl (an agent's declaration, as it was given and checked), options (the player's),
+-- Storage: WuxianKitDB.apps[id] = { decl (an agent's declaration, normalized: FIELDS' data), options (the player's),
 -- chars = { [the character's GUID] = { run (this run: ends, started, seen, lease, heard, wakes, lastWake, pace, quiet,
 -- and the digest's options, buffer, first, last, urgentAt), recent = { n, items } (the last RING items), last = { why }
 -- (how the last run ended), said = { d, n } } } }: what is the account's is at the top, what is a character's under its
 -- GUID (A.Char). An addon's declaration is kept in memory only (it may carry functions) and wins over an agent's of the
--- same id; a temporary app's whole record is in memory.
+-- same id; a temporary app's whole record is in memory. A record without decl is an addon's app's, or what is left of
+-- an app forgotten (its options, picked up when it is declared again).
+--
+-- An app has its declaration twice: app.decl, as the runtime reads it (sets, labels by cmd, functions), and app.data,
+-- as data (FIELDS' checks give it, every default filled in: compared, kept, described).
 --
 -- The runtime is four files (Core/Apps/, in load order), split by what they do:
---   Decl.lua     (this one) declarations checked and normalized, the stored record, the app object and its options,
---                declaring (WuxianKit:App, an agent's Declare, ns.ForgetApp), the declarations back from storage
+--   Decl.lua     (this one) the fields, declarations checked and normalized, the stored record, the app object and its
+--                options, declaring (WuxianKit:App, an agent's Declare, ns.ForgetApp), the declarations back from
+--                storage
 --   Deliver.lua  items: which wake at once, the digest host, the ring, an item into an app, app:Push
---   Run.lua      runs: quiet hours and pace, what a run hears and sees, start / stop / the ticker / leases, the
---                player's commands and words, what else stops an app or resumes it
+--   Run.lua      runs: quiet hours and pace, what a run hears and sees, Reconcile (the one place that decides whether
+--                an app runs, waits or stops), start / stop / the ticker, the player's commands and words
 --   Api.lua      kit.app.* and kit.apps, the status, and the ns functions the window uses
 -- What they share is the private table ns.apps (A in each file): a name another file uses is a field of A under the
 -- same name, set at the end of the file that defines it and read into a local at the top of the files loaded after it.
--- A file loaded before calls it as A.Name(...) when it runs (here: A.Host, A.Stop, A.Unsubscribe, A.Resume, A.Drop;
--- Run.lua: A.DeclareOpen). A.loggedIn is the one field that changes: always read as A.loggedIn. What only one file
--- uses stays local there.
--- Here by choice: OPEN_ARGS, DECLARE_ARGS and Given (the declaration's fields, beside DECL_FIELDS; only Api.lua uses
--- them), Paced and Digesting (what a declaration says), ns.ForgetApp and the load hook (a declaration going, and
--- those kept coming back).
+-- A file loaded before calls it as A.Name(...) when it runs (here: A.Host, A.Stop, A.Drop, A.Reconcile). A.loggedIn is
+-- the one field that changes: always read as A.loggedIn. What only one file uses stays local there.
 local addonName, ns = ...
 local Kit = ns.Kit
 ns.apps = ns.apps or {}
@@ -73,9 +82,10 @@ local A = ns.apps
 local W = Kit:Words {
 	zhCN = {
 		STARTED = "%s：已开始，至 %s", STOPPED = "%s：已停止", EXPIRED = "%s：已到时间，已停止",
-		LEFT = "%s：Agent 已离开，已停止", EXT_STOPPED = "%s：所属扩展已停用，已停止",
-		EXT_OFF = "所属扩展「%s」已停用", NEEDS = "需要开启「%s」扩展", NEEDS_SOURCE = "需要来源「%s」",
-		NEEDS_FACET = "需要状态面「%s」",
+		LEFT = "%s：Agent 已离开，已停止", STOPPED_WHY = "%s：已停止，%s",
+		EXT_OFF = "所属扩展「%s」已停用", EXT_MISSING = "所属扩展「%s」未载入", NEEDS = "需要开启「%s」扩展",
+		NEEDS_SOURCE = "需要来源「%s」", NEEDS_FACET = "需要状态面「%s」",
+		DECL_DROPPED = "应用「%s」的声明已失效，已移除",
 		ACTIVITY = "活跃度", A_QUIET = "安静", A_NORMAL = "适中", A_LIVELY = "活跃",
 		ACTIVITY_HINT = "安静：只在点名时唤醒；适中：接话、提问时唤醒，冷场时也唤醒；活跃：话题正热时也唤醒，节奏更快",
 		QUIET = "免打扰时段", QUIET_HINT = "如 01:00-08:00；这段时间只在点名时唤醒",
@@ -85,9 +95,10 @@ local W = Kit:Words {
 	},
 	enUS = {
 		STARTED = "%s: started, until %s", STOPPED = "%s: stopped", EXPIRED = "%s: time is up, stopped",
-		LEFT = "%s: the agent left, stopped", EXT_STOPPED = "%s: its extension was turned off, stopped",
-		EXT_OFF = "Its extension %s is off", NEEDS = "Needs the %s extension on", NEEDS_SOURCE = "Needs the source %s",
-		NEEDS_FACET = "Needs the state %s",
+		LEFT = "%s: the agent left, stopped", STOPPED_WHY = "%s: stopped. %s",
+		EXT_OFF = "Its extension %s is off", EXT_MISSING = "Its extension %s is not loaded",
+		NEEDS = "Needs the %s extension on", NEEDS_SOURCE = "Needs the source %s", NEEDS_FACET = "Needs the state %s",
+		DECL_DROPPED = "The app %s's declaration no longer holds: removed",
 		ACTIVITY = "Activity", A_QUIET = "Quiet", A_NORMAL = "Normal", A_LIVELY = "Lively",
 		ACTIVITY_HINT = "Quiet: wakes only when you are named; Normal: also for follow-ups, questions and lulls; "
 			.. "Lively: also when the talk is hot, faster",
@@ -100,8 +111,10 @@ local W = Kit:Words {
 }
 
 local ID_MAX, TITLE_MAX, HINT_MAX, LABEL_MAX, WORD_MAX = 24, 48, 120, 24, 32
-local AGENT_MOST, TEMP_MOST, OPTIONS_MOST, CHOICES_MOST, HEAR_MOST, SEE_MOST, LIST_MOST = 8, 4, 8, 8, 16, 8, 16
+local OPTIONS_MOST, CHOICES_MOST, HEAR_MOST, SEE_MOST, LIST_MOST = 8, 8, 16, 8, 16
 local MINUTES, MINUTES_MOST, LEASE, LEASE_MOST = 120, 720, 600, 43200
+-- how many apps there may be, by sort: an agent's kept, those a local extension brings (local), the temporary ones
+local MOST = { agent = 8, ["local"] = 16, temp = 4 }
 
 local CONTROL_ORDER = { "mute", "unmute", "less", "more", "test", "pause", "resume", "stop" }
 local CONTROLS_MOST = 12                                -- the core's and an app's own ({cmd, label}) together
@@ -125,10 +138,22 @@ ns.CONTROL_WORDS = {
 	["继续"] = "resume", ["离开"] = "stop", ["停止"] = "stop",
 }
 
+-- /wk's own words (UI/Window.lua's slash handler takes them before an app's id): no app is named so
+local RESERVED = { help = true, lang = true, no = true, yes = true }
+
 local function Copy(v)
 	if type(v) ~= "table" then return v end
 	local t = {}
 	for k, x in pairs(v) do t[k] = Copy(x) end
+	return t
+end
+
+-- a copy as data: a text given as a function (an addon's L"KEY") reads as its text now
+local function Plain(v)
+	if type(v) == "function" then return ns.T(v) end
+	if type(v) ~= "table" then return v end
+	local t = {}
+	for k, x in pairs(v) do t[k] = Plain(x) end
 	return t
 end
 
@@ -189,9 +214,22 @@ local function Trim(list)
 	return out
 end
 
+-- the hear entries the sources take, from the sources registered now (hear's doc)
+local function HearDoc()
+	local parts = {}
+	for _, name in ipairs(ns.sourceOrder) do
+		local src = ns.sources[name]
+		local values = ns.SourceValues(src)
+		parts[#parts + 1] = ns.Text(ns.T(src.spec.doc) or (name .. ":<what>"))
+			.. (values and (" (" .. table.concat(values, "|") .. ")") or "")
+	end
+	return table.concat(parts, "; ")
+end
+
 ------------------------------------------------------------------------------------------------------------------------
--- declarations, checked. An agent's (data only, agent = true) is refused on anything out of shape, its texts escaped;
--- an addon's (Lua) may carry functions and texts as L"KEY". Both come out as the same normalized declaration.
+-- checks. A declaration is an agent's (data only, c.agent: refused on anything out of shape) or an addon's (Lua: it
+-- may carry functions, and texts as L"KEY"). Each check answers the value as data, the same whoever gave it, and the
+-- same again when it is given what it answered (kit.app.describe's decl declared again changes nothing).
 
 local function Fail(fmt, ...) error(fmt:format(...), 0) end
 
@@ -213,7 +251,7 @@ local function Text(v, what, most, agent)
 	return v                                            -- (kept as given: whoever draws it escapes it)
 end
 
-local function Words(v, what, agent)                  -- a list of words (whys, kinds): lowercase, digits, _ and .
+local function Words(v, what)                          -- a list of words (whys, kinds): lowercase, digits, _ and .
 	if v == nil then return nil end
 	if not IsList(v) or #v > LIST_MOST then Fail("%s is a list of at most %d words", what, LIST_MOST) end
 	local out = {}
@@ -261,21 +299,23 @@ local function Digest(d, what, agent, preset)
 	local out = { gather = Number(d.gather, what .. ".gather", 0), every = Number(d.every, what .. ".every", 1, true),
 		idle = Number(d.idle, what .. ".idle", 1, true), most = Number(d.most, what .. ".most", 1) }
 	if out.most then out.most = math.floor(out.most) end
-	if preset then out.wake = Words(d.wake, what .. ".wake", agent) or {} end
+	if preset then out.wake = Words(d.wake, what .. ".wake") end
 	return out
 end
 
-local function Pace(p, agent)
-	if p == true then return PRESETS end
+-- pace as data: true (the core's three), or the three with every field (one not given is the core's)
+local function Pace(p, c)
+	if p == false then return nil end
+	if p == true then return true end
 	if type(p) ~= "table" then Fail("pace is true or a table {quiet, normal, lively}") end
-	if agent then Only(p, { quiet = true, normal = true, lively = true }, "pace") end
+	if c.agent then Only(p, { quiet = true, normal = true, lively = true }, "pace") end
 	local out = {}
 	for _, name in ipairs(ACTIVITIES) do
-		local given = p[name] and Digest(p[name], "pace." .. name, agent, true) or {}
+		local given = p[name] and Digest(p[name], "pace." .. name, c.agent, true) or {}
 		local core = PRESETS[name]
 		local e = {}
 		for k in pairs(PRESET_FIELDS) do
-			if given[k] ~= nil then e[k] = given[k] else e[k] = core[k] end
+			if given[k] ~= nil then e[k] = given[k] else e[k] = Copy(core[k]) end
 		end
 		out[name] = e
 	end
@@ -283,7 +323,7 @@ local function Pace(p, agent)
 end
 
 -- a hear entry checked by its source; kept (a remembered declaration, an addon's): one of a source not registered (yet:
--- its addon has not loaded) stays, and the app cannot start while it is missing
+-- its addon has not loaded) stays, and the app waits for it (Run.lua's Reconcile)
 local function Entry(entry, kept)
 	if type(entry) ~= "string" then Fail("a hear entry is a string such as \"chat:guild\"") end
 	local name, what = Split(entry)
@@ -302,14 +342,12 @@ local function Entry(entry, kept)
 	end
 end
 
-local function Hear(list, kept)
-	if list == nil then return {} end
+local function Hear(list, c)
 	if not IsList(list) or #list > HEAR_MOST then Fail("hear is a list of at most %d sources", HEAR_MOST) end
-	for _, entry in ipairs(list) do Entry(entry, kept) end
+	for _, entry in ipairs(list) do Entry(entry, c.kept) end
 	return Trim(list)
 end
 
-------------------------------------------------------------------------------------------------------------------------
 -- see: the facets an app's wakes carry as state (ns.facets, Extension.lua)
 
 local function FacetNames()
@@ -319,17 +357,25 @@ local function FacetNames()
 	return table.concat(names, ", ")
 end
 
--- the names, each once; kept (a remembered declaration, an addon's): a facet not registered (yet) stays, and the app
--- cannot start while it is missing
-local function See(list, kept)
-	if list == nil then return {} end
+-- the facets apps see, from those registered now (see's doc)
+local function SeeDoc()
+	local parts = {}
+	for _, name in ipairs(ns.facetOrder) do
+		local f = ns.facets[name]
+		parts[#parts + 1] = name .. ": " .. ns.Text(ns.T(f.spec.doc) or ns.T(f.spec.title) or name)
+	end
+	return #parts > 0 and table.concat(parts, "; ") or "none registered"
+end
+
+-- the names, each once; kept: a facet not registered (yet) stays, and the app waits for it
+local function See(list, c)
 	if not IsList(list) or #list > SEE_MOST then Fail("see is a list of at most %d states (%s)", SEE_MOST, FacetNames()) end
 	local out, done = {}, {}
 	for _, name in ipairs(list) do
 		if type(name) ~= "string" or #name > ID_MAX or not name:match("^[a-z][a-z0-9_]*$") then
 			Fail("see: %s is not a state's name (the states: %s)", ns.Text(name), FacetNames())
 		end
-		if not ns.facets[name] and not kept then Fail("see: no state %s (the states: %s)", name, FacetNames()) end
+		if not ns.facets[name] and not c.kept then Fail("see: no state %s (the states: %s)", name, FacetNames()) end
 		if not done[name] then
 			done[name] = true
 			out[#out + 1] = name
@@ -338,24 +384,72 @@ local function See(list, kept)
 	return out
 end
 
-local function Option(name, o, agent, paced)
+-- the controls as data: the core's as its cmd, the app's own as { cmd, label }, each cmd once
+local function Controls(list, c)
+	if not IsList(list) or #list > CONTROLS_MOST then
+		Fail("controls is a list of at most %d: %s, or {cmd, label} of the app's own", CONTROLS_MOST,
+			table.concat(CONTROL_ORDER, ", "))
+	end
+	local out, seen, own = {}, {}, {}
+	for i, x in ipairs(list) do
+		local cmd, label = x, nil
+		if type(x) == "table" then                         -- the app's own: a button with its label, told as {cmd}
+			if c.agent then Only(x, { cmd = true, label = true }, ("controls[%d]"):format(i)) end
+			cmd = x.cmd
+			if type(cmd) ~= "string" or #cmd > ID_MAX or not cmd:match("^[a-z][a-z0-9_]*$") or CONTROLS[cmd]
+				or ns.CONTROL_WORDS[cmd] then
+				Fail("controls[%d].cmd: a word of the app's own (lowercase letters, digits, _, at most %d bytes), not "
+					.. "one of %s", i, ID_MAX, table.concat(CONTROL_ORDER, ", "))
+			end
+			label = Text(x.label, ("controls[%d].label"):format(i), LABEL_MAX, c.agent)
+			if label == nil or (type(label) == "string" and not label:match("^%S+$")) then
+				Fail("controls[%d].label: the button's text, one word without spaces (/wk <app> <label> gives it), at "
+					.. "most %d bytes", i, LABEL_MAX)
+			end
+		elseif not CONTROLS[x] then
+			Fail("controls: %s is not one of %s (or {cmd, label} of the app's own)", ns.Text(x),
+				table.concat(CONTROL_ORDER, ", "))
+		end
+		if not seen[cmd] then
+			seen[cmd] = true
+			out[#out + 1] = label ~= nil and { cmd = cmd, label = label } or cmd
+			if label ~= nil then own[#own + 1] = { i = i, cmd = cmd, text = ns.T(label) } end
+		end
+	end
+	-- /wk <app> <word> takes the core's words first, then a cmd or a label: a label that is one of those names
+	-- another control, or none
+	for _, a in ipairs(own) do
+		if ns.CONTROL_WORDS[a.text] or ns.CONTROL_WORDS[a.text:lower()] then
+			Fail("controls[%d].label: %s is one of the core's words (/wk <app> %s gives the core's command)", a.i,
+				ns.Text(a.text), ns.Text(a.text))
+		end
+		for _, b in ipairs(own) do
+			if b ~= a and (b.text == a.text or b.cmd == a.text:lower()) then
+				Fail("controls[%d].label: %s is also controls[%d]'s %s", a.i, ns.Text(a.text), b.i,
+					b.text == a.text and "label" or "cmd")
+			end
+		end
+	end
+	return out
+end
+
+local OPTION_FIELDS = { kind = true, title = true, default = true, hint = true, choices = true, min = true, max = true,
+	step = true, unit = true, order = true }
+
+local function Option(name, o, c)
 	if type(name) ~= "string" or #name > ID_MAX or not name:match("^[a-z][a-z0-9_]*$") then
 		Fail("options: %s is not a name (lowercase letters, digits and _, at most %d bytes)", ns.Text(name), ID_MAX)
 	end
-	if paced and (name == "activity" or name == "quiet") then
+	if c.data.pace ~= nil and (name == "activity" or name == "quiet") then
 		Fail("options: %s is the core's own option of an app with pace", name)
 	end
 	if type(o) ~= "table" then Fail("options.%s is a table {kind, title, default, ...}", name) end
-	local what = "options." .. name
-	if agent then
-		Only(o, { kind = true, title = true, default = true, hint = true, choices = true, min = true, max = true,
-			step = true, unit = true, order = true }, what)
-	end
+	local what, agent = "options." .. name, c.agent
+	if agent then Only(o, OPTION_FIELDS, what) end
 	local kind = o.kind or "boolean"
 	if not OPTION_KINDS[kind] then Fail("%s.kind is boolean, text, number, choice or list", what) end
 	local spec = { kind = kind, title = Text(o.title, what .. ".title", TITLE_MAX, agent) or name,
 		hint = Text(o.hint, what .. ".hint", HINT_MAX, agent), unit = Text(o.unit, what .. ".unit", LABEL_MAX, agent),
-		changed = not agent and type(o.changed) == "function" and o.changed or nil,
 		order = ns.Finite(o.order) and o.order or nil }
 	local d = o.default
 	if agent and d ~= nil then
@@ -370,12 +464,12 @@ local function Option(name, o, agent, paced)
 		spec.min, spec.max = Number(o.min, what .. ".min", -math.huge), Number(o.max, what .. ".max", -math.huge)
 		spec.step = Number(o.step, what .. ".step", 0)
 	elseif kind == "choice" then
-		local c = o.choices
-		if not IsList(c) or #c == 0 or (agent and #c > CHOICES_MOST) then
+		local list = o.choices
+		if not IsList(list) or #list == 0 or (agent and #list > CHOICES_MOST) then
 			Fail("%s.choices is a list of 1 to %d {value, label}", what, CHOICES_MOST)
 		end
 		spec.choices = {}
-		for i, x in ipairs(c) do
+		for i, x in ipairs(list) do
 			local value, label
 			if type(x) == "table" then value, label = x.value, x.label else value = x end
 			if value == nil and type(x) == "table" then value, label = x[1], x[2] end
@@ -389,32 +483,24 @@ local function Option(name, o, agent, paced)
 	return spec
 end
 
-local function Options(t, agent, paced)
-	if t == nil then return {}, {} end
+-- the options as data: name -> { kind, title, default, ... } (an addon's `changed` is not data: build takes it)
+local function Options(t, c)
 	if type(t) ~= "table" or IsList(t) and #t > 0 then Fail("options is a table {name = {kind, title, ...}}") end
-	local out, names = {}, {}
+	local out, n = {}, 0
 	for name, o in pairs(t) do
-		out[name] = Option(name, o, agent, paced)
-		names[#names + 1] = name
+		out[name] = Option(name, o, c)
+		n = n + 1
 	end
-	if agent and #names > OPTIONS_MOST then Fail("an app has at most %d options (it gave %d)", OPTIONS_MOST, #names) end
-	table.sort(names, function(a, b)                     -- by order (when given), then by name
-		local ra, rb = out[a].order or math.huge, out[b].order or math.huge
-		if ra ~= rb then return ra < rb end
-		return a < b
-	end)
-	return out, names
+	if c.agent and n > OPTIONS_MOST then Fail("an app has at most %d options (it gave %d)", OPTIONS_MOST, n) end
+	return out
 end
-
-local DECL_FIELDS = { title = true, hear = true, see = true, digest = true, pace = true, urgent = true, controls = true,
-	hidden = true, ["local"] = true,
-	say = true, lease = true, minutes = true, options = true, prompt = true }
 
 local function CheckId(id)
 	if type(id) ~= "string" or #id > ID_MAX or not id:match("^[a-z][a-z0-9_]*$") then
 		Fail("an app's id is lowercase letters, digits and _, starting with a letter, at most %d bytes (not %s)", ID_MAX,
 			ns.Text(id))
 	end
+	if RESERVED[id] then Fail("an app's id is not %s: /wk %s is the window's own command", id, id) end
 end
 
 -- a lease as an app keeps it: seconds (at least 60, at most LEASE_MOST), or false for none
@@ -433,94 +519,214 @@ end
 
 -- an addon's docs: a folder in its addon's ("Apps/Guild"), as given with / and no slash at either end
 local function Docs(v)
-	if v == nil then return nil end
 	if type(v) ~= "string" then Fail("docs is a folder in the addon's, such as \"Apps/Guild\"") end
 	v = v:gsub("\\", "/"):gsub("^/+", ""):gsub("/+$", "")
 	return v ~= "" and v or nil
 end
 
--- decl (an agent's table, or an addon's) -> the normalized declaration; kept: a remembered or an addon's declaration
--- (an entry of a source not registered yet stays)
-local function Normalize(id, d, agent, kept)
-	CheckId(id)
-	if type(d) ~= "table" then Fail("a declaration is a table") end
-	if agent then Only(d, DECL_FIELDS, "the declaration") end
-	local n = { title = Text(d.title, "title", TITLE_MAX, agent) or id }
-	n.hear = Hear(d.hear, kept)
-	n.see = See(d.see, kept)
-	if d.pace ~= nil and d.pace ~= false then
-		n.pace = Pace(d.pace, agent)
+local function Name(v)                                  -- an addon's or an extension's name, or none
+	return type(v) == "string" and v ~= "" and v or nil
+end
+
+------------------------------------------------------------------------------------------------------------------------
+-- the fields of a declaration, in the order they are checked (a check may read those before it in c.data). A row:
+--   name
+--   type     as kit.app.declare takes it (Schema.lua); none: not an argument
+--   doc      for the agent: a text, or a function (hear and see say what is registered now)
+--   check    (v, c) -> the value as data, for a value given; c = { id, agent, kept, temp, data (the fields so far) }
+--   default  the data when none is given (or a function of c)
+--   status   true: kit.app.status carries it      list   true: kit.apps and the manifest carry it
+--   addon    true: only an addon's declaration has it
+--   build    (n, v, c, d) puts it into the runtime's declaration n, from the data v and the declaration given d
+--            (functions are there); without one n[name] = v
+
+local FIELDS = {}
+
+local function Field(f)
+	FIELDS[#FIELDS + 1] = f
+	FIELDS[f.name] = f
+end
+
+local function Fn(name)                                 -- an addon's function: not data
+	return { name = name, addon = true, check = function() return nil end, build = function(n, _, _, d)
+		n[name] = type(d[name]) == "function" and d[name] or nil
+	end }
+end
+
+Field { name = "title", type = "string?", status = true,
+	doc = ("at most %d bytes; default: the id"):format(TITLE_MAX),
+	check = function(v, c) return Text(v, "title", TITLE_MAX, c.agent) end,
+	default = function(c) return c.id end }
+
+Field { name = "hear", type = "table?", status = true,
+	doc = function() return ("at most %d entries <source>:<what>: %s"):format(HEAR_MOST, HearDoc()) end,
+	check = Hear, default = {} }
+
+Field { name = "see", type = "table?", status = true,
+	doc = function()
+		return ("at most %d states each wake carries as state {name = the state at that wake}; kit.app.state reads "
+			.. "them at once: %s"):format(SEE_MOST, SeeDoc())
+	end,
+	check = See, default = {} }
+
+Field { name = "pace", type = "table|boolean?",
+	doc = "true: the player's activity quiet|normal|lively and quiet hours set the rhythm; or {quiet, normal, lively} "
+		.. "of {gather, every, idle, most, wake = [whys]}",
+	check = Pace,
+	build = function(n, v)
+		if v == nil then return end
+		n.pace = Copy(v == true and PRESETS or v)
 		for _, name in ipairs(ACTIVITIES) do n.pace[name].wakeSet = Set(n.pace[name].wake) end
-	elseif d.digest ~= nil and d.digest ~= false then
-		n.digest = d.digest == true and {} or Digest(d.digest, "digest", agent)
-	end
-	if not agent and type(d.urgent) == "function" then
-		n.urgent = d.urgent
-	elseif d.urgent ~= nil then
-		n.urgentSet = Set(Words(d.urgent, "urgent", agent))
-	end
-	n.controls, n.labels = {}, {}
-	if d.controls ~= nil then
-		if not IsList(d.controls) or #d.controls > CONTROLS_MOST then
-			Fail("controls is a list of at most %d: %s, or {cmd, label} of the app's own", CONTROLS_MOST,
-				table.concat(CONTROL_ORDER, ", "))
+	end }
+
+Field { name = "digest", type = "table|boolean?",
+	doc = "{gather, every, idle, most} or true: its items gathered into wakes; none: each item is a wake; pace has "
+		.. "its own",
+	check = function(v, c)
+		if v == false or c.data.pace ~= nil then return nil end
+		if v == true then return true end
+		local out = Digest(v, "digest", c.agent)
+		return next(out) ~= nil and out or true
+	end,
+	build = function(n, v)
+		if v ~= nil then n.digest = v == true and {} or v end
+	end }
+
+Field { name = "urgent", type = "table?",
+	doc = ("at most %d whys or kinds that wake within gather seconds, without pace"):format(LIST_MOST),
+	check = function(v, c)
+		if not c.agent and type(v) == "function" then return nil end   -- (an addon's own test: build takes it)
+		return Words(v, "urgent")
+	end,
+	build = function(n, v, _, d)
+		if type(d.urgent) == "function" then n.urgent = d.urgent elseif v then n.urgentSet = Set(v) end
+	end }
+
+Field { name = "controls", type = "table?", status = true,
+	doc = ("the player's commands, buttons on its card and /wk <app> <word>: %s; or one of the app's own, {cmd, label} "
+		.. "(label: one word, at most %d bytes, not a word of the core's nor another's label or cmd); at most %d, each "
+		.. "told as a control item {cmd}"):format(table.concat(CONTROL_ORDER, ", "), LABEL_MAX, CONTROLS_MOST),
+	check = Controls, default = {},
+	build = function(n, v)
+		n.controls, n.labels = {}, {}
+		for _, x in ipairs(v) do
+			local cmd = type(x) == "table" and x.cmd or x
+			n.controls[#n.controls + 1] = cmd
+			if type(x) == "table" then n.labels[cmd] = x.label end
 		end
-		local seen = {}
-		for i, c in ipairs(d.controls) do
-			local cmd, label = c, nil
-			if type(c) == "table" then                       -- the app's own: a button with its label, told as {cmd}
-				cmd = c.cmd
-				if type(cmd) ~= "string" or #cmd > ID_MAX or not cmd:match("^[a-z][a-z0-9_]*$") or CONTROLS[cmd]
-					or ns.CONTROL_WORDS[cmd] then
-					Fail("controls[%d].cmd: a word of the app's own (lowercase letters, digits, _, at most %d bytes), not "
-						.. "one of %s", i, ID_MAX, table.concat(CONTROL_ORDER, ", "))
-				end
-				label = Text(c.label, ("controls[%d].label"):format(i), LABEL_MAX, agent)
-				if label == nil or (type(label) == "string" and not label:match("^%S+$")) then
-					Fail("controls[%d].label: the button's text, one word without spaces (/wk <app> <label> gives it), at "
-						.. "most %d bytes", i, LABEL_MAX)
-				end
-			elseif not CONTROLS[c] then
-				Fail("controls: %s is not one of %s (or {cmd, label} of the app's own)", ns.Text(c),
-					table.concat(CONTROL_ORDER, ", "))
-			end
-			if not seen[cmd] then
-				seen[cmd] = true
-				n.controls[#n.controls + 1] = cmd
-				n.labels[cmd] = label
-			end
+	end }
+
+Field { name = "say", type = "boolean?", status = true,
+	doc = "the player may talk to you: /wk <app> <words>",
+	check = function(v) return Bool(v, "say") end, default = false }
+
+Field { name = "lease", type = "number?",
+	doc = ("seconds without a kit.app.* call of yours before it stops, default %d, 0 none, at least %d, at most %d")
+		:format(LEASE, ns.Lease(1), LEASE_MOST),
+	check = function(v) return LeaseOf(v, "lease") or 0 end, default = LEASE,
+	build = function(n, v) n.lease = v > 0 and v or nil end }
+
+Field { name = "minutes", type = "number?",
+	doc = ("how long a run lasts, default %d, at most %d"):format(MINUTES, MINUTES_MOST),
+	check = function(v) return MinutesOf(v, "minutes") end, default = MINUTES }
+
+Field { name = "options", type = "table?",
+	doc = ("at most %d the player sets: name -> {kind boolean|text|number|choice|list, title, default, hint, choices "
+		.. "[{value, label}] (at most %d), min, max, step, unit, order}"):format(OPTIONS_MOST, CHOICES_MOST),
+	check = Options, default = {},
+	build = function(n, v, c, d)
+		n.options, n.optionNames = {}, {}
+		for name, spec in pairs(v) do
+			local o = Copy(spec)
+			local given = not c.agent and type(d.options) == "table" and d.options[name]
+			if type(given) == "table" and type(given.changed) == "function" then o.changed = given.changed end
+			n.options[name] = o
+			n.optionNames[#n.optionNames + 1] = name
 		end
-	end
-	n.say = Bool(d.say, "say") or false
-	n.hidden = Bool(d.hidden, "hidden") or nil              -- plumbing: not in the window's list, no chat lines
-	local from = d["local"]                               -- the local extension it comes with: no remove button
-	if from ~= nil then
-		if type(from) ~= "table" or type(from.id) ~= "string" or #from.id > ID_MAX
-			or not from.id:match("^[a-z][a-z0-9_]*$") then
+		table.sort(n.optionNames, function(a, b)            -- by order (when given), then by name
+			local ra, rb = n.options[a].order or math.huge, n.options[b].order or math.huge
+			if ra ~= rb then return ra < rb end
+			return a < b
+		end)
+	end }
+
+Field { name = "prompt", type = "string?", list = true,
+	doc = "the name of the skill an AI client follows to drive it",
+	check = function(v)
+		if type(v) ~= "string" or #v > TITLE_MAX or not v:match("^[a-z0-9][a-z0-9_%-]*$") then
+			Fail("prompt is a skill's name (lowercase letters, digits, - and _)")
+		end
+		return v
+	end }
+
+Field { name = "hidden", type = "boolean?", status = true, list = true,
+	doc = "true, in kit.app.open's temp only: plumbing of a program, such as 无限工坊's reactions: no card and no chat "
+		.. "line when it starts or stops; while it runs the /wk window lists it as listening in the background",
+	check = function(v, c)
+		if Bool(v, "hidden") and not c.temp then
+			Fail("hidden is a temporary app's only (kit.app.open's temp): an app that is kept has its card")
+		end
+		return v or nil
+	end }
+
+Field { name = "local", type = "table?", status = true, list = true,
+	doc = ("{id, title}: the local extension of 无限工坊 the app comes with, a label on its card; such apps do not "
+		.. "count among the %d an agent keeps, at most %d of them"):format(MOST.agent, MOST["local"]),
+	check = function(v)
+		if type(v) ~= "table" or type(v.id) ~= "string" or #v.id > ID_MAX or not v.id:match("^[a-z][a-z0-9_]*$") then
 			Fail("local is {id, title}: the local extension of 无限工坊 the app comes with (id: lowercase letters, "
 				.. "digits, _, at most %d bytes)", ID_MAX)
 		end
-		n["local"] = { id = from.id, title = Text(from.title, "local.title", TITLE_MAX, true) or from.id }
-	end
-	local lease = LeaseOf(d.lease, "lease")
-	if lease == nil then lease = LEASE end
-	n.lease = lease or nil
-	n.minutes = MinutesOf(d.minutes, "minutes") or MINUTES
-	n.options, n.optionNames = Options(d.options, agent, n.pace ~= nil)
-	if d.prompt ~= nil then
-		if type(d.prompt) ~= "string" or #d.prompt > TITLE_MAX or not d.prompt:match("^[a-z0-9][a-z0-9_%-]*$") then
-			Fail("prompt is a skill's name (lowercase letters, digits, - and _)")
+		return { id = v.id, title = Text(v.title, "local.title", TITLE_MAX, true) or v.id }
+	end }
+
+Field { name = "addon", addon = true, check = Name }
+Field { name = "extension", addon = true, list = true, check = Name }
+Field { name = "docs", addon = true, check = Docs }
+Field(Fn("check"))
+Field(Fn("enrich"))
+
+-- what an agent's declaration may name, and kit.app.declare's arguments
+local AGENT_FIELDS, DECLARE_ARGS = {}, { app = "string" }
+for _, f in ipairs(FIELDS) do
+	if not f.addon then AGENT_FIELDS[f.name] = true end
+	if f.type then DECLARE_ARGS[f.name] = f.type end
+end
+
+-- the fields as kit.app.declare's doc tells them, from what is registered now
+local function FieldDocs()
+	local parts = {}
+	for _, f in ipairs(FIELDS) do
+		if f.type then
+			local doc = f.doc
+			if type(doc) == "function" then doc = doc() end
+			parts[#parts + 1] = ("%s (%s)"):format(f.name, doc)
 		end
-		n.prompt = d.prompt
 	end
-	if not agent then
-		n.addon = type(d.addon) == "string" and d.addon ~= "" and d.addon or nil
-		n.extension = type(d.extension) == "string" and d.extension ~= "" and d.extension or nil
-		n.docs = Docs(d.docs)
-		n.check = type(d.check) == "function" and d.check or nil
-		n.enrich = type(d.enrich) == "function" and d.enrich or nil
+	return table.concat(parts, ", ")
+end
+
+-- decl (an agent's table, or an addon's) -> the declaration as the runtime reads it, and as data. c: agent (an agent's:
+-- data only), kept (a remembered or an addon's declaration: an entry of a source not registered yet stays), temp (a
+-- temporary app's)
+local function Normalize(id, d, c)
+	CheckId(id)
+	if type(d) ~= "table" then Fail("a declaration is a table") end
+	if c.agent then Only(d, AGENT_FIELDS, "the declaration") end
+	local n, data = {}, {}
+	c.id, c.data = id, data
+	for _, f in ipairs(FIELDS) do
+		local v = d[f.name]
+		if f.addon and c.agent then v = nil end
+		if v ~= nil then v = f.check(v, c) end
+		if v == nil then
+			v = f.default
+			if type(v) == "function" then v = v(c) else v = Copy(v) end
+		end
+		data[f.name] = v
+		if f.build then f.build(n, v, c, d) else n[f.name] = v end
 	end
-	return n
+	return n, data
 end
 
 local function Equal(a, b)                              -- two declarations as data
@@ -533,23 +739,6 @@ local function Equal(a, b)                              -- two declarations as d
 	end
 	return true
 end
-
--- an agent's declaration as it is kept (the fields it gave, as given: escaping is done each time it is normalized; not
--- temp)
-local function Raw(a)
-	local raw = {}
-	for k in pairs(DECL_FIELDS) do raw[k] = Copy(a[k]) end
-	return raw
-end
-
--- the arguments kit.app.open and kit.app.declare take (Api.lua)
-local OPEN_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
-	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	see = "table?", options = "table?", prompt = "string?", temp = "boolean?", hidden = "boolean?",
-	["local"] = "table?" }
-local DECLARE_ARGS = { app = "string", minutes = "number?", lease = "number?", title = "string?", hear = "table?",
-	digest = "table|boolean?", pace = "table|boolean?", urgent = "table?", controls = "table?", say = "boolean?",
-	see = "table?", options = "table?", prompt = "string?", hidden = "boolean?", ["local"] = "table?" }
 
 ------------------------------------------------------------------------------------------------------------------------
 -- storage and the apps
@@ -672,114 +861,112 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- declaring
 
--- the app of id made, or declared again: decl (normalized), by (addon or agent), raw (an agent's as given: compared with
--- the next one), temp (a temporary app's record is in memory)
-local function New(id, decl, by, raw, temp)
+-- the app of id made, or declared again: decl (as the runtime reads it), by (addon or agent), data (the declaration as
+-- data), temp (a temporary app's record is in memory)
+local function New(id, decl, by, data, temp)
 	local app = apps[id]
 	if not app then
 		app = setmetatable({ id = id, mem = { options = {} } }, App)
 		apps[id] = app
 		order[#order + 1] = id
 	end
-	app.decl, app.by, app.raw, app.temp = decl, by, raw, temp or nil
+	app.decl, app.by, app.data, app.temp = decl, by, data, temp or nil
 	app.addon = decl.addon
 	Duck(app)
 	A.Host(app)
 	return app
 end
 
-local function AgentCount()                             -- the agent's apps kept (not the temporary ones)
+-- an agent's app's sort, as the limits count them: temp, local (a local extension's) or agent
+local function Sort(temp, data)
+	return temp and "temp" or data["local"] and "local" or "agent"
+end
+
+local function Count(sort)
 	local n = 0
 	for _, app in pairs(apps) do
-		if app.by == "agent" and not app.temp then n = n + 1 end
+		if app.by == "agent" and Sort(app.temp, app.data) == sort then n = n + 1 end
 	end
 	return n
 end
 
-local function TempCount()
-	local n = 0
-	for _, app in pairs(apps) do
-		if app.temp then n = n + 1 end
-	end
-	return n
-end
+local FULL = {
+	temp = "at most %d temporary apps run at once: stop one (kit.app.stop) or reuse its id",
+	agent = "at most %d apps an agent declared are kept: declare one again under its id (kit.apps lists them), "
+		.. "withdraw one (kit.app.forget) or ask the player to remove one on the /wk window's Apps page",
+	["local"] = "at most %d apps of local extensions are kept: withdraw one (kit.app.forget)",
+}
 
--- an agent's declaration (kit.app.open's or kit.app.declare's), not an addon's app: the app, and whether its declaration
--- changed (one equal to the one it has changes nothing). temp: a temporary app (kit.app.open's temp); a kept app
--- declared temporary (or the other way) ends its run, and what was kept of it goes
-local function Declare(a, temp)
+-- an agent's declaration, whole (d: its fields; one not given is its default): kit.app.declare's (kept), or
+-- kit.app.open's temp (temp: a temporary app). The app, and whether its declaration changed (one equal to the one it
+-- has changes nothing). A kept app declared temporary (or the other way) ends its run, why "replaced"; what the player
+-- set for it stays in storage
+local function Declare(id, d, temp)
 	if not Store() then Fail("WuxianKit's saved variables are not loaded yet") end
-	local id = a.app
+	CheckId(id)
 	local app = apps[id]
-	local raw = Raw(a)
-	local decl = Normalize(id, raw, true)
-	local same = app ~= nil and app.by == "agent" and (app.temp == true) == temp
-	if same and Equal(app.raw, raw) then return app, false end
-	if not same then
-		if temp and TempCount() >= TEMP_MOST then
-			Fail("at most %d temporary apps run at once: stop one (kit.app.stop) or reuse its id", TEMP_MOST)
-		end
-		if not temp and AgentCount() >= AGENT_MOST then
-			Fail("at most %d apps an agent declared are kept: reuse one (kit.apps lists them; kit.app.open with its "
-				.. "id and a new declaration replaces it) or ask the player to remove one on the /wk window's Apps page",
-				AGENT_MOST)
-		end
+	if app and app.by == "addon" then
+		Fail("app %s is an addon's (%s): its declaration is the addon's; kit.app.open {app} starts it", id,
+			ns.Text(app.addon or "?"))
 	end
-	if app and app.by == "agent" and not same then         -- kept <-> temporary
+	local n, data = Normalize(id, d, { agent = true, temp = temp })
+	local same = app ~= nil and (app.temp == true) == temp
+	if same and Equal(app.data, data) then return app, false end
+	local sort = Sort(temp, data)
+	if not (app and Sort(app.temp, app.data) == sort) and Count(sort) >= MOST[sort] then Fail(FULL[sort], MOST[sort]) end
+	if app and not same then                              -- kept <-> temporary
 		A.Stop(app, "replaced", true)
-		A.Unsubscribe(app)
 		if temp then
-			Store()[id] = nil
+			Stored(id).decl = nil
 			app.mem = { options = {} }
 		end
 	end
-	app = New(id, decl, "agent", raw, temp)
-	if not temp then Stored(id).decl = raw end
+	app = New(id, n, "agent", data, temp)
+	if not temp then Stored(id).decl = data end
 	ns.Changed("app", id)
+	A.Reconcile(app)                                     -- (one that runs goes on as the declaration now says)
 	return app, true
-end
-
--- the declaration's fields a call gives, sorted (open: not minutes and lease, which are its run's too)
-local function Given(a, all)
-	local given = {}
-	for k in pairs(DECL_FIELDS) do
-		if a[k] ~= nil and (all or (k ~= "minutes" and k ~= "lease")) then given[#given + 1] = k end
-	end
-	table.sort(given)
-	return given
 end
 
 function Kit:App(id, decl)
 	if decl == nil then return apps[id] end
-	local ok, n = pcall(Normalize, id, decl, false, true)
+	local ok, n, data = pcall(Normalize, id, decl, { kept = true })
 	if not ok then error(("WuxianKit:App(%s, decl): %s"):format(ns.Text(id), ns.Text(n)), 2) end
 	local old = apps[id]
-	if old then
-		if old.temp then A.Stop(old, "replaced", true) end   -- (its record was in memory)
-		A.Unsubscribe(old)                                   -- (heard again as this declaration says, below)
-	end
-	local app = New(id, n, "addon")
+	if old and old.temp then A.Stop(old, "replaced", true) end   -- (its record was in memory)
+	local app = New(id, n, "addon", data)
 	local rec = Stored(id)
 	if rec then rec.decl = nil end                       -- an agent's declaration of the same id gives way
 	ns.Changed("app", id)
-	if A.loggedIn then A.Resume(app) end
+	A.Reconcile(app)
 	return app
 end
 
--- the player removes an app an agent declared (the window)
-function ns.ForgetApp(id)
+-- an agent's app goes. wipe: the player removes it (the window): its record goes whole. Without: kit.app.forget (无限工坊
+-- withdraws a local extension's app when the extension goes): the declaration goes and no character's run stays, the
+-- player's options and the rings wait for it to be declared again
+function ns.ForgetApp(id, wipe)
 	local app = apps[id]
-	if not app or app.by ~= "agent" or app.decl["local"] then return false end   -- (a local extension's: 无限工坊's)
-	A.Stop(app, "player")                                -- (a temporary one goes with its run)
-	if not app.temp then
-		local store = Store()
-		if store then store[id] = nil end
+	if not app or app.by ~= "agent" then return false end
+	A.Stop(app, wipe and "player" or "forgotten")        -- (a temporary one goes with its run)
+	local store = not app.temp and Store()
+	local rec = store and store[id]
+	if wipe and store then
+		store[id] = nil
+	elseif type(rec) == "table" then
+		rec.decl = nil
+		for _, c in pairs(type(rec.chars) == "table" and rec.chars or {}) do
+			if type(c) == "table" and c.run ~= nil then c.run, c.last = nil, { why = "forgotten" } end
+		end
 	end
 	A.Drop(app)
 	return true
 end
 
--- the agent's declarations come back from storage (an entry of a source not registered yet stays); ids never go back
+-- the agent's declarations come back from storage (an entry of a source not registered yet stays); ids never go back.
+-- One that no longer holds goes with its record, and the player is told at login (the chat frame keeps no line before)
+local dropped = {}
+
 ns.When("load", function()
 	local store = Store()
 	local agents = {}
@@ -795,8 +982,14 @@ ns.When("load", function()
 				if apps[id] and apps[id].by == "addon" then
 					rec.decl = nil
 				else
-					local ok, n = pcall(Normalize, id, rec.decl, true, true)
-					if ok then agents[#agents + 1] = { id, n, rec.decl } else rec.decl = nil end
+					local ok, n, data = pcall(Normalize, id, rec.decl, { agent = true, kept = true })
+					if ok then
+						rec.decl = data
+						agents[#agents + 1] = { id, n, data }
+					else
+						store[id] = nil
+						dropped[#dropped + 1] = id
+					end
 				end
 			end
 		end
@@ -807,13 +1000,20 @@ ns.When("load", function()
 	ns.Changed("app")
 end)
 
+ns.When("login", function()
+	table.sort(dropped)
+	for _, id in ipairs(dropped) do ns.Say(W.DECL_DROPPED:format(ns.Escape(ns.Text(id)))) end
+	dropped = {}
+end)
+
 ------------------------------------------------------------------------------------------------------------------------
 -- shared with the other files (A.loggedIn is set above)
 
-A.W, A.LEASE, A.OPEN_ARGS, A.DECLARE_ARGS = W, LEASE, OPEN_ARGS, DECLARE_ARGS
-A.Copy, A.Set, A.Me, A.Fail = Copy, Set, Me, Fail
+A.W, A.LEASE, A.MOST, A.ID_MAX = W, LEASE, MOST, ID_MAX
+A.FIELDS, A.DECLARE_ARGS, A.FieldDocs = FIELDS, DECLARE_ARGS, FieldDocs
+A.Copy, A.Plain, A.Set, A.Me, A.Fail = Copy, Plain, Set, Me, Fail
 A.Split, A.Trim = Split, Trim
-A.CheckId, A.LeaseOf, A.MinutesOf, A.Given = CheckId, LeaseOf, MinutesOf, Given
+A.CheckId, A.LeaseOf, A.MinutesOf = CheckId, LeaseOf, MinutesOf
 A.apps, A.order, A.App = apps, order, App
 A.Record, A.Char, A.Owned, A.Run, A.Title = Record, Char, Owned, Run, Title
 A.Paced, A.Digesting, A.Bound = Paced, Digesting, Bound

@@ -17,7 +17,7 @@
 -- {kind:id:name} tokens (the window shows the client's links for them, see Proposals.lua). run(self, args, opts) gets
 -- the call's options too (source, title, ttl, after).
 --   ext:Setting(name, spec)  a value the game keeps: <name>.get (See) and <name>.set (Do) from get / set
--- What happens in the game is heard through apps (Apps.lua), from the sources extensions register (ext:Source,
+-- What happens in the game is heard through apps (Core/Apps), from the sources extensions register (ext:Source,
 -- Extension.lua). WuxianKit:Call(id, args, opts) does one; WuxianKit:Propose(steps, opts) bundles Say / Do steps into one
 -- proposal; the manifest (below) is what the agent may use.
 local _, ns = ...
@@ -288,7 +288,7 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- the manifest (the Agent access spec): what 无限工坊's app turns into MCP tools, docs and prompts. protocol, the core's
 -- version, the language, every extension (the core first) with its state and docs (the folder under Interface\AddOns
--- of its AGENT.md and skills/); the capabilities, events and sources of those that are on; the apps (Apps.lua); a
+-- of its AGENT.md and skills/); the capabilities, events and sources of those that are on; the apps (Core/Apps); a
 -- revision that changes whenever any of it does (kit.changed tells it half a second after a change, with whatever
 -- changed in that half second)
 
@@ -305,6 +305,15 @@ local function Specs(t)                                  -- {name = spec text} i
 	for k, v in pairs(type(t) == "table" and t or {}) do out[#out + 1] = tostring(k) .. "=" .. tostring(v) end
 	table.sort(out)
 	return table.concat(out, ",")
+end
+
+-- a value in one line, a table's keys sorted: whatever a row carries counts (a field added to it too)
+local function Flat(v)
+	if type(v) ~= "table" then return tostring(v) end
+	local out = {}
+	for k, x in pairs(v) do out[#out + 1] = tostring(k) .. "=" .. Flat(x) end
+	table.sort(out)
+	return "{" .. table.concat(out, ",") .. "}"
 end
 
 local function Revision(m)
@@ -324,9 +333,7 @@ local function Revision(m)
 		end
 	end
 	for _, a in ipairs(m.apps or {}) do
-		parts[#parts + 1] = table.concat({ "app", a.id, a.title or "", a.by or "", a.addon or "", a.topic or "",
-			table.concat(a.hear or {}, ","), table.concat(a.see or {}, ","), a.prompt or "", a.start or "", a.extension or "", a.docs or "",
-			tostring(a.temp) }, "\1")
+		parts[#parts + 1] = "app\1" .. Flat(a)             -- every field of the row (hidden and local too)
 	end
 	return Hash(table.concat(parts, "\2"))
 end
@@ -351,7 +358,8 @@ function Kit:Manifest()
 		end
 		m.extensions[#m.extensions + 1] = entry
 	end
-	-- (Apps.lua) [{ id, title, by, addon?, topic, hear, see, prompt?, start?, extension?, docs?, temp }]
+	-- (Core/Apps/Api.lua) [{ id, title, by, addon?, topic, hear, see, start?, docs?, temp, and the fields of a
+	-- declaration the lists carry: prompt?, extension?, hidden?, local? }]
 	m.apps = ns.AppManifest and ns.AppManifest() or {}
 	m.revision = Revision(m)
 	return m
