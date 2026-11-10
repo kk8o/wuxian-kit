@@ -206,6 +206,7 @@ end
 
 -- what keeps the app from running now: "wait" (something it needs is not registered yet) or "stop" (an extension it
 -- needs is off, or its check says no), why (for the player), and whether its check said so; nil when nothing does.
+-- A source or a facet whose extension is on its way reads as the one still missing: one reason while it waits.
 -- light: without asking its check
 local function Verdict(app, light)
 	local d = app.decl
@@ -213,20 +214,21 @@ local function Verdict(app, light)
 		local ext = ns.extensions[d.extension]
 		local lacks = Lacks(ext)
 		if lacks then
-			return lacks, (ext and W.EXT_OFF or W.EXT_MISSING):format(ext and ns.T(ext.title) or d.extension)
+			if lacks == "wait" then return lacks, W.EXT_MISSING:format(d.extension) end
+			return lacks, W.EXT_OFF:format(ns.T(ext.title))
 		end
 	end
 	for _, entry in ipairs(d.hear) do
 		local name = Split(entry)
 		local src = name and ns.sources[name]
-		if not src then return "wait", W.NEEDS_SOURCE:format(ns.Text(name or entry)) end
-		local lacks = Lacks(src.ext)
+		local lacks = not src and "wait" or Lacks(src.ext)
+		if lacks == "wait" then return lacks, W.NEEDS_SOURCE:format(ns.Text(name or entry)) end
 		if lacks then return lacks, W.NEEDS:format(ns.T(src.ext.title)) end
 	end
 	for _, name in ipairs(d.see) do
 		local facet = ns.facets[name]
-		if not facet then return "wait", W.NEEDS_FACET:format(ns.Text(name)) end
-		local lacks = Lacks(facet.ext)
+		local lacks = not facet and "wait" or Lacks(facet.ext)
+		if lacks == "wait" then return lacks, W.NEEDS_FACET:format(ns.Text(name)) end
 		if lacks then return lacks, W.NEEDS:format(ns.T(facet.ext.title)) end
 	end
 	if d.check and not light then
