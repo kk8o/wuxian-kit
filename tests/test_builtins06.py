@@ -75,6 +75,19 @@ class Builtins06(unittest.TestCase):
         args = py(s.lua.eval(b"WuxianKit:Capability('kit.options').args"))
         self.assertEqual(args, {"extension": "string?", "app": "string?"})
 
+    def test_kit_option_says_whose(self):
+        """one topic for an extension's option and an app's: the event names one of the two"""
+        s = self.with_ns(self.start())
+        s.lua.execute(b"__seen = {} WuxianKit:On('kit.option', function(_, data) __seen[#__seen + 1] = data end)")
+        s.lua.execute(b"WuxianKit:App('club', { title = 'Club', options = { loud = { title = 'Loud' } } })")
+        self.set_option(s, "kit", "nickname", "'Bo'")
+        self.assertTrue(s.ns.SetAppOption(b"club", b"loud", True))
+        self.assertEqual(py(s.g("__seen")), [{"extension": "kit", "name": "nickname", "value": "Bo"},
+                                             {"app": "club", "name": "loud", "value": True}])
+        kit = next(e for e in py(s.lua.eval(b"WuxianKit:Manifest().extensions")) if e["id"] == "kit")
+        event = next(e for e in kit["events"] if e["topic"] == "kit.option")
+        self.assertEqual(event["data"], {"extension": "string?", "app": "string?", "name": "string", "value": "any"})
+
 
 if __name__ == "__main__":
     unittest.main()

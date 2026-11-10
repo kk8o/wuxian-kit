@@ -127,7 +127,7 @@ demo:Scope("settings", L"SCOPE")
 | `choice` | 一排按钮，选一个 | 某个 `value` | `choices = { { value, label }, ... }`，`label` 可以是 `L"KEY"`；存的值不在其中时按 `default` |
 | `list` | 文本框，用逗号（`,`、`，`、`、`）分开 | 字符串的表：去掉首尾空白、去空、去重，最多 20 项，每项最多 32 字节 | |
 
-- 玩家改了选项，核心调 `changed(self, value)`，并发出总线事件 `kit.option`（`{ extension, name, value }`）。
+- 玩家改了选项，核心调 `changed(self, value)`，并发出总线事件 `kit.option`（`{ extension, name, value }`；应用的选项是 `{ app, name, value }`，两个键只带一个）。
 - `WuxianKit:OptionsPanel(id, parent, width)`：在插件自己的窗口里画扩展 `id` 的全部选项，样式与 `/wk` 一致，两处改的是同一份；返回一个框体（高度已按内容设好），`:Refresh()` 重画。扩展不存在或没有选项时返回 nil。
 - `kit.options { extension }`（读取）：`{ [name] = { title, kind, value, default, choices?, min?, max?, unit? } }`，标题按当前语言。Agent 用它了解玩家的设置，不能修改。
 

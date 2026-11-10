@@ -10,7 +10,7 @@
 --   kit.undo              (Do)   undo a proposal that ran
 --   bus                   (Source) what addons emit on the bus, for apps to hear (bus:<topic or prefix.*>)
 --   me                    (Facet)  the player now (WuxianKit:Me()), for apps to see (see = { "me" }: state.me)
--- (The apps' capabilities, kit.app.* and kit.apps, are in Apps/Api.lua.)
+-- (The apps' capabilities, kit.app.* and kit.apps, are in Core/Apps/Api.lua.)
 local _, ns = ...
 local Kit, L = ns.Kit, ns.L
 
@@ -146,8 +146,11 @@ kit:Event("changed", { doc = "the manifest changed: an extension on or off, a ca
 	data = { revision = "string" } })
 kit:Event("ready", { doc = "WuxianKit is up, after a login or a reload", data = { version = "string", extensions = "table",
 	revision = "string" } })
-kit:Event("option", { doc = "the player changed an option of an extension (kit.options reads them all)",
-	data = { extension = "string", name = "string", value = "any" } })
+-- one topic, two shapes: an extension's option is { extension, name, value } (ns.SetOption, Extension.lua), an app's is
+-- { app, name, value } (ns.SetAppOption, Apps/Api.lua); never both keys
+kit:Event("option", { doc = "the player changed an option: an extension's ({extension, name, value}) or an app's "
+	.. "({app, name, value}): one of extension and app, never both (kit.options reads them all)",
+	data = { extension = "string?", app = "string?", name = "string", value = "any" } })
 
 -- the bus as a source apps hear (bus:<topic or prefix.*>): what addons tell each other with WuxianKit:Emit, not the
 -- core's own (kit.*) nor apps' wakes (app.*)
