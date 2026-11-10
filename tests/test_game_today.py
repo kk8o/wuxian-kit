@@ -165,7 +165,8 @@ class Streak(GameTest):
         g.run(0.6)
         Today.kill(self, g, "Creature-1", "nameplate1")
         g.run(0.3)
-        Today.kill(self, g, "Creature-2", "nameplate2")                         # within a second: not told
+        Today.kill(self, g, "Creature-2", "nameplate2")                         # within a second: told with the first
+        self.assertEqual(g.moments("kill"), [])                                  # (when the second is over)
         g.run(5)
         Today.kill(self, g, "Creature-3", "nameplate3")
         g.lua.execute(b"__combat(false)")
@@ -182,8 +183,34 @@ class Streak(GameTest):
         Today.kill(self, g, "Creature-5", "nameplate5")                          # 30 s and more after the others
         g.lua.execute(b"__combat(false)")
         kills = g.moments("kill")
-        self.assertEqual([k["data"]["streak"] for k in kills], [1, 3, 2, 1])     # the 4th: only the 3rd within 30 s
+        self.assertEqual([k["data"]["count"] for k in kills], [2, 1, 1, 1])
+        self.assertEqual([k["data"]["streak"] for k in kills], [2, 3, 2, 1])     # the 4th: only the 3rd within 30 s
         self.assertEqual(kills[0]["data"]["unit"]["name"], "Raptor")
+
+    def test_the_kills_of_a_second_are_one_moment(self):
+        g = self.game()
+        g.lua.execute(UNITS.encode())
+        g.listen(topics=["combat"])
+        Today.mobs(self, g, 6)
+        g.lua.execute(b'__set("Creature-1", "name", "Boar") __combat(true)')
+        g.run(0.6)
+        for i in (1, 2, 3):                                                      # an area spell: three at once
+            Today.kill(self, g, f"Creature-{i}", f"nameplate{i}")
+        g.run(0.5)
+        Today.kill(self, g, f"Creature-4", "nameplate4")
+        self.assertEqual(g.moments("kill"), [])
+        g.run(0.6)                                                               # the window is over: one moment
+        [k] = g.moments("kill")
+        self.assertEqual((k["data"]["unit"]["name"], k["data"]["count"], k["data"]["streak"]), ("Boar", 4, 4))
+        Today.kill(self, g, "Creature-5", "nameplate5")                          # the next window
+        g.run(0.5)
+        Today.kill(self, g, "Creature-6", "nameplate6")
+        g.lua.execute(b"__combat(false)")                                        # the fight ends within it: told first
+        self.assertEqual([(m["kind"], m["data"].get("count"), m["data"].get("streak")) for m in g.moments()][-2:],
+                         [("kill", 2, 6), ("combat.end", None, None)])
+        self.assertEqual(g.moments("combat.end")[0]["data"]["kills"], 6)
+        g.run(2)
+        self.assertEqual(len(g.moments("kill")), 2)                              # none told twice
 
 
 if __name__ == "__main__":
