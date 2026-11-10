@@ -58,7 +58,7 @@ WuxianKit/                 插件本身（Interface\AddOns\WuxianKit）
     Bridge.lua             经无限工坊的开发组件（WoWBridge）交给 Agent
     UI/                    提案窗口、扩展框架窗口（/wk）、应用卡片、样式
     Builtins.lua           核心自己的扩展 kit：扩展开关、提案查询、撤销、清单；来源 bus、状态面 me
-    Apps/                  应用运行时：kit.app.*、WuxianKit:App
+    Apps/                  应用运行时（Decl、Deliver、Run、Api 四个文件）：kit.app.*、WuxianKit:App
   Extensions/<名称>/        内置扩展（零件）：代码、AGENT.md、skills/；Route/ 是任务指引
   Apps/<名称>/              自带应用（成品）：Guild/（公会聊天：App.lua、skills/guild-chat.md）
 WuxianKit_Guides/          自定义扩展「任务指引适配」（单独的插件）：Guides.lua、RestedXP.lua
