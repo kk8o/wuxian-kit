@@ -1,6 +1,7 @@
--- The digest (摘要): items gathered into wakes instead of sent one by one, for apps (Apps/). A host is { ext, spec =
--- { digest = { urgent(self, options, item) } }, Wrap(host, s)?, Send(host, data) -> whether it went } and a run s is
--- { options = { digest }, buffer, first, last, urgentAt, wakes, lastWake, started, sent, skipped, retry, reason, quiet }.
+-- The digest (摘要): items gathered into wakes instead of sent one by one, for apps (Apps/Deliver.lua makes the
+-- host). A host is { ext, spec = { digest = { urgent(self, options, item) } }, Wrap(host, s)?, Send(host, data) ->
+-- whether it went } and a run s is { options = { digest }, buffer, first, last, urgentAt, wakes, lastWake, started,
+-- sent, skipped, retry, reason, quiet }.
 --   ns.Digest.Params(host, s)         the digest now: the run's options.digest, then the host spec's, then the defaults
 --   ns.Digest.Hold(host, s, item)     an item into the run's buffer (the oldest go when it holds too many)
 --   ns.Digest.Gather(host, s, item)   an item gathered (and a wake when its time has come)

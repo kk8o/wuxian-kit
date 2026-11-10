@@ -1,5 +1,5 @@
 """The app card (0.6, Core/UI/AppPanel.lua) under Lua 5.1 in the mock client: WuxianKit:AppPanel draws an app's card from
-what Apps.lua's ns functions answer (faked here on the core's private table), its state line through every state (no
+what the apps' ns functions answer (faked here on the core's private table), its state line through every state (no
 无限工坊 link, its extension off, its check's reason, running but waiting, running, ready), the connect, stop and control
 buttons (one of its own by its cmd when its label could be taken for another control), its options with the window's
 controls, an agent's texts escaped, and the redraws on the bus and every few seconds."""

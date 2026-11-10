@@ -7,7 +7,8 @@
 -- speaks through chat.send (proposals the player confirms or pre-approved); this file sends nothing. The session
 -- procedure is the skill skills/guild-chat.md in this folder (the prompt guild-chat; docs = "Apps/Guild").
 -- The id stays "guild" as WuxianGuild 0.3 declared it, so the player's options in WuxianKitDB.apps.guild carry over.
--- An addon that declares "guild" again after this file replaces this declaration (Apps.lua: the last one wins).
+-- An addon that declares "guild" again after this file replaces this declaration (WuxianKit:App,
+-- Core/Apps/Decl.lua: the last one wins).
 local Kit = WuxianKit
 
 local L = Kit:Words {

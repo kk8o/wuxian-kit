@@ -3,7 +3,7 @@
 -- sources apps hear) is kept on it and goes live when the core turns it on: the built-in ones when the core's saved
 -- variables come, another addon's once its files have run, each unless the player turned it off (WuxianKitDB.off[id]).
 -- Turned off from the window, it stops at once: its game events are no longer handed to it, its timers stop, its
--- capabilities refuse calls, apps hear nothing of its sources (and one that hears them cannot start, Apps.lua), its
+-- capabilities refuse calls, apps hear nothing of its sources (and one that hears them stops, Apps/Run.lua), its
 -- proposals not run yet go; what its proposals changed stays (the history undoes it), what it made of the UI stays until
 -- a reload. Its storage is WuxianKitDB.ext[id], info.defaults filled in.
 --   info: { title, version, notes, addon, docs, prompt, defaults = {...}, setup(self) when it goes on, teardown(self)
@@ -402,7 +402,7 @@ end
 function ns.Commands() return commands end
 
 ------------------------------------------------------------------------------------------------------------------------
--- sources: what apps hear (Apps.lua). ext:Source(name, spec) registers the hear entries <name>:<what>. A name is the
+-- sources: what apps hear (Apps/Run.lua). ext:Source(name, spec) registers the hear entries <name>:<what>. A name is the
 -- whole kit's: another extension's of the same name is an error. The same extension's again (a hot reload) replaces it:
 -- a new source object, the old one keeps its spec, so a token the old on gave goes to the old off (the apps subscribe
 -- again when told). ext:Source(name, nil) takes it back (source.gone). spec:
@@ -413,8 +413,8 @@ function ns.Commands() return commands end
 --   on(self, what, fn) -> token   subscribes: fn(item) for each item heard, a new table each time (an app writes its
 --                      fields on it); off(self, token) unsubscribes; self is the extension
 -- (What the player is like now is not on items: an app sees the facet me, below.)
--- An extension that is off keeps its sources registered: an app that hears one cannot start (Apps.lua says why), and
--- one that runs hears nothing of it until it is on again.
+-- An extension that is off keeps its sources registered: an app that hears one cannot start (Apps/Run.lua's Reconcile
+-- says why), and one that runs stops (why "extension").
 -- addon, control and player are the apps' own sources (an item's source) and cannot be registered.
 -- ns.sources: name -> { name, ext, spec }; ns.sourceOrder: the names as registered; ns.SourceList(ext) and
 -- ns.SourceValues(source) for the manifest and the docs.
@@ -496,7 +496,7 @@ function ns.SourceList(ext)
 end
 
 ------------------------------------------------------------------------------------------------------------------------
--- facets: what apps see (Apps.lua), as sources are what they hear. ext:Facet(name, spec) registers a state an app
+-- facets: what apps see (Apps/Run.lua), as sources are what they hear. ext:Facet(name, spec) registers a state an app
 -- declares in see = { name, ... }: each wake of the app carries state[name] = what read gives at that wake, and
 -- kit.app.state reads them at once. A name is the whole kit's, as a source's (a source and a facet may share one: route):
 -- another extension's of the same name is an error. The same extension's again (a hot reload) puts the new spec on the
@@ -512,7 +512,7 @@ end
 --                      probe, a game event), the last one stopped; off too when its extension goes off, and on again when
 --                      it comes back on while one still sees it
 -- An extension that is off keeps its facets registered: an app that sees one of them cannot start, and one that runs stops
--- (Apps.lua); read is not called while it is off.
+-- (Apps/Run.lua's Reconcile); read is not called while it is off.
 -- ns.facets: name -> { name, ext, spec, watchers = { [who] = true }, n, live (spec.on was called) }; ns.facetOrder: the names as
 -- registered; ns.FacetList(ext) for the manifest; ns.FacetWatch(facet, who, on): who (an app) starts or stops looking;
 -- ns.FacetRead(facet): the state as a wake carries it.

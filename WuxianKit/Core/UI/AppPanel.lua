@@ -22,7 +22,7 @@ local TICK = 5                            -- seconds between redraws while a car
 local HEARS = 2                           -- of what a listener hears, how many are named on its line
 local CORE_OPTIONS = { activity = 1, quiet = 2 }   -- the core's options for an app with pace: first
 
--- one of Apps.lua's functions, never breaking a draw (an error goes to the error handler)
+-- one of the apps' ns functions (Apps/Api.lua's), never breaking a draw (an error goes to the error handler)
 local function Call(fn, ...)
 	if type(fn) ~= "function" then return nil end
 	local ok, v = pcall(fn, ...)

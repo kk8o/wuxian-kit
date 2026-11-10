@@ -1,4 +1,4 @@
-"""The window's apps (0.6, Core/UI/Window.lua) under Lua 5.1 in the mock client, over Apps.lua's ns functions faked as in
+"""The window's apps (0.6, Core/UI/Window.lua) under Lua 5.1 in the mock client, over the apps' ns functions faked as in
 test_app_panel: the group 应用 first, before the extensions, with each app's state, the window first open on the first
 app's page, an app's page (where it came from, its card; remove for an agent's; a temporary one marked), redrawn when
 apps change; /wk <app> [words] (its controls, its words, what it takes, its page), /wk help, /wk's own words
