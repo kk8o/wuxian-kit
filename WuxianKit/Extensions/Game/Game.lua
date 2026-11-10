@@ -69,8 +69,8 @@ local L = Kit:Words {
 local game = Kit:Extension("game", { title = L"TITLE", version = Kit.VERSION, docs = "Extensions/Game",
 	notes = "What happens in the game (combat, quests, levels, zones, the guild), told as it happens; today's tally",
 	defaults = {},
-	setup = function() if ns.game then ns.game.Refresh() end end,
-	teardown = function() if ns.game then ns.game.Refresh() end end })
+	setup = function() ns.game.Refresh() end,
+	teardown = function() ns.game.Refresh() end })
 
 local G = { ext = game, active = {}, topics = {} }
 ns.game = G
@@ -243,7 +243,7 @@ local function TopicNames(list)
 end
 
 game:Source("game", { title = L"TITLE", values = TOPICS,
-	doc = "game:<topic> (combat: fights, danger, kills (with streak: the kills within 30 s, this one too), deaths, big "
+	doc = "game:<topic> (combat: fights, danger, kills (those of a second as one, with count; streak: the kills within 30 s, these too), deaths, big "
 		.. "cooldowns, notable targets; aura: buffs from other players, dispellable debuffs, out of combat; growth: xp "
 		.. "marks, levels, talents, new spells; quest: accepted, objective done, ready, turned in; travel: zones, flights, "
 		.. "rest areas; guild: joins, leaves, achievements, members reaching a tenth or the top level), game:<kind> (one "

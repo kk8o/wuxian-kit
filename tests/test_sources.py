@@ -67,6 +67,58 @@ class Sources(unittest.TestCase):
         rx = next(e for e in m["extensions"] if e["id"] == "rx")
         self.assertEqual([x["title"] for x in rx["sources"]], ["Radio 2"])
 
+    # the radio's source again, its own subscribers and tokens ("b1", "b2" ...) apart from the first one's
+    RADIO2 = (b"__subs2, __n2, __offs1, __offs2 = {}, 0, {}, {} "
+              b"local off1 = WuxianKit:Extension('rx') and __ns.sources.radio.spec.off "
+              b"__ns.sources.radio.spec.off = function(self, t) __offs1[#__offs1 + 1] = t off1(self, t) end "
+              b"__rx:Source('radio', { title = 'Radio 2', "
+              b"on = function(self, what, fn) __n2 = __n2 + 1 __subs2['b' .. __n2] = { what = what, fn = fn } "
+              b"return 'b' .. __n2 end, "
+              b"off = function(self, t) __offs2[#__offs2 + 1] = t __subs2[t] = nil end }) "
+              b"function __radio2(what, item) for _, s in pairs(__subs2) do if s.what == what then s.fn(item) end end end")
+
+    def test_registered_again_while_an_app_hears(self):
+        s = self.start(before=RADIO)
+        s.lua.globals()[b"__ns"] = s.ns
+        self.agent(s, "kit.app.open", "{ app = 'mix', hear = { 'radio:jazz', 'radio:news', 'bus:demo.*' }, lease = 0 }")
+        self.assertEqual(s.lua.eval(b"__radio_n"), 2)
+        old = s.ns.sources[b"radio"]
+        s.lua.execute(self.RADIO2)                                       # a hot reload of the radio's addon
+        self.assertEqual(py(s.g("__radio_subs")), {})                    # the old tokens went to the old off, each once
+        self.assertEqual(sorted(py(s.g("__offs1"))), [1, 2])
+        self.assertEqual((s.lua.eval(b"__n2"), py(s.g("__offs2"))), (2, {}))   # the new on: once per entry
+        self.assertFalse(old[b"gone"])
+        s.lua.execute(b"__radio('jazz', { tune = 'old' }) __radio2('jazz', { tune = 'new' }) __radio2('news', { story = 'n' })")
+        self.assertEqual([i.get("tune") or i.get("story") for i in self.items(s, "mix")], ["new", "n"])
+        self.agent(s, "kit.app.stop", "{ app = 'mix' }")
+        self.assertEqual(sorted(py(s.g("__offs2"))), ["b1", "b2"])       # and the new tokens to the new off
+        self.assertEqual(sorted(py(s.g("__offs1"))), [1, 2])
+
+    def test_taken_back_and_what_the_apps_are_told(self):
+        s = self.start(before=RADIO)
+        s.lua.globals()[b"__ns"] = s.ns
+        s.lua.execute(b"__told = {} __ns.OnChange(function(what, x) "
+                      b"if what == 'source' then __told[#__told + 1] = { x.name, __ns.sources[x.name] == x, x.gone or false } "
+                      b"elseif what == 'extension' and x.id == 'rx' then "
+                      b"__told[#__told + 1] = { 'ext', x.active, table.concat(x.sourceOrder, ' ') } end end)")
+        old = s.ns.sources[b"radio"]
+        s.lua.execute(self.RADIO2)
+        s.ns.Switch(b"rx", False)
+        s.ns.Switch(b"rx", True)
+        s.lua.execute(b"__rx:Source('radio', nil) __rx:Source('radio', nil)")   # the second: not there, nothing
+        self.assertEqual(py(s.g("__told")), [["radio", True, False], ["ext", False, "radio"], ["ext", True, "radio"],
+                                             ["radio", False, True]])
+        self.assertFalse(old[b"gone"])                                   # replaced, not taken back
+        self.assertIsNone(s.ns.sources[b"radio"])
+        self.assertEqual(py(s.ns.sourceOrder), ["bus", "chat", "game", "route"])
+        self.assertEqual(s.lua.eval(b"#__rx.sourceOrder"), 0)
+        self.assertIn("pop:x: no source pop (the sources: bus, chat, game, route)",
+                      self.fails(s, "__fns['kit.app.open']({ app = 'r', hear = { 'pop:x' } })"))
+        self.assertIn("other: the source chat is extension chat's",
+                      self.fails(s, "WuxianKit:Extension('other'):Source('chat', nil)"))
+        s.lua.execute(RADIO)                                             # registered anew
+        self.assertEqual(py(s.ns.sourceOrder)[-1], "radio")
+
     def test_heard_through_an_app(self):
         s = self.start(before=RADIO)
         self.agent(s, "kit.app.declare", "{ app = 'mix', hear = { 'radio:jazz', 'chat:guild', 'game:quest', "

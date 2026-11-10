@@ -3,14 +3,14 @@
 -- extension's storage for the character (ext:Char().today), so a reload keeps it; a new local date starts it again at 0.
 -- Counted only while the facet is watched: then it hears the topics combat, growth, quest and travel through subscribers
 -- of its own (their detectors run) and takes the facts the detectors hand G.Tally; when nobody watches any more it lets
--- them go. ext:Facet is the core's (0.6); a core without it: no facet, the rest stays idle.
+-- them go.
 --
 -- For tests and the other files (ns.game.today = T):
 --   T.Read() -> table        today's tally (a copy; a new day: all 0)
 --   T.Count(what, n)         adds n (default 1) to a count; only while watched (what is a field name)
 --   T.On(), T.Off()          watched / not any more (the facet's on and off)
 --   T.watching               true while watched
---   T.Register()             the facet, through game:Facet (when the core has it)
+--   T.Register()             the facet, through game:Facet
 local addonName, ns = ...
 local Kit = WuxianKit
 local G = ns.game
@@ -88,7 +88,6 @@ function T.Off()
 end
 
 function T.Register()
-	if not game.Facet then return nil end
 	return game:Facet("today", {
 		title = L"TITLE",
 		doc = "today: what this character did today (by the local date): {date (YYYY-MM-DD), levels, quests (turned in), "

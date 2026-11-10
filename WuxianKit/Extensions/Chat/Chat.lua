@@ -10,7 +10,10 @@
 -- the last 200 messages read are kept in memory (WuxianKit.Chat.Message(id)). During chat lockdown (a boss fight, a
 -- Mythic+ run, a PvP match) the text is secret and nothing is heard.
 -- The player's names (WuxianKit.Chat.Names()): the whole name (two parts with a space on this client), each part of
--- at least two characters, and the option aliases ("what others call me"); Latin letters match in any case.
+-- at least three characters (a shorter one alone is too often a word of its own), and the option aliases ("what others
+-- call me", of any length: the player chose them). A message names the player when it holds one of them: Latin letters
+-- in any case, and as a whole word where the name begins or ends with a Latin letter or a digit (no Latin letter or
+-- digit right before or after it: "forever" is not in "forevermore"; Chinese is not written in words, so none there).
 -- chat.send: tokens {kind:id:name} become the client's links when it is sent (WuxianKit:Linkify: item, spell, recipe,
 -- achievement, currency, quest; [name] where the client gives none, as for a quest not in the player's log); the
 -- proposal asks for the items' data and its window shows the links; at most 255 bytes once the links are in; no | and
@@ -83,23 +86,12 @@ local REPLY_SECONDS = 180              -- a reply answers a message at most this
 local YIELD_SECONDS = 8                -- after the player's own message in a channel, the agent's waits this long
 local MUTED = "|cff9c9ea6%s|r"
 
--- a scope with its suggested budget where the core takes one (0.5: ext:Scope(name, { title, budget })), else its title
-local TABLE_SCOPES = false
-if type(Kit.Requires) == "function" then
-	local ok, yes = pcall(Kit.Requires, Kit, "0.5.0")
-	TABLE_SCOPES = ok and yes == true
-end
-local function Scope(name, title, budget)
-	if TABLE_SCOPES then return chat:Scope(name, { title = title, budget = budget }) end
-	return chat:Scope(name, title)
-end
-
 local HEARABLE, CAN_GRANT, EVENT_LIST = {}, {}, {}
 for _, c in ipairs(HEARD) do HEARABLE[c] = true end
 for _, c in ipairs(GRANTABLE) do
 	CAN_GRANT[c] = true
-	Scope(c, function() return L.SCOPE[c] end, { per = 600, most = 4 })
-	Scope(c .. ".reply", function() return L.REPLY[c] end, { per = 600, most = 3 })
+	chat:Scope(c, { title = function() return L.SCOPE[c] end, budget = { per = 600, most = 4 } })
+	chat:Scope(c .. ".reply", { title = function() return L.REPLY[c] end, budget = { per = 600, most = 3 } })
 end
 for event in pairs(EVENTS) do EVENT_LIST[#EVENT_LIST + 1] = event end
 table.sort(EVENT_LIST)
@@ -107,24 +99,11 @@ table.sort(EVENT_LIST)
 ------------------------------------------------------------------------------------------------------------------------
 -- the player's names
 
-local names, namesKey                  -- the lowercased names, and what they were built from (whole name + aliases)
+local names, namesKey                  -- the names, and what they were built from (whole name + aliases)
+local PART_CHARS = 3                   -- a part of the whole name counts alone from this many characters
 
 local function Chars(s)
 	return select(2, s:gsub("[^\128-\191]", ""))
-end
-
--- the aliases as a list: a list option gives a table; a core without lists keeps the text ("a, b，c、d")
-local function Aliases()
-	local v = chat:Get("aliases")
-	local out = {}
-	if type(v) == "table" then
-		for _, a in ipairs(v) do
-			if type(a) == "string" then out[#out + 1] = a end
-		end
-	elseif type(v) == "string" then
-		for part in (v:gsub("，", ","):gsub("、", ",") .. ","):gmatch("([^,]*),") do out[#out + 1] = part end
-	end
-	return out
 end
 
 local function WholeName()
@@ -138,7 +117,7 @@ end
 
 -- the names as shown, built when what they come from changed (aliases, the name once the client knows it)
 local function Names()
-	local whole, aliases = WholeName(), Aliases()
+	local whole, aliases = WholeName(), chat:Get("aliases")     -- (a list option: a table of strings)
 	local key = (whole or "") .. "\0" .. table.concat(aliases, "\0")
 	if names and key == namesKey then return names end
 	local list, seen = {}, {}
@@ -151,7 +130,7 @@ local function Names()
 	if whole then
 		Add(whole)
 		for part in whole:gmatch("%S+") do
-			if Chars(part) >= 2 then Add(part) end
+			if Chars(part) >= PART_CHARS then Add(part) end
 		end
 	end
 	for _, a in ipairs(aliases) do Add(a) end
@@ -172,13 +151,31 @@ local function Plain(text)
 	return text:match("^%s*(.-)%s*$")
 end
 
+-- whether the byte at i of text is none of a Latin word's (a letter, a digit); outside the text: none
+local function Edge(text, i)
+	local b = text:byte(i)
+	return not b or not ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+-- whether text holds name (both lowercased): an end of the name that is a Latin letter or a digit sits at a word's edge
+local function Named(text, name)
+	local head, tail = not Edge(name, 1), not Edge(name, #name)
+	local from = 1
+	while true do
+		local a, b = text:find(name, from, true)
+		if not a then return false end
+		if (not head or Edge(text, a - 1)) and (not tail or Edge(text, b + 1)) then return true end
+		from = a + 1
+	end
+end
+
 -- whether text (a plain one, or one with links and colours) holds one of the player's names
 local function Mentions(text)
 	if type(text) ~= "string" or issecret(text) or text == "" then return false end
 	if text:find("|", 1, true) then text = Plain(text) end
 	text = text:lower()
 	for _, n in ipairs(Names()) do
-		if text:find(n:lower(), 1, true) then return true end
+		if Named(text, n:lower()) then return true end
 	end
 	return false
 end

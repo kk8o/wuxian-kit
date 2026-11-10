@@ -7,8 +7,10 @@
 --   - right at PLAYER_REGEN_DISABLED the nameplates' threat is not there yet: foes are counted 0.5 s later;
 --   - in instances a target's GUID and name may be secret: such kills go uncounted;
 --   - auras are read only out of combat (in combat addedAuras may be a secret table).
--- A kill's streak counts the kills within STREAK seconds, this one too, across fights (a kill not told because two came
--- within a second still counts in the next one's streak). Kills and deaths go to the day's tally (G.Tally).
+-- Kills are told a window at a time: the first one opens KILL_WINDOW seconds, and what died in them goes out as one kill
+-- { unit (the first of them), count, streak } when they are over, or at once when the fight ends before (so a kill is
+-- told before its fight's combat.end). streak counts the kills within STREAK seconds up to the window's last, these
+-- too, across fights. Kills and deaths go to the day's tally (G.Tally).
 -- UNIT_COMBAT, UNIT_HEALTH and NAME_PLATE_UNIT_REMOVED are registered only during a fight that started while combat ran;
 -- UNIT_AURA only out of combat while aura runs. Never COMBAT_LOG_EVENT_UNFILTERED.
 local addonName, ns = ...
@@ -21,6 +23,7 @@ local DANGER_GAP = 8         -- seconds between two dangers of one fight
 local START_DELAY = 0.5      -- threat is not there right at the start of a fight
 local PLATES = 40
 local STREAK = 30            -- seconds a kill counts in the streak
+local KILL_WINDOW = 1        -- seconds of kills told as one moment
 
 local NOTABLE = { elite = true, rare = true, rareelite = true, worldboss = true }
 local DISPELS = { Poison = true, Curse = true, Disease = true, Magic = true }
@@ -34,6 +37,7 @@ local rezAt                  -- when someone last offered to resurrect you
 local paced = {}             -- kind -> GetTime() it last went out
 local ticker                 -- counts the foes every second during a fight
 local kills = {}             -- GetTime() of the kills within STREAK seconds, oldest first
+local window                 -- the kills not told yet: { unit, count, streak }; nil: none
 
 ------------------------------------------------------------------------------------------------------------------------
 -- reading units (all through Kit:Value)
@@ -81,6 +85,14 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- kills
 
+-- the window's kills as one moment
+local function TellKills()
+	local w = window
+	if not w then return end
+	window = nil
+	G.Moment("kill", { unit = w.unit, count = w.count, streak = w.streak })
+end
+
 local function CheckDead(unit)
 	local guid = Guid(unit)
 	if not (guid and engaged[guid]) or done[guid] or not Dead(unit) then return end
@@ -94,7 +106,15 @@ local function CheckDead(unit)
 	recent[#recent + 1] = now
 	kills = recent
 	G.Tally("kills")
-	Send("kill", { unit = Kit:Unit(unit), streak = #recent })
+	if window then
+		window.count, window.streak = window.count + 1, #recent
+		return
+	end
+	local w = { unit = Kit:Unit(unit), count = 1, streak = #recent }
+	window = w
+	C_Timer.After(KILL_WINDOW, function()
+		if window == w then TellKills() end
+	end)
 end
 
 -- a unit of this fight: one with threat; force (your target, hit) needs none
@@ -171,6 +191,7 @@ local function FightEnds()
 	local f = fight
 	if not f then return end
 	Scan()                                               -- the last one may have died without a UNIT_HEALTH
+	TellKills()                                          -- before the fight's end is told
 	EndFight()
 	if not f.started then return end
 	G.Moment("combat.end", { secs = Round(GetTime() - f.at), kills = f.kills, foes = math.max(f.foes, 1) })
@@ -265,9 +286,12 @@ G.Topic("combat", {
 	on = function()
 		EndFight()                                       -- a fight going on now started unheard: not told
 		dead = UnitIsDeadOrGhost ~= nil and Yes(Read(UnitIsDeadOrGhost, "player"))
-		rezAt, kills = nil, {}
+		rezAt, kills, window = nil, {}, nil
 	end,
-	off = EndFight,
+	off = function()
+		EndFight()
+		window = nil
+	end,
 })
 
 ------------------------------------------------------------------------------------------------------------------------
