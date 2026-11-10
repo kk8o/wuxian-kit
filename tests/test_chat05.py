@@ -78,6 +78,12 @@ class Chat05(unittest.TestCase):
         m = lambda text, event="CHAT_MSG_GUILD", guid=ASKER: self.say(s, event, text, "Asker-Realm", guid)["mention"]
         self.assertTrue(m("hey wuxian forever, you there?"))               # whole name, any case
         self.assertTrue(m("FOREVER can you help"))                         # a part
+        for text in ("thanks Wuxian!", "wuxian's turn", "@forever", "(Forever)", "找wuxian帮忙", "Wuxian，在吗", "forever"):
+            self.assertTrue(m(text), text)                                 # a whole word, whatever is around it
+        for text in ("forevermore", "that takes forever2", "unforeverish", "wuxianwow.com is up", "xwuxian",
+                     "4ever and foreverx"):
+            self.assertFalse(m(text), text)                                # inside another Latin word: not the name
+        self.assertTrue(m("foreverx, forever?"))                           # a later one that is a word
         self.assertFalse(m("nobody in particular"))
         self.assertFalse(m("Wuxian here", guid="Player-1-00000001"))       # the player's own
         self.assertTrue(m("psst", event="CHAT_MSG_WHISPER", guid=FRIEND))  # a whisper to the player
@@ -87,6 +93,12 @@ class Chat05(unittest.TestCase):
                                                                      "小王"])
         self.assertTrue(m("老王在吗"))
         self.assertTrue(m("ask the boss"))
+        self.assertFalse(m("so bossy"))                                    # an alias with Latin letters: a whole word too
+        self.assertTrue(m("叫老王来"))                                       # Chinese: anywhere
+        self.aliases(s, "{ 'Bo', 'T1' }")                                   # the player's own: of any length
+        self.assertTrue(m("bo, t1?"))
+        self.assertFalse(m("bob and t10"))
+        self.aliases(s, "'老王，Boss、 ,小王'")
         self.aliases(s, "{ '大佬' }")                                        # a list option's table
         self.assertEqual(py(s.lua.eval(b"WuxianKit.Chat.Names()"))[3:], ["大佬"])
         self.assertFalse(m("老王在吗"))
@@ -100,10 +112,18 @@ class Chat05(unittest.TestCase):
         s.fire("PLAYER_LOGIN")
         self.assertEqual(py(s.lua.eval(b"WuxianKit.Chat.Names()")),
                          ["看淡生死死后 依然从容施法", "看淡生死死后", "依然从容施法"])
+        m = lambda text: self.say(s, "CHAT_MSG_GUILD", text, "Asker-Realm", ASKER)["mention"]
+        self.assertTrue(m("依然从容施法在不在"))
+        self.assertFalse(m("依然从容"))
         s.lua.execute("GetUnitName = function(unit, whole) if unit == 'player' then return '王 依然' end end".encode())
-        self.assertEqual(py(s.lua.eval(b"WuxianKit.Chat.Names()")), ["王 依然", "依然"])     # one character is no name
-        self.assertTrue(self.say(s, "CHAT_MSG_GUILD", "依然在不在", "Asker-Realm", ASKER)["mention"])
-        self.assertFalse(self.say(s, "CHAT_MSG_GUILD", "王者归来", "Asker-Realm", ASKER)["mention"])
+        self.assertEqual(py(s.lua.eval(b"WuxianKit.Chat.Names()")), ["王 依然"])    # a part of one or two characters: no name
+        self.assertFalse(m("他依然没来"))                                    # (a word of its own)
+        self.assertFalse(m("王者归来"))
+        self.assertTrue(m("王 依然在不在"))                                   # the whole name still is
+        s.lua.execute("GetUnitName = function(unit, whole) if unit == 'player' then return 'Li 依然在' end end".encode())
+        self.assertEqual(py(s.lua.eval(b"WuxianKit.Chat.Names()")), ["Li 依然在", "依然在"])
+        self.assertFalse(m("lich king"))
+        self.assertTrue(m("依然在吗"))
         s.lua.execute(b"GetUnitName = function() return '<secret>x' end")    # a secret name: none of it
         self.assertFalse(py(s.lua.eval(b"WuxianKit.Chat.Names()")))
 

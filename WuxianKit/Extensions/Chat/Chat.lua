@@ -10,7 +10,10 @@
 -- the last 200 messages read are kept in memory (WuxianKit.Chat.Message(id)). During chat lockdown (a boss fight, a
 -- Mythic+ run, a PvP match) the text is secret and nothing is heard.
 -- The player's names (WuxianKit.Chat.Names()): the whole name (two parts with a space on this client), each part of
--- at least two characters, and the option aliases ("what others call me"); Latin letters match in any case.
+-- at least three characters (a shorter one alone is too often a word of its own), and the option aliases ("what others
+-- call me", of any length: the player chose them). A message names the player when it holds one of them: Latin letters
+-- in any case, and as a whole word where the name begins or ends with a Latin letter or a digit (no Latin letter or
+-- digit right before or after it: "forever" is not in "forevermore"; Chinese is not written in words, so none there).
 -- chat.send: tokens {kind:id:name} become the client's links when it is sent (WuxianKit:Linkify: item, spell, recipe,
 -- achievement, currency, quest; [name] where the client gives none, as for a quest not in the player's log); the
 -- proposal asks for the items' data and its window shows the links; at most 255 bytes once the links are in; no | and
@@ -107,7 +110,8 @@ table.sort(EVENT_LIST)
 ------------------------------------------------------------------------------------------------------------------------
 -- the player's names
 
-local names, namesKey                  -- the lowercased names, and what they were built from (whole name + aliases)
+local names, namesKey                  -- the names, and what they were built from (whole name + aliases)
+local PART_CHARS = 3                   -- a part of the whole name counts alone from this many characters
 
 local function Chars(s)
 	return select(2, s:gsub("[^\128-\191]", ""))
@@ -151,7 +155,7 @@ local function Names()
 	if whole then
 		Add(whole)
 		for part in whole:gmatch("%S+") do
-			if Chars(part) >= 2 then Add(part) end
+			if Chars(part) >= PART_CHARS then Add(part) end
 		end
 	end
 	for _, a in ipairs(aliases) do Add(a) end
@@ -172,13 +176,31 @@ local function Plain(text)
 	return text:match("^%s*(.-)%s*$")
 end
 
+-- whether the byte at i of text is none of a Latin word's (a letter, a digit); outside the text: none
+local function Edge(text, i)
+	local b = text:byte(i)
+	return not b or not ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+-- whether text holds name (both lowercased): an end of the name that is a Latin letter or a digit sits at a word's edge
+local function Named(text, name)
+	local head, tail = not Edge(name, 1), not Edge(name, #name)
+	local from = 1
+	while true do
+		local a, b = text:find(name, from, true)
+		if not a then return false end
+		if (not head or Edge(text, a - 1)) and (not tail or Edge(text, b + 1)) then return true end
+		from = a + 1
+	end
+end
+
 -- whether text (a plain one, or one with links and colours) holds one of the player's names
 local function Mentions(text)
 	if type(text) ~= "string" or issecret(text) or text == "" then return false end
 	if text:find("|", 1, true) then text = Plain(text) end
 	text = text:lower()
 	for _, n in ipairs(Names()) do
-		if text:find(n:lower(), 1, true) then return true end
+		if Named(text, n:lower()) then return true end
 	end
 	return false
 end
