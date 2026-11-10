@@ -8,6 +8,8 @@
 --   { provider (the core fills it), guide?, index?, key (what makes it the same step: told again with the same key is
 --     no new step), goals = { goal ... } (at most GOALS_MOST), text = { line ... }? (at most TEXT_MOST; for show only:
 --     an app should not parse it) }
+--   The shape of a step's goals is how many they are, each one's op, target, quest id and objective, and a go goal's
+--   place; have, need, done, text and another goal's place (a hint) are not of it.
 --   goal = { op = "go" | "kill" | "collect" | "accept" | "turnin" | "talk" | "use" | "other", target? (a mob's, an
 --     item's, an NPC's or an object's name), quest? = { id, name? }, objective? (the index of one of the quest's
 --     objectives), need?, have?, done?, place? = { map?, x?, y? (0-100, one decimal), zone? }, text? }
@@ -17,22 +19,29 @@
 --
 -- WuxianKit.Route, for other addons:
 --   Route:Provide(id, adapter)   an adapter for the guide addon id (lowercase letters, digits, _, at most 24 bytes; the
---                                same id again replaces it; adapter nil takes it away). adapter = { title, addon?,
+--                                same id again replaces it; adapter nil takes it away). adapter = { title, addon?
+--                                (the guide addon's folder), extension? (the id of the extension it belongs to),
 --                                Active() -> boolean (the addon is there and a guide is going), Current() -> step | nil
 --                                (the step now: provider is the core's), Start(changed) (watch it: call changed() when
 --                                the step may have changed, changed("arrive", place?) when the player reached its
---                                waypoint), Stop() }
---   Route:Providers() -> { { id, title, addon, active } }   "game" first, then as provided
+--                                waypoint; place as a goal's), Stop() }
+--     One with an extension is away while that extension is off: not read (stopped at once when it was), still the
+--     player's choice when it was (the game's own is read meanwhile), read again once the extension is on. One provided
+--     at any time is taken up: while in use the choice is made again at once. The player's choice is kept when its
+--     provider is taken away (the option reads auto meanwhile) and is the choice again when it is provided again.
+--   Route:Providers() -> { { id, title, addon, active, away (true: its extension is off) } }   "game" first, then as
+--                                provided
 --   Route:Current() -> step | nil   the current step (a copy), also when nobody uses the extension (read now)
 --   Route:State() -> table | nil    what the state route reads (below)
 --
 -- The source route (ext:Source): route:step, route:progress, route:arrive, route:done or route:*; each item
 -- { kind = "route.<what>", data, time }:
---   route.step     data = the step: a new current step (its key changed); one who starts hearing gets the current one
+--   route.step     data = the step: a new current step (its key changed); one who starts hearing gets the current one.
+--                  With again = true it is the same step (the same key) told again: the shape of its goals changed
 --   route.progress data = { key, goal (its index), have?, need?, done }: a goal's progress changed
 --   route.arrive   data = { key, place? }: the player reached the step's waypoint
 --   route.done     data = { key, why = "complete" | "turnin" | "replaced" }: the step is done, or gone undone
--- The state route (ext:Facet, when the core has it): { provider, guide?, key, goals (op, target?, need?, have?, done?,
+-- The state route (ext:Facet): { provider, guide?, key, goals (op, target?, need?, have?, done?,
 -- quest? = { name }, place? = { zone }; at most FACET_GOALS), since (time() it became the current step) }, nil with no
 -- step.
 --
@@ -43,11 +52,12 @@ local Kit = WuxianKit
 local L = Kit:Words {
 	zhCN = { TITLE = "任务指引", PROVIDER = "指引来源", AUTO = "自动", GAME = "游戏自带",
 		PROVIDER_HINT = "自动：有第三方指引插件在走就用它，否则用游戏自带的任务追踪",
-		NOW = "%s · %s", NO_STEP = "%s · 没有当前的一步", IDLE = "未在使用（有应用在用时才读）", STEP = "%s 第 %d 步" },
+		NOW = "%s · %s", NO_STEP = "%s · 没有当前的一步", IDLE = "未在使用（有应用在用时才读）", STEP = "%s 第 %d 步",
+		AWAY = "%s · 未启用" },
 	enUS = { TITLE = "Quest guide", PROVIDER = "Guide source", AUTO = "Auto", GAME = "The game's own",
 		PROVIDER_HINT = "Auto: a guide addon's step while one is going, else the game's quest tracking",
 		NOW = "%s · %s", NO_STEP = "%s · no current step", IDLE = "Not in use (read only while an app uses it)",
-		STEP = "%s, step %d" },
+		STEP = "%s, step %d", AWAY = "%s · off" },
 }
 
 local GOALS_MOST, TEXT_MOST, FACET_GOALS = 8, 6, 5
@@ -221,11 +231,23 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- providers and the choice among them
 
+-- whether a provider can be read: the extension it belongs to (adapter.extension), when it names one, is on
+local function Here(p)
+	local id = p.adapter.extension
+	if id == nil then return true end
+	local ext = ns.extensions[id]
+	return ext ~= nil and ext.active == true
+end
+
+-- (one that is away stays a choice: the player's is kept, and says why the game's own is read)
 local function Choices()
 	local list = { { value = "auto", label = L"AUTO" } }
 	for _, id in ipairs(R.order) do
 		local p = R.providers[id]
-		list[#list + 1] = { value = id, label = p.adapter.title or id }
+		local title = p.adapter.title or id
+		list[#list + 1] = { value = id, label = function()
+			return Here(p) and ns.T(title) or L.AWAY:format(ns.T(title))
+		end }
 	end
 	return list
 end
@@ -252,13 +274,15 @@ local function Read(p)
 	return Normalize(Call(p, "Current"), p.id)
 end
 
--- the provider that should be read: the option's, or (auto) the first adapter that has a step going, else game
+-- the provider that should be read: the option's (game while it is away), or (auto) the first adapter here that has a
+-- step going, else game
 local function Choose()
 	local want = route:Get("provider")
-	if want ~= "auto" and R.providers[want] then return R.providers[want] end
+	local p = want ~= "auto" and R.providers[want]
+	if p then return Here(p) and p or R.providers.game end
 	for _, id in ipairs(R.order) do
-		local p = R.providers[id]
-		if id ~= "game" and Call(p, "Active") and Call(p, "Current") ~= nil then return p end
+		p = R.providers[id]
+		if id ~= "game" and Here(p) and Call(p, "Active") and Call(p, "Current") ~= nil then return p end
 	end
 	return R.providers.game
 end
@@ -269,6 +293,9 @@ function Route:Provide(id, adapter)
 	end
 	if adapter ~= nil and (type(adapter) ~= "table" or type(adapter.Current) ~= "function") then
 		error("WuxianKit.Route:Provide(id, adapter): adapter is a table with Current()", 2)
+	end
+	if adapter and adapter.extension ~= nil and type(adapter.extension) ~= "string" then
+		error("WuxianKit.Route:Provide(id, adapter): adapter.extension is an extension's id", 2)
 	end
 	local old = R.providers[id]
 	if old and R.running == old then R.Halt() end
@@ -289,8 +316,9 @@ function Route:Providers()
 	local out = {}
 	for _, id in ipairs(R.order) do
 		local p = R.providers[id]
+		local here = Here(p)
 		out[#out + 1] = { id = id, title = ns.T(p.adapter.title) or id, addon = p.adapter.addon,
-			active = Call(p, "Active") and true or false }
+			active = here and Call(p, "Active") and true or false, away = not here or nil }
 	end
 	return out
 end
@@ -358,19 +386,37 @@ function R.Soon()
 	end)
 end
 
+-- whether two goals are the same goal, progress apart (a go goal is its place)
+local function SameGoal(a, b)
+	if a.op ~= b.op or a.target ~= b.target or a.objective ~= b.objective
+		or (a.quest and a.quest.id) ~= (b.quest and b.quest.id) then return false end
+	if a.op ~= "go" then return true end
+	local p, q = a.place or {}, b.place or {}
+	return p.map == q.map and p.x == q.x and p.y == q.y
+end
+
 function R.Refresh()
 	R.pending = nil
 	if not InUse() then return end
 	local step = Read(Select())
 	local cur = R.cur
 	if step and cur and step.key == cur.step.key then
+		local reshaped = #step.goals ~= #cur.step.goals
 		for i, g in ipairs(step.goals) do
 			local was = cur.step.goals[i]
-			if was and (was.have ~= g.have or was.need ~= g.need or (was.done or false) ~= (g.done or false)) then
+			if not (was and SameGoal(was, g)) then
+				reshaped = true
+			elseif was.have ~= g.have or was.need ~= g.need or (was.done or false) ~= (g.done or false) then
 				Tell("progress", { key = step.key, goal = i, have = g.have, need = g.need, done = g.done or false })
 			end
 		end
 		cur.step = step
+		if reshaped then                                -- the same step with other goals: told again, whole
+			local again = Copy(step)
+			again.again = true
+			Tell("step", again)
+			cur.done = cur.done and StepDone(step)      -- (done before, and not now: done is told when it is again)
+		end
 		if not cur.done and StepDone(step) then
 			cur.done = true
 			Tell("done", { key = step.key, why = Why(step) })
@@ -504,7 +550,21 @@ R.facet = { title = L"TITLE",
 	read = function() return Route:State() end,
 	on = function() R.Use(1) end,
 	off = function() R.Use(-1) end }
-if route.Facet then route:Facet("route", R.facet) end
+route:Facet("route", R.facet)
+
+-- an extension went on or off: its providers are here or away now (one being read is stopped at once)
+ns.OnChange(function(what, ext)
+	if what ~= "extension" then return end
+	local theirs = false
+	for _, id in ipairs(R.order) do
+		local p = R.providers[id]
+		if p.adapter.extension == ext.id then
+			theirs = true
+			if R.running == p and not Here(p) then R.Halt() end
+		end
+	end
+	if theirs then R.Soon() end
+end)
 
 route:Status(function()
 	if not InUse() then return L.IDLE end

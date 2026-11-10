@@ -19,6 +19,7 @@ class RouteApp:
             self.lua.execute(before.encode())
         self.lua.execute(b"__events = {} WuxianKit:On('*', function(topic, data) "
                          b"__events[#__events + 1] = { topic = topic, data = data } end)")
+        self.lua.globals()[b"__ns"] = self.s.ns          # the core's private table, for the tests' Lua
         self.s.login()
         self.s.run(1)
 
@@ -252,8 +253,84 @@ class Adapters(RouteTest):
         for bad in ("'Bad'", "'a_very_long_provider_name_x'", "1"):
             self.assertFalse(a.eval(f"(pcall(WuxianKit.Route.Provide, WuxianKit.Route, {bad}, {{ Current = print }}))"))
         self.assertFalse(a.eval("(pcall(WuxianKit.Route.Provide, WuxianKit.Route, 'x', {}))"))
+        self.assertFalse(a.eval("(pcall(WuxianKit.Route.Provide, WuxianKit.Route, 'x', { Current = print, extension = 1 }))"))
         a.lua_("WuxianKit.Route:Provide('fake', nil)")    # taken back
         self.assertEqual([p["id"] for p in a.eval("WuxianKit.Route:Providers()")], ["game"])
+
+    def choice(self, a, value=None):
+        route = a.s.ns[b"extensions"][b"route"]
+        if value is not None:
+            a.s.ns[b"SetOption"](route, b"provider", value.encode())
+        return a.eval("WuxianKit:Extension('route'):Get('provider')")
+
+    def test_one_provided_late_is_taken_up(self):
+        a = self.app()
+        a.lua_("__track(3001)")
+        a.listen()
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["game"])
+        a.lua_(FAKE + STEP)                                # auto, in use: the choice is made again at once
+        a.run(0.5)
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["game", "fake"])
+        self.assertEqual(a.eval("__fake.starts"), 1)
+
+    def test_the_players_choice_is_kept_while_its_provider_is_taken_away(self):
+        a = self.app()
+        a.lua_(FAKE + STEP + "__fake.active = false __track(3001)")     # (not active: auto would not take it)
+        self.assertEqual(self.choice(a, "fake"), "fake")
+        a.listen()
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake"])
+        a.lua_("__adapter = __ns.route.providers.fake.adapter WuxianKit.Route:Provide('fake', nil)")
+        self.assertEqual(a.eval("__fake.stops"), 1)       # read: stopped at once
+        a.run(0.5)
+        self.assertEqual(self.choice(a), "auto")          # no choice of the option's meanwhile
+        self.assertEqual(a.data("route.done"), [{"key": "demo|3", "why": "replaced"}])
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake", "game"])
+        a.lua_("WuxianKit.Route:Provide('fake', __adapter)")            # back: the player's choice again
+        a.run(0.5)
+        self.assertEqual(self.choice(a), "fake")
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake", "game", "fake"])
+        self.assertEqual((a.eval("__fake.starts"), a.eval("__fake.stops")), (2, 1))
+
+    def test_a_provider_is_away_while_its_extension_is_off(self):
+        a = self.app()
+        a.lua_("WuxianKit:Extension('fakes', { title = 'Fakes' })")     # provided once, outside its setup
+        a.lua_(FAKE.replace('addon = "FakeGuide"', 'extension = "fakes"') + STEP + "__track(3001)")
+        self.assertEqual(a.eval("WuxianKit.Route:Providers()")[1],     # the extension is not on yet
+                         {"id": "fake", "title": "Fake guide", "active": False, "away": True})
+        a.run(0.1)
+        self.assertEqual(a.eval("WuxianKit.Route:Providers()")[1], {"id": "fake", "title": "Fake guide", "active": True})
+        self.assertEqual(self.choice(a, "fake"), "fake")
+        a.listen()
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake"])
+        a.s.ns[b"Switch"](b"fakes", False)
+        self.assertEqual(a.eval("__fake.stops"), 1)       # stopped at once
+        a.run(0.5)
+        self.assertEqual(a.data("route.done"), [{"key": "demo|3", "why": "replaced"}])
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake", "game"])      # the game's own meanwhile
+        self.assertEqual(self.choice(a), "fake")          # still the player's choice, and said to be off
+        choices = a.call("kit.options", "{ extension = 'route' }")["provider"]["choices"]
+        self.assertEqual([(c["value"], c["label"]) for c in choices][1:],
+                         [("game", "The game's own"), ("fake", "Fake guide · off")])
+        self.assertTrue(a.eval("WuxianKit:Extension('route'):status()").startswith("The game's own"))
+        a.run(6)                                           # (nothing looks at it while it is away)
+        self.assertEqual(a.eval("__fake.starts"), 1)
+        a.s.ns[b"Switch"](b"fakes", True)
+        a.run(0.5)
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake", "game", "fake"])
+        self.assertEqual((a.eval("__fake.starts"), a.eval("__fake.stops")), (2, 1))
+        self.assertEqual(a.call("kit.options", "{ extension = 'route' }")["provider"]["choices"][2]["label"], "Fake guide")
+
+    def test_auto_leaves_out_a_provider_that_is_away(self):
+        a = self.app()
+        a.lua_("WuxianKit:Extension('fakes', { title = 'Fakes' })")
+        a.lua_(FAKE.replace('addon = "FakeGuide"', 'extension = "fakes"') + STEP + "__track(3001)")
+        a.run(0.1)
+        a.listen()
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake"])
+        a.s.ns[b"Switch"](b"fakes", False)
+        a.run(6)
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["fake", "game"])
+        self.assertEqual((a.eval("__fake.starts"), a.eval("__fake.stops")), (1, 1))
 
     def test_auto_takes_an_adapter_with_a_step_and_the_shape_it_gets(self):
         a = self.app()
@@ -314,6 +391,39 @@ class Adapters(RouteTest):
         a.run(0.5)
         self.assertEqual(len(a.data("route.done")), 1)
 
+    def test_the_same_step_with_other_goals_is_told_again(self):
+        a = self.app()
+        a.lua_(FAKE + """__fake.step = { key = "k", goals = {
+            { op = "go", place = { map = 1434, x = 10, y = 10 } },
+            { op = "collect", target = "Herb", need = 3, have = 1, place = { map = 1434, x = 1, y = 1 }, text = "Herb 1/3" } } }""")
+        a.listen()
+        self.assertEqual(len(a.data("route.step")), 1)
+        a.lua_("local g = __fake.step.goals[2] g.have, g.text, g.place.x = 2, 'Herb 2/3', 2 __fake.changed()")
+        a.run(0.5)                                         # progress, its text, a hint of where: the same goals
+        self.assertEqual(a.data("route.progress"), [{"key": "k", "goal": 2, "have": 2, "need": 3, "done": False}])
+        self.assertEqual(len(a.data("route.step")), 1)
+        a.lua_("__fake.step.goals[1].place.x = 20 __fake.step.goals[2].have = 3 __fake.changed()")
+        a.run(0.5)                                         # the waypoint is another: the step again, whole
+        self.assertEqual(a.kinds()[-2:], ["route.progress", "route.step"])
+        again = a.data("route.step")[-1]
+        self.assertEqual((again["key"], again["again"], again["goals"][0]["place"]["x"], again["goals"][1]["have"]),
+                         ("k", True, 20, 3))
+        a.lua_("__fake.step.goals[2] = { op = 'kill', target = 'Boar', done = true } __fake.changed()")
+        a.run(0.5)                                         # another goal in its place: no progress of the old one's
+        self.assertEqual(len(a.data("route.progress")), 2)
+        self.assertEqual([g["op"] for g in a.data("route.step")[-1]["goals"]], ["go", "kill"])
+        a.lua_("__fake.step.goals[1].done = true __fake.changed()")
+        a.run(0.5)
+        self.assertEqual(a.data("route.done"), [{"key": "k", "why": "complete"}])
+        a.lua_("__fake.step.goals[3] = { op = 'talk', target = 'Innkeeper' } __fake.changed()")
+        a.run(0.5)                                         # one more goal: again, and not done any more
+        self.assertEqual((len(a.data("route.step")), a.data("route.step")[-1]["again"]), (4, True))
+        self.assertEqual(a.eval("WuxianKit.Route:State().since == __ns.route.cur.since"), True)
+        a.lua_("__fake.step.goals[3].done = true __fake.changed()")
+        a.run(0.5)
+        self.assertEqual(a.data("route.done"), [{"key": "k", "why": "complete"}] * 2)
+        self.assertNotIn("again", a.data("route.step")[0])
+
     def test_an_adapter_that_fails_is_no_step(self):
         a = self.app()
         a.lua_(FAKE + STEP)
@@ -341,8 +451,6 @@ class State(RouteTest):
 
     def test_seen_by_an_app(self):
         a = self.app()
-        if not a.eval("WuxianKit:Extension('route').Facet ~= nil"):
-            self.skipTest("the core has no ext:Facet yet (K4)")
         a.lua_("__track(3001)")
         a.call("kit.app.open", "{ app = 'viewer', temp = true, minutes = 60, lease = 0, see = { 'route' }, "
                                "hear = { 'route:done' } }")
