@@ -14,9 +14,31 @@
 --   mob, unitscan, target: the names of the step's kill and talk targets (a kill goal of their own when no complete is
 --   one, a talk goal when the step has no other); the conditions (isOnQuest, zoneskip, itemcount ...) nothing; any
 --   other element with text of its own -> other. Every line of text is in the step's text. Guide text is data.
+--
+-- A step's key is "<the step>|<the guide>", both as RestedXP itself names them (read in its v4.11.29 source):
+--   the step: step.stepId (GuideLoader: the step's line in the guide's source plus a number of the guide's; what
+--     RestedXP saves the player's progress by and finds the step again by when its index has moved), else "#<index>".
+--     The index alone is the step's place among the steps shown to this character (ProcessGuideTable leaves out the
+--     ones not for it and puts included guides in): it moves when those change.
+--   the guide: guide.key (BuildGuideKey: "group|subgroup|name", what RestedXP keeps the progress of each guide under),
+--     else its group and name. The name alone is in more than one group, and the name shown (displayname) is
+--     translated.
+-- The step comes first: a key cut short still tells the steps of one guide apart.
+--
+-- All of this is RestedXP's own (private) data. Trouble() says, for the status line, which part cannot be read now: no
+-- AceEvent-3.0 (no messages), no guide (none going, or RestedXP's object or its currentGuide not found), no step index
+-- (RXPCData.currentStep), no such step (guide.steps), a step without elements.
 local addonName, ns = ...
 local Kit = WuxianKit
 if not ns.Adapter then return end
+
+local L = Kit:Words {
+	zhCN = { NO_EVENTS = "没有 AceEvent-3.0，收不到它的消息", NO_ADDON = "找不到 RXPGuides 的对象", NO_GUIDE = "没有读到攻略",
+		NO_INDEX = "读不到当前是第几步", NO_STEP = "读不到攻略的第 %d 步", NO_ELEMENTS = "读不到第 %d 步的内容" },
+	enUS = { NO_EVENTS = "no AceEvent-3.0, its messages are not heard", NO_ADDON = "the RXPGuides object is not found",
+		NO_GUIDE = "no guide read", NO_INDEX = "the current step's index cannot be read",
+		NO_STEP = "step %d of the guide cannot be read", NO_ELEMENTS = "step %d has nothing to read" },
+}
 
 local MESSAGES = { "RXP_STEP_ACTIVATED", "RXP_STEP_COMPLETE", "RXP_OBJECTIVE_COMPLETE", "RXP_TARGET_LIST_UPDATE",
 	"RXP_GUIDE_LOADED" }
@@ -221,12 +243,41 @@ local function Goals(step)
 	return goals
 end
 
+-- the step's key: what names it and its guide among RestedXP's (the header)
+local function Key(guide, index, step)
+	local id = Kit:Value(step.stepId)
+	if type(id) == "number" then id = ("%.0f"):format(id) else id = Text(id) end
+	local name = Text(guide.key)
+	if not name then
+		local group, title = Text(guide.group), Text(guide.name)
+		name = group and title and group .. "|" .. title or title or group or "?"
+	end
+	return (id or "#" .. index) .. "|" .. name
+end
+
 local function Current()
 	local guide, index, step = Now()
 	if not step then return nil end
-	local name = Kit:Clean(guide.name)
-	return { guide = Text(guide.displayname) or name, index = index, key = tostring(name) .. "|" .. index,
+	return { guide = Text(guide.displayname) or Text(guide.name), index = index, key = Key(guide, index, step),
 		goals = Goals(step), text = Lines(step) }
+end
+
+-- the AceEvent RestedXP sends its messages with, or nil
+local function Events()
+	local ok, lib = pcall(function() return LibStub and LibStub("AceEvent-3.0", true) end)
+	return ok and type(lib) == "table" and type(lib.RegisterMessage) == "function" and lib or nil
+end
+
+-- what keeps the adapter from reading RestedXP now (a line for the status), or nil
+local function Trouble()
+	if not Events() then return L.NO_EVENTS end
+	local guide, index = Guide(), Index()
+	if not guide then return Addon() and L.NO_GUIDE or L.NO_ADDON end
+	if not index then return L.NO_INDEX end
+	local step = type(guide.steps) == "table" and guide.steps[index]
+	if type(step) ~= "table" then return L.NO_STEP:format(index) end
+	if type(step.elements) ~= "table" and #step == 0 then return L.NO_ELEMENTS:format(index) end
+	return nil
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -274,8 +325,8 @@ local HANDLERS = { RXP_STEP_ACTIVATED = OnStepActivated, RXP_STEP_COMPLETE = fun
 
 local function Hook()
 	if hooked or not ns.Loaded("RXPGuides") then return end
-	local ok, lib = pcall(function() return LibStub and LibStub("AceEvent-3.0", true) end)
-	if not ok or type(lib) ~= "table" or type(lib.RegisterMessage) ~= "function" then return end
+	local lib = Events()
+	if not lib then return end                    -- (the status line says so: Trouble)
 	hooked = lib
 	for _, msg in ipairs(MESSAGES) do
 		local fn = HANDLERS[msg]
@@ -308,4 +359,4 @@ ns.Adapter("rxp", "RXPGuides", {
 		guideNow = nil                            -- RestedXP's own guide is read until we hear again
 		quietGen = quietGen + 1                   -- a wait going on tells nothing
 	end,
-})
+}, Trouble)

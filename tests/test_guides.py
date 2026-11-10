@@ -7,12 +7,20 @@ import unittest
 from kitmock import RXP, RXP_INSTALLED, py
 from test_route import RouteTest
 
+# the key of the fixture's step i: RestedXP's own names for the step and the guide
+def KEY(i):
+    return f"{3000000000 + i * 7}|Alliance 20-30||22-24 Stranglethorn"
+
+
 # a guide with elements as RestedXP's parser makes them (tag, and the fields of functions.lua for each)
 GUIDE = r"""
 local maps = { [1434] = "荆棘谷" }
 C_Map.GetMapInfo = function(id) return { mapID = id, name = maps[id] or "?" } end
-__guide = { name = "22-24 Stranglethorn", displayname = "22-24 荆棘谷", steps = {} }
-for i = 1, 50 do __guide.steps[i] = { index = i, elements = { { text = "第 " .. i .. " 步", textOnly = true } } } end
+__guide = { name = "22-24 Stranglethorn", group = "Alliance 20-30", key = "Alliance 20-30||22-24 Stranglethorn",
+	displayname = "22-24 荆棘谷", steps = {} }
+for i = 1, 50 do                                  -- (stepId: the line in the guide's source + the guide's number)
+	__guide.steps[i] = { stepId = 3000000000 + i * 7, elements = { { text = "第 " .. i .. " 步", textOnly = true } } }
+end
 __guide.steps[41].elements = {
 	{ tag = "goto", x = 37.512, y = 3.249, zone = 1434, textOnly = true },
 	{ text = "与|cRXP_FRIENDLY_猎手阿吉萨|r交谈", textOnly = true },
@@ -76,10 +84,88 @@ class Guides(RouteTest):
         self.assertEqual((exts["guides"]["state"], exts["guides"].get("builtin")), ("on", None))
         self.assertEqual(a.eval("WuxianKit.Route:Providers()")[1], {"id": "rxp", "title": "RestedXP", "addon": "RXPGuides",
                                                                     "active": False})   # no guide going yet
-        a.s.ns[b"Switch"](b"guides", False)
-        self.assertEqual([p["id"] for p in a.eval("WuxianKit.Route:Providers()")], ["game"])
+        a.s.ns[b"Switch"](b"guides", False)            # away: the quest guide knows whose it is
+        self.assertEqual([(p["id"], p.get("away")) for p in a.eval("WuxianKit.Route:Providers()")],
+                         [("game", None), ("rxp", True)])
         a.s.ns[b"Switch"](b"guides", True)
-        self.assertEqual([p["id"] for p in a.eval("WuxianKit.Route:Providers()")], ["game", "rxp"])
+        self.assertEqual([(p["id"], p.get("away")) for p in a.eval("WuxianKit.Route:Providers()")],
+                         [("game", None), ("rxp", None)])
+
+    def test_off_while_restedxp_is_the_players_choice(self):
+        a = self.rxp()
+        a.lua_("__unregisters() __rxp.currentGuide = __guide __track(3001)")
+        a.s.ns[b"SetOption"](a.s.ns[b"extensions"][b"route"], b"provider", b"rxp")
+        a.listen()
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["rxp"])
+        a.s.ns[b"Switch"](b"guides", False)
+        self.assertIsNone(a.eval("__msgs.RXP_STEP_ACTIVATED"))         # let go of at once
+        a.run(0.5)
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["rxp", "game"])
+        self.assertEqual(a.eval("WuxianKit:Extension('route'):Get('provider')"), "rxp")     # kept
+        a.s.ns[b"Switch"](b"guides", True)
+        a.run(0.5)
+        self.assertEqual([s["provider"] for s in a.data("route.step")], ["rxp", "game", "rxp"])
+        self.assertEqual(len(a.eval("__msgs.RXP_STEP_ACTIVATED")), 1)
+
+    def status(self, a):
+        return a.eval("WuxianKit:Extension('guides'):status()")
+
+    def test_the_status_says_what_is_read(self):
+        a = self.rxp(installed=False, guide=False)
+        self.assertEqual(self.status(a), "RestedXP: not loaded")
+        a.lua_(RXP_INSTALLED)
+        a.fire("ADDON_LOADED", "RXPGuides")
+        self.assertEqual(self.status(a), "RestedXP: no guide read")    # none going
+        a.lua_(GUIDE + "__rxp.currentGuide = __guide")
+        self.assertEqual(self.status(a), "RestedXP: connected")
+        # RestedXP's private fields, each renamed in turn: never "connected"
+        a.lua_("RXPCData.currentStep, RXPCData.step = nil, 41")
+        self.assertEqual(self.status(a), "RestedXP: the current step's index cannot be read")
+        a.lua_("RXPCData.currentStep = 41 __guide.steps, __guide.list = nil, __guide.steps")
+        self.assertEqual(self.status(a), "RestedXP: step 41 of the guide cannot be read")
+        a.lua_("__guide.steps = { [41] = {} }")
+        self.assertEqual(self.status(a), "RestedXP: step 41 has nothing to read")
+        a.lua_("__guide.steps = __guide.list __rxp.currentGuide, __rxp.guide = nil, __guide")
+        self.assertEqual(self.status(a), "RestedXP: no guide read")
+        a.lua_("__rxp.currentGuide = __guide local real = LibStub "
+               "function LibStub(name, ...) if name ~= 'AceAddon-3.0' then return real(name, ...) end end")
+        self.assertEqual(self.status(a), "RestedXP: the RXPGuides object is not found")
+        a.lua_("function LibStub(name, ...) if name ~= 'AceEvent-3.0' then return real(name, ...) end end")
+        self.assertEqual(self.status(a), "RestedXP: no AceEvent-3.0, its messages are not heard")
+
+    def test_the_key_is_restedxps_own_names_for_the_step_and_the_guide(self):
+        a = self.rxp()
+        a.lua_("__rxp.currentGuide = __guide")
+        key = lambda: a.eval("WuxianKit.Route:Current().key")
+        self.assertEqual(key(), "3000000287|Alliance 20-30||22-24 Stranglethorn")
+        # the steps shown to the character changed (RestedXP processed the guide again): the same step at another index
+        a.lua_("table.remove(__guide.steps, 3) RXPCData.currentStep = 40")
+        self.assertEqual((key(), a.eval("WuxianKit.Route:Current().index")),
+                         ("3000000287|Alliance 20-30||22-24 Stranglethorn", 40))
+        a.lua_("__guide.steps[40].stepId = 'imported-7'")                           # (RestedXP lets it be a string)
+        self.assertEqual(key(), "imported-7|Alliance 20-30||22-24 Stranglethorn")
+        a.lua_("__guide.steps[40].stepId = nil")                                    # no id: its place in the guide
+        self.assertEqual(key(), "#40|Alliance 20-30||22-24 Stranglethorn")
+        a.lua_("__guide.key = nil")                                                 # no key: the group and the name
+        self.assertEqual(key(), "#40|Alliance 20-30|22-24 Stranglethorn")
+        a.lua_("__guide.group = nil")
+        self.assertEqual(key(), "#40|22-24 Stranglethorn")
+        a.lua_("__guide.name = ('长'):rep(60) RXPCData.currentStep = 41")             # a long one: the step stays
+        self.assertTrue(key().startswith("3000000294|长长"))
+        a.lua_("__guide.name = nil")
+        self.assertEqual((key(), a.eval("WuxianKit.Route:Current().guide")), ("3000000294|?", "22-24 荆棘谷"))
+
+    def test_the_next_waypoint_of_the_same_step_is_told(self):
+        a = self.rxp()
+        a.lua_("__rxp.currentGuide = __guide")
+        a.listen()
+        a.lua_("__guide.steps[41].elements[1].completed = true "
+               "__send('RXP_OBJECTIVE_COMPLETE', __guide.steps[41].elements[1], __guide)")
+        a.run(0.5)
+        self.assertEqual(a.kinds(), ["route.step", "route.arrive", "route.step"])
+        again = self.steps(a)[-1]
+        self.assertEqual((again["again"], again["key"], again["goals"][0]["place"]["x"]),
+                         (True, KEY(41), 50))
 
     def test_no_restedxp_no_adapter_until_it_loads(self):
         a = self.rxp(installed=False)
@@ -97,7 +183,7 @@ class Guides(RouteTest):
         a.lua_("__activate(45)")
         a.run(1)
         [step] = self.steps(a)
-        self.assertEqual(step, {"provider": "rxp", "guide": "22-24 荆棘谷", "index": 41, "key": "22-24 Stranglethorn|41",
+        self.assertEqual(step, {"provider": "rxp", "guide": "22-24 荆棘谷", "index": 41, "key": KEY(41),
                                 "text": ["与猎手阿吉萨交谈", "接任务 [猎杀迅猛龙]", "接任务 [丛林之王]"],
                                 "goals": [
                                     {"op": "go", "place": {"map": 1434, "zone": "荆棘谷", "x": 37.5, "y": 3.2},
@@ -124,7 +210,7 @@ class Guides(RouteTest):
         self.assertEqual(step["text"], ["迅猛龙 已杀死：3/10", "铜质短剑", "如果你在做任务"])
         a.lua_("__objective(194, 1, 5)")              # the quest log moves: progress
         a.run(0.5)
-        self.assertEqual(a.data("route.progress"), [{"key": "22-24 Stranglethorn|42", "goal": 2, "have": 5, "need": 10,
+        self.assertEqual(a.data("route.progress"), [{"key": KEY(42), "goal": 2, "have": 5, "need": 10,
                                                      "done": False}])
 
     def test_talk_use_other_and_the_names_of_the_step(self):
@@ -146,8 +232,8 @@ class Guides(RouteTest):
         a.lua_("__at(46)")
         a.run(1)
         self.assertEqual(self.steps(a)[-1]["goals"], [{"op": "talk", "target": "某人"}])
-        self.assertEqual(a.data("route.done"), [{"key": "22-24 Stranglethorn|44", "why": "replaced"},
-                                                {"key": "22-24 Stranglethorn|45", "why": "replaced"}])
+        self.assertEqual(a.data("route.done"), [{"key": KEY(44), "why": "replaced"},
+                                                {"key": KEY(45), "why": "replaced"}])
 
     def test_arrive_at_the_current_steps_waypoint_and_an_element_done(self):
         a = self.rxp()
@@ -156,14 +242,14 @@ class Guides(RouteTest):
         a.lua_("__send('RXP_OBJECTIVE_COMPLETE', __guide.steps[41].elements[1], __guide)")   # not the current step
         a.lua_("__guide.steps[42].elements[2].completed = true "
                "__send('RXP_OBJECTIVE_COMPLETE', __guide.steps[42].elements[2], __guide)")
-        self.assertEqual(a.data("route.arrive"), [{"key": "22-24 Stranglethorn|42",
+        self.assertEqual(a.data("route.arrive"), [{"key": KEY(42),
                                                    "place": {"map": 1434, "zone": "荆棘谷", "x": 42, "y": 11}}])
         a.run(0.5)
-        self.assertEqual(a.data("route.progress"), [{"key": "22-24 Stranglethorn|42", "goal": 1, "done": True}])
+        self.assertEqual(a.data("route.progress"), [{"key": KEY(42), "goal": 1, "done": True}])
         a.lua_("__guide.steps[42].elements[4].completed = true "
                "__send('RXP_OBJECTIVE_COMPLETE', __guide.steps[42].elements[4], __guide)")   # not a goto: progress
         a.run(0.5)
-        self.assertEqual(a.data("route.progress")[-1], {"key": "22-24 Stranglethorn|42", "goal": 3, "have": 0, "need": 3,
+        self.assertEqual(a.data("route.progress")[-1], {"key": KEY(42), "goal": 3, "have": 0, "need": 3,
                                                         "done": True})
         self.assertEqual(len(a.data("route.arrive")), 1)
 
@@ -174,7 +260,7 @@ class Guides(RouteTest):
         a.listen()
         a.lua_("__turnin(3001) __at(48)")
         a.run(1)
-        self.assertEqual(a.data("route.done"), [{"key": "22-24 Stranglethorn|47", "why": "turnin"}])
+        self.assertEqual(a.data("route.done"), [{"key": KEY(47), "why": "turnin"}])
         self.assertEqual(self.steps(a)[-1]["index"], 48)
 
     def test_auto_switches_to_restedxp_once_a_guide_is_going(self):
