@@ -41,13 +41,15 @@ An app's `hear` lists `route:step`, `route:progress`, `route:arrive`, `route:don
 `{id, time, source: "route", kind: "route.<what>", data}`:
 
 - `route.step` — data is the step: a new current step (its key changed). An app that starts hearing gets the current
-  step first.
+  step first. With `again: true` it is the same step told again: its goals changed shape (how many, or a goal's op,
+  target, quest, objective or the place to go).
 - `route.progress` `{key, goal (its index in goals, from 1), have?, need?, done}` — a goal's progress changed.
-- `route.arrive` `{key, place?}` — the player reached the step's waypoint (adapters that can tell it: RestedXP).
+- `route.arrive` `{key, place?}` — the player reached the step's waypoint (adapters that can tell it: RestedXP); once
+  in 5 seconds for a step.
 - `route.done` `{key, why: "complete" | "turnin" | "replaced"}` — the step is done (all goals, or its quest turned in), or
   another took its place undone. A step is told done once.
 
-To look at it, or debug: `wk_kit_app_open` with `{"app": "peek", "temp": true, "title": "Peek", "hear": ["route:*"],
+To look at it, or debug: `wk_kit_app_open` with `{"app": "peek", "temp": {"title": "Peek", "hear": ["route:*"]},
 "minutes": 15}`, then `wuxian listen peek --once` or `wk_kit_app_recent` with `{"app": "peek", "since": 0}`, and
 `wk_kit_app_stop` when done.
 
@@ -60,19 +62,23 @@ step.
 ## Writing an adapter (another addon's extension)
 
 A guide addon gets an adapter in an extension of its own (never in WuxianKit; one addon, one file, as WuxianKit_Guides
-does). While that extension is on and the guide addon is loaded:
+does). Provide it in the extension's `setup` when the guide addon is loaded, and on `ADDON_LOADED` when it loads
+later (while the extension is on); a provider is taken up whenever it comes. Give the adapter `extension`, your
+extension's id: while that extension is off the quest guide does not read the provider, and reads it again when the
+extension is back on, so there is nothing to take back.
 
 ```lua
 WuxianKit.Route:Provide("myguide", {           -- id: lowercase letters, digits, _, at most 24 bytes
 	title = "My Guide", addon = "MyGuideAddon",
+	extension = "myextension",                   -- the extension this adapter belongs to: away while it is off
 	Active = function() return ... end,          -- the addon is there and a guide is going
 	Current = function() return step end,        -- the step now, or nil (provider is filled in by WuxianKit)
 	Start = function(changed) ... end,           -- watch it: changed() when the step may have changed,
 	                                             -- changed("arrive", place?) when the player reached its waypoint
 	Stop = function() ... end,                   -- stop watching
 })
-WuxianKit.Route:Provide("myguide", nil)        -- taken back (the extension turned off)
-WuxianKit.Route:Providers()                    -- { { id, title, addon, active } }
+WuxianKit.Route:Provide("myguide", nil)        -- taken back for good (an adapter without `extension`: in teardown)
+WuxianKit.Route:Providers()                    -- { { id, title, addon, active, away (its extension is off) } }
 WuxianKit.Route:Current()                      -- the current step (a copy), read now when nobody uses it
 ```
 
@@ -81,6 +87,8 @@ WuxianKit.Route:Current()                      -- the current step (a copy), rea
   What does not fit the shape is left out (an unknown op is `other`; at most 8 goals, 6 lines).
 - `changed()` may be called often: WuxianKit reads once for several at one moment. Hook the addon only between `Start`
   and `Stop`.
+- `changed("arrive", place)`: `place` is where the player arrived, as a goal's (`{map, x, y, zone}`). Leave it out and
+  WuxianKit takes the place of the step's first `go` goal. An arrival is told once in 5 seconds for a step.
 - RestedXP's tags, as WuxianKit_Guides maps them: `goto` -> `go` (the first waypoint not reached), `zone` -> `go`,
   `accept` / `turnin` -> `accept` / `turnin` (quest), `complete` -> `kill` / `collect` / `other` by the objective's type
   (quest + objective), `collect` -> `collect` (item, need, have), `home` `fp` `vendor` `trainer` `train` `gossip` ... ->

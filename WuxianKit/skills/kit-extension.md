@@ -41,7 +41,9 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
      their id; errors in English; player-facing words short and plain;
    - a source: a name no other extension uses; `check(what)` answers why a `what` is wrong; `on(self, what, fn)` hands
      `fn` a new table for each item (apps write fields on it), plain data only; the source's `doc` says what
-     `<name>:<what>` hears;
+     `<name>:<what>` hears. An item's `id` is the kit's: the core numbers every item as it reaches an app, and an
+     `id` the source gives is not kept as the `id`. A number of the source's own goes in another field, such as
+     `ref`;
    - a facet: a name no other extension uses (lowercase letters, digits, `_`, at most 24 bytes); `read(self)` returns
      a small table of plain data, or nil when there is nothing now (a snapshot over 600 bytes is cut); `fields` lists
      its fields for the docs; `on(self)` and `off(self)` turn on and off what it needs while an app sees it (a count
@@ -57,11 +59,11 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    reload (the workshop's `reload` asks the player). Then:
    - `wk_docs` with the extension's id lists its tools, sources, facets and events (after the restart or reload);
    - call a Read tool and check the answer;
-   - for a source, hear it with a temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": true, "title": "Peek",
-     "hear": ["<source>:<what>"], "minutes": 15}`, make the thing happen in the game, read `wk_kit_app_recent` with
-     `{"app": "peek", "since": 0}`, then `wk_kit_app_stop`;
-   - for a facet, see it with a temporary app (`"see": ["<facet>"]`) and read its snapshot with the capability
-     kit.app.state and `{"app": "peek"}` (each wake's `state` holds the same);
+   - for a source, hear it with a temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": {"title": "Peek",
+     "hear": ["<source>:<what>"]}, "minutes": 15}` (`temp` is the temporary app's whole declaration), make the thing
+     happen in the game, read `wk_kit_app_recent` with `{"app": "peek", "since": 0}`, then `wk_kit_app_stop`;
+   - for a facet, see it with a temporary app (`"see": ["<facet>"]` in its `temp`) and read its snapshot with the
+     capability kit.app.state and `{"app": "peek"}` (each wake's `state` holds the same);
    - for a Change tool, tell the player first, make the proposal, `wk_wait` for the outcome, and offer `wk_kit_undo`
      afterwards.
 8. An adapter for an interface: the quest guide (section 13). The extension `route` (任务指引) takes the step the
@@ -69,12 +71,21 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    WuxianKit or in the guide addon. WuxianKit's own `WuxianKit_Guides` (任务指引适配, the RestedXP adapter) is a full
    example:
    - the `.toc`: `## Dependencies: WuxianKit`, `## OptionalDeps: <the guide addon>`;
-   - when the extension is turned on, and only if the guide addon is loaded,
-     `WuxianKit.Route:Provide("<id>", { title, addon, Active, Current, Start, Stop })`: `Active()` is true while the
-     addon runs a guide; `Current()` returns the step in the standard shape (`key`, `goals` of `op` go, kill, collect,
-     accept, turnin, talk, use or other, with `target`, `quest = {id, name}`, `objective`, `place = {map, x, y,
-     zone}`; the raw lines in `text`); `Start(changed)` calls `changed()` when the step may have changed and
-     `changed("arrive")` at its waypoint; `Stop()` lets go;
+   - provide it while the extension is on and the guide addon is loaded:
+     1. in the extension's `setup` (it is turned on), if the guide addon is loaded:
+        `WuxianKit.Route:Provide("<id>", { title, addon, extension, Active, Current, Start, Stop })`;
+     2. on `ADDON_LOADED`, while the extension is on: the same call once the guide addon has loaded later. A provider
+        is taken up whenever it comes;
+     3. turned off: give the adapter `extension = "<your extension's id>"` and do nothing more. While that extension
+        is off the quest guide does not read the provider (it stops reading at once), and takes it up again when the
+        extension is back on. Without `extension`, take it back yourself in `teardown`:
+        `WuxianKit.Route:Provide("<id>", nil)`;
+   - the adapter: `Active()` is true while the addon runs a guide; `Current()` returns the step in the standard shape
+     (`key`, `goals` of `op` go, kill, collect, accept, turnin, talk, use or other, with `target`, `quest = {id,
+     name}`, `objective`, `place = {map, x, y, zone}`; the raw lines in `text`); `Start(changed)` calls `changed()`
+     when the step may have changed and `changed("arrive", place)` at its waypoint; `Stop()` lets go. The second
+     argument of `changed("arrive", ...)` is the place reached, `{map, x, y, zone}`; leave it out and the quest guide
+     takes the place of the step's first `go` goal. An arrival is told once in 5 seconds for a step;
    - give structured goals from the addon's own step data, never by parsing its text; give a quest id and objective
      where the step names a quest (WuxianKit then fills in the progress from the client);
    - try it: `WuxianKit.Route:Providers()` lists it; choose it in the quest guide's option `provider` in /wk,

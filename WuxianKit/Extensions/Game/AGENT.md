@@ -16,7 +16,7 @@ no tools; it changes nothing and sends nothing. The quest step the player is on 
 An app hears it (Apps in WuxianKit's guide, `wk_docs` with `{}`): its `hear` lists `game:<topic>` (combat, aura,
 growth, quest, travel, guild), `game:<kind>` (such as `game:quest.turnin`) or `game:*` (all). A topic covers its
 kinds. An unknown topic or kind is refused. For a quick look, or to debug, open a temporary app: `wk_kit_app_open` with
-`{"app": "peek", "temp": true, "title": "Peek", "hear": ["game:quest"], "minutes": 15}`, then wait with
+`{"app": "peek", "temp": {"title": "Peek", "hear": ["game:quest"]}, "minutes": 15}`, then wait with
 `wuxian listen peek --once` or read `wk_kit_app_recent` with `{"app": "peek", "since": 0}`, and `wk_kit_app_stop` it
 when done.
 
@@ -33,7 +33,9 @@ trivial, minus), creature, player, hostile, class}`, each field only when readab
   - `combat.end` `{secs, kills, foes}`: the fight ended; foes is the most at once.
   - `danger` `{why: "adds", foes}`: three or more enemies hit the player; once in 8 s a fight.
   - `cast.at_me` `{caster: unit}`: the target casts at the player (the spell is secret); once in 6 s a target.
-  - `kill` `{unit, streak}`: an enemy of this fight died; `streak` counts the kills within 30 s, this one included.
+  - `kill` `{unit, count, streak}`: enemies of this fight died. Those that die within one second come as one item:
+    `unit` is the first of them, `count` how many; `streak` counts the kills within 30 s, these included. It comes
+    before the `combat.end` of its fight.
   - `death`, `alive` `{how: "spirit" | "revive"}`: the player died, came back.
   - `spell.big` `{spell, id, cd}`: the player used a spell with a base cooldown of a minute or more (cd in seconds).
   - `target` `{unit}`: the player targeted a hostile elite, rare, boss or player; once a minute a target.
@@ -48,8 +50,8 @@ trivial, minus), creature, player, hostile, class}`, each field only when readab
   - `quest.accept` `{quest, id}`, `quest.progress` `{quest, id, objective}` (one objective just done), `quest.ready`
     `{quest, id}` (all done), `quest.turnin` `{quest?, id, xp?, money? (copper)}`.
 - `travel`
-  - `zone` `{zone, first}` (first: this character's first visit), `taxi` `{to?}` (a flight began), `rest` (entered a
-    rest area).
+  - `zone` `{zone, first}` (first: the first time here since the kit began recording for this character, not the
+    character's first visit ever), `taxi` `{to?}` (a flight began), `rest` (entered a rest area).
 - `guild`
   - `guild.join`, `guild.leave` `{name}`; `guild.achievement` `{name, plain, links}`; `guild.level` `{name, level}`: a
     member reached a tenth level or the top level (the first roster after the start is only remembered, so this needs

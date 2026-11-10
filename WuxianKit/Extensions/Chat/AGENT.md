@@ -12,22 +12,25 @@ hear.
 
 Chat has no listen tool: an app hears it. An app whose `hear` has `chat:<channel>` gets every message read on that
 channel while it runs (Apps in WuxianKit's guide, `wk_docs` with `{}`). For a quick look, or to debug, open a
-temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": true, "title": "Peek", "hear": ["chat:guild"],
+temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": {"title": "Peek", "hear": ["chat:guild"]},
 "minutes": 15}`, then wait with `wuxian listen peek --once` or read `wk_kit_app_recent` with `{"app": "peek", "since":
 0}`, and `wk_kit_app_stop` it when done.
 
 - `<channel>`: guild, officer, party, raid, instance, whisper, say, yell, channel, community, or `*` (all; it covers
   the others).
-- Each item is a copy of the message, with `source: "chat"`: `id`, `channel`, `text`, `plain` (without links and
-  colors), `links`, `sender`, `guid`, `self` (true: the player's own message), `target` (a whisper: the other player,
+- Each item is a copy of the message, with `source: "chat"`: `id`, `ref`, `channel`, `text`, `plain` (without links
+  and colors), `links`, `sender`, `guid`, `self` (true: the player's own message), `target` (a whisper: the other player,
   whom to answer; a channel or community: its name), `mention`, `why`, `time`. For a whisper the player sent, `sender`
   is the player and `target` the other player.
-  - `id`: a number unique to this message, also across reloads. Use it as `reply` when you answer it.
+  - `id`: the kit's item id, as on every item an app gets (the number `since` and `next` count). It is not the
+    message's number.
+  - `ref`: the message's own number, unique also across reloads. Use it as `reply` when you answer the message.
   - `links`: `[{kind, id, name}]`, the same kinds and ids as link tokens (Links in texts in WuxianKit's guide).
   - `mention`: true when it is not the player's own and it is a whisper to the player or names them: their whole
-    character name, a part of it (names on this client often have two parts, "Name Surname"; each part of two or more
-    characters counts), or one of the names the player listed in the option 别人怎么叫我 (What others call me). Latin
-    letters match in any case.
+    character name, a part of it (names on this client often have two parts, "Name Surname"; each part of three or
+    more characters counts), or one of the names the player listed in the option 别人怎么叫我 (What others call me; of
+    any length). A name that begins or ends with a Latin letter or a digit must stand as a whole word at that end
+    ("forever" is not named in "forevermore"). Latin letters match in any case.
   - `why`: whether the message calls for attention now, and why; none for the player's own lines and for ordinary
     talk. Counted per conversation: the channel, and for a whisper the other player, for a channel or community its
     name. The first that holds:
@@ -57,7 +60,8 @@ temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": true, "title": "P
 
 ### Replies
 
-- Reply with `reply` = the `id` of a message that named the player (`mention` true):
+- Reply with `reply` = the number of a message that named the player (`mention` true): the `ref` of its item in a
+  wake, the `id` of a message from `WuxianKit.Chat`:
   `{"channel": "guild", "text": "...", "reply": 1234}`. Proactive messages (nobody asked you) go without `reply`.
 - A reply in the same channel as the message, at most 180 seconds after it, to a message that named the player and is
   not their own (a whisper: back to its sender, `target` = its `target`) falls under the category
@@ -67,8 +71,8 @@ temporary app: `wk_kit_app_open` with `{"app": "peek", "temp": true, "title": "P
 - A `reply` that is no message heard in this session is refused at once. The preview shows whom it answers.
 - `stale` (with `reply`, a whole number): refuse the reply when that many messages of others came after the one it
   answers in the same conversation (the same channel; the same whisperer or numbered channel). The refusal names how
-  many and quotes the latest few with their ids, so you can answer what is being said now, or drop it. Use a low bar
-  (2–3) for banter, a higher one (8–10) for a factual answer someone still wants.
+  many and quotes the latest few with their numbers (each one's `ref`), so you can answer what is being said now, or
+  drop it. Use a low bar (2–3) for banter, a higher one (8–10) for a factual answer someone still wants.
 - Pre-approved categories have a budget (suggested: 4 messages in 10 minutes for a channel, 3 for its replies). Past it
   a message asks the player again; that is not an error, wait for it.
 
@@ -83,11 +87,12 @@ ready); it only fails if it expires meanwhile.
 
 Other addons can read chat the same way, whether or not an app hears it:
 
-- `WuxianKit.Chat.Read(event, ...)`: from a `CHAT_MSG_*` handler's event and arguments, the message as above (with `id`
-  and `mention`), or nil (not a chat event this extension reads, or secret text). Reading the same line twice (your
-  handler and the chat extension's own) gives the same message. Treat it as read-only.
+- `WuxianKit.Chat.Read(event, ...)`: from a `CHAT_MSG_*` handler's event and arguments, the message as above (with
+  `mention`; here its number is the message's `id`, the one an app's item carries as `ref`), or nil (not a chat event
+  this extension reads, or secret text). Reading the same line twice (your handler and the chat extension's own) gives
+  the same message. Treat it as read-only.
 - `WuxianKit.Chat.Mentions(text)`: whether a text names the player (links and colors are ignored).
-- `WuxianKit.Chat.Message(id)`: one of the last 200 messages read in this session, or nil.
+- `WuxianKit.Chat.Message(id)`: one of the last 200 messages read in this session, by its number, or nil.
 - `WuxianKit.Chat.Names()`: the player's names as `mention` uses them (a copy).
 - `WuxianKit.Chat:On(channel, fn)`: `fn(msg)` gets every message read on `channel` (guild, officer, party, raid,
   instance, whisper, say, yell, channel, community, or `"*"` for all) while the chat extension is on. Each message

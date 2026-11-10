@@ -10,8 +10,14 @@ good), so a change needs a new version.
 --addon packs another addon of this repo the same way (WuxianKit_Guides: the guide adapters, released on their own):
 its zip, and its entry with the extensions it brings (read in the test client with it loaded beside WuxianKit).
 
+What an entry asks for:
+  min_app   the oldest 无限工坊 that can install it. --min-app, by default MIN_APP below: the workshop this WuxianKit
+            is written for (its skills name it). Raise MIN_APP with the kit; an older one is given only on purpose.
+  min_kit   only in another addon's entry (never WuxianKit's own): the oldest WuxianKit it works with. --min-kit, else
+            the .toc's "## X-Wuxian-Kit", else the version of the WuxianKit in this repo (the one it was tried with).
+
   python tools\package.py [--addon WuxianKit_Guides] [--out <folder>] [--notes-zh "..."] [--notes-en "..."]
-                           [--min-app 0.9.7] [--replace]
+                           [--min-app 0.9.13] [--min-kit 0.6.0] [--replace]
 """
 import argparse
 import datetime
@@ -26,7 +32,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 ADDON = REPO / "WuxianKit"
 OUT = REPO / "dist"
-SKIP = ("__pycache__", ".bak", ".pyc")
+MIN_APP = "0.9.13"                         # the oldest 无限工坊 this WuxianKit works with (wuxian listen, the adds)
+SKIP_NAMES = ("__pycache__",)              # a folder or file of this name, anywhere in the addon
+SKIP_ENDS = (".bak", ".pyc")               # a folder or file whose name ends so
 
 sys.path.insert(0, str(REPO / "tests"))
 
@@ -40,9 +48,15 @@ def toc_fields(path):
     return out
 
 
+def skipped(rel):
+    """whether a file stays out of the zip. rel is its path inside the addon: each of its parts is looked at by itself
+    (a name, or how a name ends), and nothing above the addon folder is, so where the checkout lies never matters"""
+    return any(part in SKIP_NAMES or part.lower().endswith(SKIP_ENDS) for part in Path(rel).parts)
+
+
 def files(addon=ADDON):
     for p in sorted(addon.rglob("*")):
-        if p.is_file() and not any(s in p.as_posix() for s in SKIP):
+        if p.is_file() and not skipped(p.relative_to(addon)):
             yield p
 
 
@@ -106,7 +120,19 @@ def skills(addon=ADDON):
     return out
 
 
-def entry(toc, data, name, notes, min_app, addon=ADDON):
+def kit_version():
+    return toc_fields(ADDON / f"{ADDON.name}.toc")["Version"]
+
+
+def min_kit(toc, addon=ADDON, given=None):
+    """the oldest WuxianKit another addon needs: what was given, else its .toc's X-Wuxian-Kit, else this repo's
+    WuxianKit (the one it was tried with). None for WuxianKit itself"""
+    if addon == ADDON:
+        return None
+    return given or toc.get("X-Wuxian-Kit") or kit_version()
+
+
+def entry(toc, data, name, notes, min_app=MIN_APP, addon=ADDON, needs_kit=None):
     zh, en = manifest("zhCN", addon), manifest("enUS", addon)
     titles = {e["id"]: e["title"] for e in zh["extensions"]}
     exts = []
@@ -119,12 +145,13 @@ def entry(toc, data, name, notes, min_app, addon=ADDON):
                      "tools": len([c for c in e.get("capabilities") or [] if c["id"] not in ("kit.manifest", "kit.revision")]),
                      "events": len(e.get("events") or [])})
     plain = lambda t: re.sub(r"\s*\(WuxianKit\)$", "", t)
+    needs_kit = min_kit(toc, addon, needs_kit)
     return {
         "id": toc.get("X-Wuxian-ID", addon.name.lower()), "folder": addon.name, "version": toc["Version"],
         "title": {"zh": plain(toc.get("Title-zhCN", "")), "en": plain(toc.get("Title", ""))},
         "summary": {"zh": toc.get("Notes-zhCN", ""), "en": toc.get("Notes", "")},
         "file": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-        "min_app": min_app, "protocol": en.get("protocol"),
+        "min_app": min_app, **({"min_kit": needs_kit} if needs_kit else {}), "protocol": en.get("protocol"),
         "extensions": exts, "skills": skills(addon),
         "notes": notes, "released": datetime.date.today().isoformat(),
         "homepage": toc.get("X-Website", "https://wuxianwow.com/workshop/extensions"),
@@ -137,7 +164,9 @@ def main():
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--notes-zh", default="")
     ap.add_argument("--notes-en", default="")
-    ap.add_argument("--min-app", default="0.9.7")
+    ap.add_argument("--min-app", default=MIN_APP, help=f"the oldest 无限工坊 that can install it (default {MIN_APP})")
+    ap.add_argument("--min-kit", default=None, help="another addon's: the oldest WuxianKit it works with (default: "
+                    "its .toc's X-Wuxian-Kit, else this repo's WuxianKit)")
     ap.add_argument("--replace", action="store_true", help="replace the same version (only one not uploaded yet)")
     a = ap.parse_args()
     addon = REPO / a.addon
@@ -152,7 +181,9 @@ def main():
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         catalog = {"format": 1, "addons": []}
-    new = entry(toc, data, name, {"zh": a.notes_zh, "en": a.notes_en}, a.min_app, addon)
+    if a.min_kit and addon == ADDON:
+        raise SystemExit("--min-kit is for another addon (--addon): WuxianKit does not need itself")
+    new = entry(toc, data, name, {"zh": a.notes_zh, "en": a.notes_en}, a.min_app, addon, a.min_kit)
     old = next((e for e in catalog.get("addons", []) if e.get("id") == new["id"]), None)
     if old and old.get("version") == new["version"] and old.get("sha256") != new["sha256"] and not a.replace:
         raise SystemExit(f"{name} is in the catalog with other contents: give {a.addon} a new version")
@@ -164,8 +195,9 @@ def main():
     catalog["addons"] = [e for e in catalog.get("addons", []) if e.get("id") != new["id"]] + [new]
     catalog["format"], catalog["updated"] = 1, datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    needs = f"无限工坊 {new['min_app']}" + (f", WuxianKit {new['min_kit']}" if new.get("min_kit") else "")
     print(f"{name}: {len(data)} bytes, sha256 {new['sha256'][:12]}..., {len(new['extensions'])} extensions, "
-          f"{len(new['skills'])} skills -> {a.out}")
+          f"{len(new['skills'])} skills, needs {needs} -> {a.out}")
     return 0
 
 
