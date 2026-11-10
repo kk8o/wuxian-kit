@@ -151,7 +151,7 @@ class Chat05(unittest.TestCase):
         self.assertIn("reply: no such message heard",
                       self.fails(s, "WuxianKit:Call('chat.send', { channel = 'guild', text = 'hi', reply = 424242 })"))
         self.assertEqual(s.lua.eval(b"WuxianKit:Check('chat.send', { channel = 'guild', text = 'hi', reply = 424242 })"),
-                         b"reply: no such message heard (use the id of a chat.message)")
+                         b"reply: no such message heard (use the ref of its item)")
 
         def scope(args):
             p = self.call(s, "chat.send", args)
