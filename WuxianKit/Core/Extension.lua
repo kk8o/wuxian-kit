@@ -403,7 +403,9 @@ function ns.Commands() return commands end
 
 ------------------------------------------------------------------------------------------------------------------------
 -- sources: what apps hear (Apps.lua). ext:Source(name, spec) registers the hear entries <name>:<what>. A name is the
--- whole kit's: another extension's of the same name is an error (the same extension's again replaces it). spec:
+-- whole kit's: another extension's of the same name is an error. The same extension's again (a hot reload) replaces it:
+-- a new source object, the old one keeps its spec, so a token the old on gave goes to the old off (the apps subscribe
+-- again when told). ext:Source(name, nil) takes it back (source.gone). spec:
 --   title, doc         doc: what <name>:<what> hears and what an item is (kit.app.open's doc and the manifest show it)
 --   values             the known values of what (a list, or a function that gives one), for the docs
 --   check(what)        nil when <name>:<what> is an entry it takes, else why not (in the agent's words)
@@ -416,17 +418,39 @@ function ns.Commands() return commands end
 -- addon, control and player are the apps' own sources (an item's source) and cannot be registered.
 -- ns.sources: name -> { name, ext, spec }; ns.sourceOrder: the names as registered; ns.SourceList(ext) and
 -- ns.SourceValues(source) for the manifest and the docs.
+-- Told to the apps (ns.OnChange): "source", source when one is registered (ns.sources[source.name] == source),
+-- registered again (a new object in its place) or taken back (source.gone, ns.sources[source.name] == nil); "facet",
+-- facet the same for facets, below (registered again: the same object); "extension", ext when the extension that owns
+-- them goes on or off (ext.active; its names are ext.sourceOrder and ext.facetOrder), then the bus's kit.extension.
 
 local sources, sourceOrder = {}, {}
 ns.sources, ns.sourceOrder = sources, sourceOrder
 local RESERVED = { addon = true, control = true, player = true }
 local SOURCE_MAX = 24
 
+local function Drop(list, name)
+	for i, n in ipairs(list) do
+		if n == name then return table.remove(list, i) end
+	end
+end
+
 function Extension:Source(name, spec)
 	if type(name) ~= "string" or #name > SOURCE_MAX or not name:match("^[a-z][a-z0-9_]*$") then
 		error(("%s: a source's name is lowercase letters, digits and _, at most %d bytes"):format(self.id, SOURCE_MAX), 2)
 	end
 	if RESERVED[name] then error(("%s: the source name %s is the apps' own"):format(self.id, name), 2) end
+	local old = sources[name]
+	if old and old.ext ~= self then
+		error(("%s: the source %s is extension %s's"):format(self.id, name, old.ext.id), 2)
+	end
+	if spec == nil then                                 -- taken back: the apps that hear it unsubscribe when told
+		if not old then return end
+		old.gone, sources[name] = true, nil
+		Drop(sourceOrder, name)
+		Drop(self.sourceOrder, name)
+		ns.Changed("source", old)
+		return
+	end
 	if type(spec) ~= "table" or type(spec.on) ~= "function" or type(spec.off) ~= "function" then
 		error(("%s: source %s's spec has on(self, what, fn) and off(self, token)"):format(self.id, name), 2)
 	end
@@ -434,10 +458,6 @@ function Extension:Source(name, spec)
 		if spec[k] ~= nil and type(spec[k]) ~= "function" then
 			error(("%s: source %s's %s is a function"):format(self.id, name, k), 2)
 		end
-	end
-	local old = sources[name]
-	if old and old.ext ~= self then
-		error(("%s: the source %s is extension %s's"):format(self.id, name, old.ext.id), 2)
 	end
 	local source = { name = name, ext = self, spec = spec }
 	if not old then
@@ -479,7 +499,10 @@ end
 -- facets: what apps see (Apps.lua), as sources are what they hear. ext:Facet(name, spec) registers a state an app
 -- declares in see = { name, ... }: each wake of the app carries state[name] = what read gives at that wake, and
 -- kit.app.state reads them at once. A name is the whole kit's, as a source's (a source and a facet may share one: route):
--- another extension's of the same name is an error, the same extension's again replaces it. spec:
+-- another extension's of the same name is an error. The same extension's again (a hot reload) puts the new spec on the
+-- same facet: those looking at it still do, each counted once; when it is looked at, the old spec's off is called (it
+-- pairs the old on), then the new one's on. ext:Facet(name, nil) takes it back (its off when looked at, facet.gone).
+-- spec:
 --   title, doc         doc: what the state is (kit.app.open's doc and the manifest show it)
 --   fields             optional: field -> type text ({ level = "number", zone = "string?" }), for the docs
 --   read(self) -> table|nil   the state now, a small table (nil: none now); one that comes to more than FACET_MAX bytes
@@ -490,7 +513,7 @@ end
 --                      it comes back on while one still sees it
 -- An extension that is off keeps its facets registered: an app that sees one of them cannot start, and one that runs stops
 -- (Apps.lua); read is not called while it is off.
--- ns.facets: name -> { name, ext, spec, watchers = { [who] = true }, n, live (on was called) }; ns.facetOrder: the names as
+-- ns.facets: name -> { name, ext, spec, watchers = { [who] = true }, n, live (spec.on was called) }; ns.facetOrder: the names as
 -- registered; ns.FacetList(ext) for the manifest; ns.FacetWatch(facet, who, on): who (an app) starts or stops looking;
 -- ns.FacetRead(facet): the state as a wake carries it.
 
@@ -499,9 +522,9 @@ ns.facets, ns.facetOrder = facets, facetOrder
 local FACET_MAX, FACET_TEXT, FACET_DEPTH = 600, 200, 4
 ns.FACET_MAX = FACET_MAX
 
--- on or off as whether anyone looks and the extension is on
+-- on or off as whether anyone looks and the extension is on (one taken back: off)
 local function Live(facet)
-	local want = facet.n > 0 and facet.ext.active == true
+	local want = facet.n > 0 and facet.ext.active == true and not facet.gone
 	if want == (facet.live == true) then return end
 	facet.live = want or nil
 	local fn = facet.spec[want and "on" or "off"]
@@ -511,6 +534,19 @@ end
 function Extension:Facet(name, spec)
 	if type(name) ~= "string" or #name > SOURCE_MAX or not name:match("^[a-z][a-z0-9_]*$") then
 		error(("%s: a facet's name is lowercase letters, digits and _, at most %d bytes"):format(self.id, SOURCE_MAX), 2)
+	end
+	local facet = facets[name]
+	if facet and facet.ext ~= self then
+		error(("%s: the facet %s is extension %s's"):format(self.id, name, facet.ext.id), 2)
+	end
+	if spec == nil then                                 -- taken back
+		if not facet then return end
+		facet.gone, facets[name] = true, nil
+		Live(facet)
+		Drop(facetOrder, name)
+		Drop(self.facetOrder, name)
+		ns.Changed("facet", facet)
+		return
 	end
 	if type(spec) ~= "table" or type(spec.read) ~= "function" then
 		error(("%s: facet %s's spec has read(self)"):format(self.id, name), 2)
@@ -523,20 +559,18 @@ function Extension:Facet(name, spec)
 	if spec.fields ~= nil and type(spec.fields) ~= "table" then
 		error(("%s: facet %s's fields is a table (field -> type text)"):format(self.id, name), 2)
 	end
-	local old = facets[name]
-	if old and old.ext ~= self then
-		error(("%s: the facet %s is extension %s's"):format(self.id, name, old.ext.id), 2)
-	end
-	local facet = { name = name, ext = self, spec = spec, watchers = old and old.watchers or {}, n = old and old.n or 0 }
-	if old and old.live then                            -- looked at: the old spec's off, then the new one's on
-		old.n = 0
-		Live(old)
-	end
-	if not old then
+	if facet then
+		if facet.live then                              -- looked at: the old spec's off, then (Live) the new one's on
+			facet.live = nil
+			if facet.spec.off then ns.Safe(facet.spec.off, self) end
+		end
+		facet.spec = spec
+	else
+		facet = { name = name, ext = self, spec = spec, watchers = {}, n = 0 }
+		facets[name] = facet
 		facetOrder[#facetOrder + 1] = name
 		self.facetOrder[#self.facetOrder + 1] = name
 	end
-	facets[name] = facet
 	Live(facet)
 	ns.Changed("facet", facet)
 	return facet

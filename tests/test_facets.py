@@ -224,6 +224,83 @@ class OnOff(FacetCase):
         s.ns.Switch(b"sense", False)                                        # another's: a goes on
         self.assertIs(self.agent(s, "kit.app.status", "{ app = 'a' }")["on"], True)
 
+    # the same facet again with its on and off counted apart from the first one's (__ons2, __offs2)
+    AGAIN = (b"__ons2, __offs2 = 0, 0 "
+             b"__px:Facet('probe', { title = 'Probe 2', read = function() return { n = 2 } end, "
+             b"on = function() __ons2 = __ons2 + 1 end, off = function() __offs2 = __offs2 + 1 end })")
+
+    def counts2(self, s):
+        return self.lua(s, "__ons2"), self.lua(s, "__offs2")
+
+    def test_registered_again_while_an_app_looks(self):
+        s = self.probe(self.start())
+        self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        self.agent(s, "kit.app.open", "{ app = 'b', hear = { 'bus:demo.*' }, see = { 'probe' } }")
+        s.lua.globals()[b"__ns"] = s.ns
+        s.lua.execute(b"__facet = __ns.facets.probe")
+        s.lua.execute(self.AGAIN)                                          # a hot reload of its addon
+        self.assertEqual(self.counts(s), (1, 1))                           # the old on has its off
+        self.assertEqual(self.counts2(s), (1, 0))                          # the new one is looked at: on, once
+        self.assertTrue(s.lua.eval(b"__ns.facets.probe == __facet and __facet.spec.title == 'Probe 2'"))   # the same facet
+        self.assertEqual(s.ns.facets[b"probe"][b"n"], 2)                   # each app counted once
+        self.assertEqual(self.agent(s, "kit.app.state", "{ app = 'a' }")["state"]["probe"], {"n": 2})
+        self.agent(s, "kit.app.stop", "{ app = 'a' }")
+        self.assertEqual(self.counts2(s), (1, 0))                          # b still looks
+        self.agent(s, "kit.app.stop", "{ app = 'b' }")
+        self.assertEqual(self.counts2(s), (1, 1))                          # the last one stopped: off, once
+        self.assertEqual(self.counts(s), (1, 1))
+        self.assertEqual(s.ns.facets[b"probe"][b"n"], 0)
+        s.lua.execute(self.AGAIN)                                          # nobody looks: neither is called
+        self.assertEqual(self.counts2(s), (0, 0))
+        self.agent(s, "kit.app.open", "{ app = 'a' }")
+        self.agent(s, "kit.app.stop", "{ app = 'a' }")
+        self.assertEqual(self.counts2(s), (1, 1))
+
+    def test_registered_again_while_its_extension_is_off(self):
+        s = self.probe(self.start())
+        watcher = s.lua.eval(b"{}")
+        s.ns.FacetWatch(s.ns.facets[b"probe"], watcher, True)
+        s.ns.Switch(b"probe", False)
+        self.assertEqual(self.counts(s), (1, 1))
+        s.lua.execute(self.AGAIN)                                          # off already: nothing to pair
+        self.assertEqual((self.counts(s), self.counts2(s)), ((1, 1), (0, 0)))
+        s.ns.Switch(b"probe", True)                                        # still looked at: the new one's on
+        self.assertEqual(self.counts2(s), (1, 0))
+        s.ns.FacetWatch(s.ns.facets[b"probe"], watcher, False)
+        self.assertEqual((self.counts(s), self.counts2(s)), ((1, 1), (1, 1)))
+
+    def test_taken_back(self):
+        s = self.probe(self.start())
+        facet, watcher = s.ns.facets[b"probe"], s.lua.eval(b"{}")
+        s.ns.FacetWatch(facet, watcher, True)
+        s.lua.execute(b"__px:Facet('probe', nil)")
+        self.assertEqual(self.counts(s), (1, 1))                           # looked at: its off
+        self.assertIsNone(s.ns.facets[b"probe"])
+        self.assertTrue(facet[b"gone"])
+        self.assertEqual((self.lua(s, "#__px.facetOrder"), py(s.ns.facetOrder).count("probe")), (0, 0))
+        s.ns.FacetWatch(facet, watcher, False)                             # the one who looked lets go: not off again
+        s.ns.FacetWatch(facet, watcher, True)
+        self.assertEqual(self.counts(s), (1, 1))
+        s.lua.execute(b"__px:Facet('probe', nil)")                         # not there: nothing
+        s.lua.execute(self.AGAIN)                                          # and registered anew: another facet
+        self.assertEqual((s.ns.facets[b"probe"][b"n"], self.counts2(s)), (0, (0, 0)))
+        self.assertIn("probe: the facet me is extension kit's", self.raises(s, "__px:Facet('me', nil)"))
+
+    def test_what_the_apps_are_told(self):
+        s = self.probe(self.start())
+        s.lua.globals()[b"__ns"] = s.ns
+        s.lua.execute(b"__told = {} __ns.OnChange(function(what, x) "
+                      b"if what == 'facet' then __told[#__told + 1] = { x.name, __ns.facets[x.name] == x, x.gone or false } "
+                      b"elseif what == 'extension' and x.id == 'probe' then "
+                      b"__told[#__told + 1] = { 'ext', x.active, table.concat(x.facetOrder, ' ') } end end)")
+        s.lua.execute(self.AGAIN)
+        s.ns.Switch(b"probe", False)
+        s.ns.Switch(b"probe", True)
+        s.lua.execute(b"__px:Facet('probe', nil)")
+        s.lua.execute(b"__px:Facet('other', { read = print })")
+        self.assertEqual(py(s.g("__told")), [["probe", True, False], ["ext", False, "probe"], ["ext", True, "probe"],
+                                             ["probe", False, True], ["other", True, False]])
+
     def test_through_a_reload(self):
         s = self.probe(self.start())
         self.agent(s, "kit.app.open", "{ app = 'a', hear = { 'bus:demo.*' }, see = { 'probe' } }")
