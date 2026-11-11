@@ -37,7 +37,7 @@
 
 ## 安装
 
-在无限工坊 App 的「扩展」页安装；或从[扩展目录](https://wuxianwow.com/workshop/extensions)下载 zip，解压到游戏目录的 `Interface\AddOns`。首次安装后完整重启游戏；之后的更新按 App 的提示重载界面，新增了文件时需完整重启。游戏中输入 `/wk` 打开窗口。
+需要无限工坊 0.9.13 或更高版本。在无限工坊 App 的「扩展」页安装；或从[扩展目录](https://wuxianwow.com/workshop/extensions)下载 zip，解压到游戏目录的 `Interface\AddOns`。首次安装后完整重启游戏；之后的更新按 App 的提示重载界面，新增了文件时需完整重启。游戏中输入 `/wk` 打开窗口。
 
 ## 开发扩展与应用
 
@@ -106,7 +106,7 @@ WuxianKit is optional: Wuxian Workshop does not install it.
 
 Built-in extensions: Tune (the game's settings, found by their names in the Settings panel; key bindings, macros, Edit Mode layouts, talent loadouts, equipment sets, bag sorting, addons on or off, profiles), Chat (sending, and the source `chat`), Game events (the source `game`, the facet `today`), Quest guide (the source and facet `route`: the step the player is on, from the game's own quest tracking or from a guide addon through an adapter), Character info (and the facet `group`), Codex, UI guide, Data, and Remote (tune proposals between players; accepting them is off by default). The core registers the facet `me`. The kit brings no app of its own: apps (sessions handed to an AI) come with extensions, such as the separately released Guild chat. A custom extension in its own addon, Quest guide adapters (`WuxianKit_Guides`), plugs RestedXP into the quest guide.
 
-Install it from the Extensions page of the Wuxian Workshop app, or unzip the download from the [extension catalog](https://wuxianwow.com/workshop/extensions) into `Interface\AddOns` and restart the game. `/wk` opens its window.
+It needs Wuxian Workshop 0.9.13 or later. Install it from the Extensions page of the Wuxian Workshop app, or unzip the download from the [extension catalog](https://wuxianwow.com/workshop/extensions) into `Interface\AddOns` and restart the game. `/wk` opens its window.
 
 To write an extension, see [`WuxianKit/ARCHITECTURE.md`](WuxianKit/ARCHITECTURE.md) (in Chinese) and [`WuxianKit/AGENT.md`](WuxianKit/AGENT.md). Tests: `pip install lupa`, then `python -m unittest discover -s tests -t tests`.
 
