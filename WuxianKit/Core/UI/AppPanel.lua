@@ -1,11 +1,11 @@
 -- The app card (0.6): WuxianKit:AppPanel(id, parent, width) draws app `id` in another addon's window, the same card the
--- window's 应用 page shows (UI.AppCard, on the canvas being drawn): its state, one line of the first that holds (no
+-- window shows on its extension's page (UI.AppCard, on the canvas being drawn): its state, one line of the first that holds (no
 -- 无限工坊 link, its extension off, its check()'s reason, running but waiting for what it hears to be there, running:
 -- the agent here until, last heard from, said today; else ready), its main button, stop, its controls (each drawn and
 -- told apart by its cmd: UI.AppControlList), and its options (the core's 活跃度 / 免打扰时段 when it has pace)
 -- with the window's controls. Returns a frame (its height set by its content) with :Refresh(), or nil when there is no
--- such app. Cards and the window's app page redraw on kit.app, kit.option, kit.changed and app.<id>, and every few
--- seconds while they show. The zhCN font has no arrows, squares or check marks: the state is told by the text's colour.
+-- such app. Cards and the window redraw on kit.app, kit.option, kit.changed and app.<id> (the window also when
+-- 无限工坊 gives its list of local extensions), and every few seconds while they show. The zhCN font has no arrows, squares or check marks: the state is told by the text's colour.
 -- See ARCHITECTURE.md section 10.
 -- The main button, while it does not run: an app with a prompt has 交给 AI (the copy box with its start line: any AI
 -- client with 无限工坊's MCP tools starts from it, Claude Code too); one without has none. A temporary app (an agent's,
@@ -40,8 +40,9 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- what the window and the slash command read of the apps
 
--- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, on, ends, present, prompt, start,
--- temp, from (its local extension's title), waiting (why it runs but hears nothing yet, as the runtime says it) }
+-- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, extension (the one its declaration
+-- names), on, ends, present, prompt, start, temp, localId and from (the local extension that brought it: its id, its
+-- title), waiting (why it runs but hears nothing yet, as the runtime says it) }
 function UI.Apps()
 	local out = {}
 	local list = Call(ns.AppList)
@@ -51,10 +52,12 @@ function UI.Apps()
 			if a.by == "agent" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
 			local waiting = a.on and a.waiting or nil
 			if waiting == "" then waiting = nil end
+			local from = type(a["local"]) == "table" and type(a["local"].id) == "string" and a["local"] or nil
 			out[#out + 1] = { id = a.id, title = title ~= nil and title ~= "" and ns.Text(title) or a.id, by = a.by,
-				addon = a.addon, on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
+				addon = a.addon, extension = type(a.extension) == "string" and a.extension or nil,
+				on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
 				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true,
-				from = type(a["local"]) == "table" and ns.Escape(ns.Text(a["local"].title or a["local"].id)) or nil,
+				localId = from and from.id or nil, from = from and ns.Escape(ns.Text(from.title or from.id)) or nil,
 				waiting = waiting }
 		end
 	end
@@ -203,7 +206,8 @@ local function State(app, st, by, waiting)
 	if not Kit:AgentOnline() then return A.NO_LINK, C.gold, A.NO_LINK_HINT end
 	local why, ext, extId = Blocked(app, st, by)
 	if extId then
-		return why, C.gold, A.EXT_OFF_HINT, ext and { A.OPEN_EXT, false, function() Kit:Window(extId) end } or nil
+		return why, C.gold, A.EXT_OFF_HINT,                       -- (its page: the switch is right there)
+			ext and not UI.OnPage(extId) and { A.OPEN_EXT, false, function() Kit:Window(extId) end } or nil
 	end
 	if why then return why, C.muted end
 	if st.on then
@@ -284,8 +288,8 @@ local function Hand(title, start)
 end
 
 -- app id's card on the canvas being drawn (the window's page, or a panel); extra: more buttons for the row
--- ({ label, primary, fn })
-function UI.AppCard(id, extra)
+-- ({ label, primary, fn }); heading: what its options are under (选项)
+function UI.AppCard(id, extra, heading)
 	local app, entry, st, by = Facts(id)
 	if not app then return end
 	local text, color, hint, button, ready = State(app, st, by, entry.waiting)
@@ -316,7 +320,7 @@ function UI.AppCard(id, extra)
 	local list = Call(ns.AppOptionList, id)
 	if type(list) == "table" and next(list) ~= nil then
 		local agent = by == "agent"
-		CV.Heading(L.OPTIONS)
+		CV.Heading(heading or L.OPTIONS)
 		CV.Options(OptionOrder(app, list), function(name)
 			local e = list[name]
 			if type(e) ~= "table" then return nil end
@@ -392,7 +396,7 @@ end
 
 for _, topic in ipairs({ "kit.app", "kit.option", "kit.changed", "app.*" }) do Kit:On(topic, Soon) end
 ns.OnChange(function(what)
-	if what == "app" or what == "apps" then Soon() end
+	if what == "app" or what == "apps" or what == "local" then Soon() end
 end)
 
 C_Timer.NewTicker(TICK, function()

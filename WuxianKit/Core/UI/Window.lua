@@ -7,23 +7,29 @@
 -- wheel, and so does the list at the left. One window: nothing else is spread over the screen.
 -- WuxianKit:OptionsPanel(id, parent, width) draws an extension's options in another addon's window with the same
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
--- The groups in the player's order: 应用 (apps, 0.6) first, then the built-in extensions, then the custom ones; the
--- window first opens on the first app's page (none: the core's). Each app's page is its card (UI.AppCard, AppPanel.lua:
--- 交给 AI for an app with a prompt), an app an agent declared with a remove button (one a local extension brought too),
--- and under it the hidden apps that run (后台监听: a program's plumbing is not in the list, but the player sees what
--- listens and can stop it). /wk <app> [word or words] gives an app the player's command or words; the words /wk keeps
--- for itself (ns.SLASH_WORDS) come first and are no app's id.
+-- The list, as 无限工坊's App has its extensions: the core's row (扩展框架), then 内置 (无限工坊's own extensions), then
+-- 已添加 (the others: another addon's in the game, and the ones added to this computer, which 无限工坊 names:
+-- ns.LocalList), each of those with where it runs (游戏, 本机, 游戏 · 本机). There is no list of apps: an app is on
+-- the page of the extension it came with, under its own heading, as its card (UI.AppCard, AppPanel.lua: 交给 AI for
+-- an app with a prompt), and a row whose app runs has a dot (green; gold while it waits). An app's row is found by
+-- the extension its declaration names, else the local extension that brought it, else its addon's extension (an addon
+-- with apps and no extension is a row itself). Only an app an agent declared by itself, with no extension at all, is
+-- a row of its own, in a last group (Agent 应用) that is there only then, its page the card with a remove button.
+-- The window first opens on the first row with an app that runs (none: the core's). The core's page ends with the
+-- hidden apps that run (后台监听: a program's plumbing is not listed, but the player sees what listens and can stop
+-- it). /wk <app> opens the page its card is on; /wk <app> <word or words> gives it the player's command or words; the
+-- words /wk keeps for itself (ns.SLASH_WORDS) come first and are no app's id.
 -- UI.Canvas: the drawing pieces, for AppPanel.lua's card (one canvas drawn at a time).
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
 local S, C = UI.Skin, UI.Skin.C
 
--- the words of the apps' parts (the window's group and page, the card, the slash command)
+-- the words of the apps' parts (the window's pages, the card, the slash command)
 local A = Kit:Words {
 	zhCN = {
-		GROUP = "应用", PILL = "应用", TEMP = "临时", BY_ADDON = "插件 %s", BY_AGENT = "Agent 声明",
-		REMOVE = "移除", BY_LOCAL = "来自本机扩展「%s」，扩展启用时自动添加",
-		LIST_ON = "运行中", LIST_OFF = "未运行",
+		PILL = "应用", TEMP = "临时", BY_AGENT = "Agent 声明", REMOVE = "移除",
+		APP = "应用 · %s", TEMP_APP = "临时应用 · %s", APP_OPTIONS = "应用选项",
+		ADDS = "补充：%s", ADDS_TO = "补充到应用：%s", MANAGED = "在无限工坊 App 中管理",
 		WAITING = "等待中", WAIT_HINT = "就绪后自动开始",
 		LISTENERS = "后台监听", LISTEN_MORE = "%s 等 %d 项", LISTEN_UNTIL = "至 %s",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
@@ -39,10 +45,9 @@ local A = Kit:Words {
 		NO_WORDS = "%s不接受指令", HELP = "应用：",
 	},
 	enUS = {
-		GROUP = "Apps", PILL = "App", TEMP = "Temporary", BY_ADDON = "Addon %s", BY_AGENT = "Declared by an agent",
-		BY_LOCAL = "From the local extension %s; added again while it is on",
-		REMOVE = "Remove",
-		LIST_ON = "On", LIST_OFF = "Off",
+		PILL = "App", TEMP = "Temporary", BY_AGENT = "Declared by an agent", REMOVE = "Remove",
+		APP = "App · %s", TEMP_APP = "Temporary app · %s", APP_OPTIONS = "App options",
+		ADDS = "Additions: %s", ADDS_TO = "Adds to the apps: %s", MANAGED = "Managed in the Wuxian Workshop app",
 		WAITING = "Waiting", WAIT_HINT = "Starts by itself once ready",
 		LISTENERS = "Background listeners", LISTEN_MORE = "%s, %d in all", LISTEN_UNTIL = "until %s",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
@@ -61,13 +66,14 @@ local A = Kit:Words {
 }
 UI.AppWords = A
 
-local W, H, LEFT = 640, 470, 176
+local W, H, LEFT = 670, 470, 206
+local TITLE_W = W - LEFT - 210            -- a page's title: room after it for its two capsules
 local BODY, ROW = H - 66, 19              -- the page's height; a line's (Put: 14 and 5 between)
 local HISTORY_SHOWN = 8
 local KIND_ORDER = { "see", "say", "do", "keep", "point" }
 local NUMBER_W = 80                       -- a number option's box
 local f                                   -- the frame, made the first time it opens
-local selected                            -- the page shown: an extension's id, or "app:" .. an app's; nil at first
+local selected                            -- the page shown: its row's id (Rows); nil at first
 local cv                                  -- the canvas being drawn: the window (f) or an OptionsPanel
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -369,16 +375,148 @@ local function Listeners()
 	end
 end
 
-local function Page(e)
-	local ext = ns.extensions[e.id]
-	local title = Put(0, C.fg, e.title or e.id, W - LEFT - 160, true)  -- the title, its kind as a capsule after it
-	f.pill.Set(e.builtin and L.GROUP.sys or L.GROUP.custom, e.builtin and "sys" or "custom")
+------------------------------------------------------------------------------------------------------------------------
+-- the rows of the list
+
+-- what an addon's .toc says of it (## Version, ## Author ...), or nil
+local function Meta(addon, field)
+	local ok, v = pcall(C_AddOns.GetAddOnMetadata, addon, field)
+	if ok and type(v) == "string" and v ~= "" then return v end
+end
+
+-- Rows(): the list's groups in order ({ kind (core, sys, custom, agent), list }) and every row. A row: { id (what
+-- `selected` holds), title, version, addon, author, notes, where (game, local, both), state (on, off, disabled,
+-- missing), apps (its rows of UI.Apps), running, waiting (one of its apps is), and one of: ext (a row of
+-- ns.ExtensionList, with its fields), managed (a local extension: 无限工坊's App turns it on and off), loose (an
+-- agent's app with no extension: app, temp), or none (an addon with apps and no extension) }. Texts are ready to draw
+local function Rows()
+	local groups = { { kind = "core", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} },
+		{ kind = "agent", list = {} } }
+	local all, byId, byAddon, byLocal = {}, {}, {}, {}
+	local function Add(g, e)
+		e.apps = {}
+		table.insert(groups[g].list, e)
+		all[#all + 1] = e
+		return e
+	end
+	for _, e in ipairs(ns.ExtensionList()) do
+		e.ext, e.where = true, "game"
+		byId[e.id] = e
+		if e.addon and not e.builtin then byAddon[e.addon] = byAddon[e.addon] or e end
+		Add(e.core and 1 or e.official and 2 or 3, e)
+	end
+	for _, x in ipairs(ns.LocalList()) do                    -- the ones on this computer, as 无限工坊 names them
+		local row
+		for _, id in ipairs(x.game) do row = row or byId[id] end
+		if row and x.where == "both" then                   -- in the game too: its row there, marked
+			row.where, row.adds = "both", x.adds
+			row.author = row.author or (x.author and ns.Escape(x.author))
+		else
+			row = Add(3, { id = "local:" .. x.id, title = ns.Escape(x.title), version = x.version and ns.Escape(x.version),
+				author = x.author and ns.Escape(x.author), notes = x.notes and ns.Escape(x.notes), where = x.where,
+				state = x.on and "on" or "off", managed = true, adds = x.adds })
+		end
+		byLocal[x.id] = row
+	end
+	for _, a in ipairs(UI.Apps()) do
+		local agent = a.by == "agent"
+		local row = a.extension and byId[a.extension] or a.localId and byLocal[a.localId]
+			or not agent and a.addon and byAddon[a.addon] or nil
+		if row then                                           -- (found)
+		elseif a.localId then                                 -- 无限工坊 gave no list (an older one): the app's own label
+			row = Add(3, { id = "local:" .. a.localId, title = a.from, where = "local", state = "on", managed = true })
+			byLocal[a.localId] = row
+		elseif not agent and a.addon then                     -- an addon with apps and no extension: the addon
+			local ok, _, title = pcall(C_AddOns.GetAddOnInfo, a.addon)
+			row = Add(3, { id = "addon:" .. a.addon, title = ok and type(title) == "string" and title ~= "" and title
+				or ns.Escape(a.addon), addon = a.addon, version = Meta(a.addon, "Version"), author = Meta(a.addon, "Author"),
+				where = "game", state = "on" })
+			byAddon[a.addon] = row
+		else                                                  -- an agent's, by itself
+			row = Add(4, { id = "app:" .. a.id, app = a.id, title = a.title, temp = a.temp, loose = true, state = "on" })
+		end
+		table.insert(row.apps, a)
+		row.running = row.running or a.on
+		row.waiting = row.waiting or a.waiting ~= nil
+	end
+	return groups, all
+end
+
+-- the row a page names: a row's own id (an extension's id, "local:<id>" ...), else the row app `page` ("app:<id>" too)
+-- is on. nil: none
+local function Find(page)
+	local _, all = Rows()
+	for _, e in ipairs(all) do
+		if e.id == page then return e.id end
+	end
+	local app = page:match("^app:(.+)$") or page
+	for _, e in ipairs(all) do
+		for _, a in ipairs(e.apps) do
+			if a.id == app then return e.id end
+		end
+	end
+end
+
+-- whether the window is drawing the page of row id now (the card: no button to a page that is this one)
+function UI.OnPage(id) return cv == f and f ~= nil and selected == id end
+
+------------------------------------------------------------------------------------------------------------------------
+-- the pages
+
+-- a page's title, then its capsules: its kind, and where it runs (none: no second capsule)
+local function Title(text, kind, tone, where)
+	local title = Put(0, C.fg, text, TITLE_W, true)
+	f.pill.Set(kind, tone)
 	f.pill:ClearAllPoints()
-	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
+	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), TITLE_W) + 8, 0)
 	f.pill:Show()
-	Put(0, C.muted, ("%s · %s%s"):format(L.VERSION:format(e.version or "?"), StateText(e),
-		not e.builtin and e.addon and (" · " .. e.addon) or ""))
-	if not e.core and e.state ~= "disabled" and e.state ~= "missing" then
+	f.where:SetShown(where ~= nil)
+	if where then
+		f.where.Set(L.WHERE[where] or where, "sys")
+		f.where:ClearAllPoints()
+		f.where:SetPoint("LEFT", f.pill, "RIGHT", 6, 0)
+	end
+end
+
+-- the local extensions that are on and add to app id (无限工坊's list), their titles in a line; nil: none
+local function Adders(id)
+	local names = {}
+	for _, x in ipairs(ns.LocalList()) do
+		for _, app in ipairs(x.on and x.adds or {}) do
+			if app == id then names[#names + 1] = ns.Escape(x.title) end
+		end
+	end
+	return #names > 0 and table.concat(names, L.SEP) or nil
+end
+
+-- a row's apps, each under its heading: its card (its own options under 应用选项: the page has the extension's 选项
+-- too), then the local extensions that add to it
+local function Apps(e)
+	for _, a in ipairs(e.apps) do
+		Heading((a.temp and A.TEMP_APP or A.APP):format(a.title))
+		UI.AppCard(a.id, nil, A.APP_OPTIONS)
+		local adds = Adders(a.id)
+		if adds then Put(0, C.muted, A.ADDS:format(adds)) end
+	end
+end
+
+local function Page(e)
+	local ext = e.ext and ns.extensions[e.id] or nil
+	Title(e.title or e.id, e.official and L.GROUP.sys or L.GROUP.custom, e.official and "sys" or "custom", e.where)
+	local facts = {}
+	if e.ext or e.version then facts[#facts + 1] = L.VERSION:format(e.version or "?") end
+	if e.ext or e.managed then facts[#facts + 1] = StateText(e) end
+	if not e.builtin and e.addon and e.addon ~= e.title then facts[#facts + 1] = e.addon end
+	if e.author then facts[#facts + 1] = L.AUTHOR:format(e.author) end
+	if #facts > 0 then Put(0, C.muted, table.concat(facts, " · ")) end
+	if e.notes then Put(0, C.muted, e.notes) end
+	if e.managed then Put(0, C.muted, A.MANAGED) end        -- on, off, removed: in 无限工坊's App, not here
+	if e.adds and #e.adds > 0 then                          -- the apps it adds to (their documents, their wakes)
+		local names = {}
+		for _, id in ipairs(e.adds) do names[#names + 1] = UI.AppTitle(id) end
+		Put(0, C.muted, A.ADDS_TO:format(table.concat(names, L.SEP)))
+	end
+	if e.ext and not e.core and e.state ~= "disabled" and e.state ~= "missing" then
 		PutCheck(0, L.ENABLED, e.state == "on", function(on) ns.Act("switch", e.id, on) end)
 	end
 	if e.core then                                          -- the core: the language, the chosen one marked
@@ -407,6 +545,7 @@ local function Page(e)
 			cv.y = y + 30
 		end
 	end
+	Apps(e)                                                 -- the apps it came with
 	if ext and not e.core and #ext.optionOrder > 0 then     -- the player's choices for it, made here and only here
 		Heading(L.OPTIONS)
 		ExtOptions(ext)
@@ -445,7 +584,10 @@ local function Page(e)
 			end
 		end
 	end
-	if not e.core then return Capabilities(ext) end
+	if not e.core then
+		if e.ext then Capabilities(ext) end                 -- (a local extension's are 无限工坊's tools, not the game's)
+		return
+	end
 	Heading(L.HISTORY)                                      -- the core: what ran, newest first
 	do
 		local h = ns.History()
@@ -465,28 +607,15 @@ local function Page(e)
 			end
 		end
 	end
-	if #UI.Apps() == 0 then Listeners() end                 -- no app's page to list them on: here
+	Listeners()                                             -- what listens in the background, whoever started it
 end
 
--- an app's page: its title (a temporary one's capsule says so) and where it came from (a local extension, an agent's
--- declaration, an addon), then its card (with a remove button when an agent declared it: one a local extension brought
--- too, and the line above says it comes back), then the hidden apps that run
+-- the page of an app an agent declared by itself: its title (a temporary one's capsule says so), who declared it, its
+-- card with a remove button
 local function AppPage(e)
-	local title = Put(0, C.fg, e.title, W - LEFT - 160, true)
-	f.pill.Set(e.temp and A.TEMP or A.PILL, "custom")
-	f.pill:ClearAllPoints()
-	f.pill:SetPoint("LEFT", title, "LEFT", math.min(math.ceil(title:GetStringWidth()), W - LEFT - 160) + 8, 0)
-	f.pill:Show()
-	local agent = e.by == "agent"
-	if e.from then
-		Put(0, C.muted, A.BY_LOCAL:format(e.from))
-	elseif agent then
-		Put(0, C.muted, A.BY_AGENT)
-	elseif e.addon then
-		Put(0, C.muted, A.BY_ADDON:format(ns.Escape(e.addon)))
-	end
-	UI.AppCard(e.app, agent and { { A.REMOVE, false, function() ns.Act("app.forget", e.app) end } } or nil)
-	Listeners()
+	Title(e.title, e.temp and A.TEMP or A.PILL, "custom")
+	Put(0, C.muted, A.BY_AGENT)
+	UI.AppCard(e.app, { { A.REMOVE, false, function() ns.Act("app.forget", e.app) end } })
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -530,7 +659,7 @@ local function Frame()
 	f.more:SetPoint("TOPRIGHT", -40, -34)
 	f.more:SetText(L.SCROLL)
 	f.texts, f.checks, f.buttons, f.edits, f.heads = {}, {}, {}, {}, {}
-	f.pill = S.Pill(f.body)
+	f.pill, f.where = S.Pill(f.body), S.Pill(f.body)
 	local sep = f:CreateTexture(nil, "BORDER")
 	sep:SetPoint("TOPLEFT", LEFT + 2, -56)
 	sep:SetSize(1, H - 66)
@@ -545,11 +674,19 @@ local function Item(i)
 		b:SetSize(LEFT - 14, 22)
 		b.bg = b:CreateTexture(nil, "BACKGROUND")
 		b.bg:SetAllPoints()
+		b.dot = b:CreateTexture(nil, "ARTWORK")             -- one of its apps runs: a dot before the title
+		b.dot:SetSize(6, 6)
+		b.dot:SetPoint("LEFT", 3, 0)
+		if b.CreateMaskTexture and b.dot.AddMaskTexture then
+			local m = b:CreateMaskTexture()
+			m:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+			m:SetAllPoints(b.dot)
+			b.dot:AddMaskTexture(m)
+		end
 		b.label = S.Text(b, C.fg)
-		b.label:SetPoint("LEFT", 8, 0)
-		b.label:SetWidth(LEFT - 30)
+		b.label:SetPoint("LEFT", 12, 0)
 		b.label:SetWordWrap(false)                          -- a long title: one line, cut with "..."
-		b.state = S.Text(b, C.muted, true)                  -- an app's state, dim, at the right
+		b.state = S.Text(b, C.muted, true)                  -- where it runs, dim, at the right
 		b.state:SetPoint("RIGHT", -8, 0)
 		b.state:SetJustifyH("RIGHT")
 		b:SetScript("OnClick", function(self)
@@ -567,44 +704,45 @@ function UI.DrawWindow()
 	f.title:SetText(L.TITLE)
 	f.more:SetText(L.SCROLL)
 	f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)   -- none without 无限工坊
-	local list = ns.ExtensionList()
-	local groups = { { kind = "apps", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} } }
-	for _, a in ipairs(UI.Apps()) do                       -- the apps first
-		table.insert(groups[1].list, { id = "app:" .. a.id, app = a.id, title = a.title, by = a.by, addon = a.addon,
-			temp = a.temp, from = a.from, state = a.on and "on" or "off", waiting = a.waiting ~= nil })
-	end
-	for _, e in ipairs(list) do table.insert(groups[e.builtin and 2 or 3].list, e) end   -- WuxianKit's own, other addons'
+	local groups, all = Rows()
 	local current
-	for _, g in ipairs(groups) do
-		for _, e in ipairs(g.list) do
-			if e.id == selected then current = e end
-		end
+	for _, e in ipairs(all) do
+		if e.id == selected then current = e end
 	end
-	if not current then                                    -- none chosen yet, or gone: the first app, else the core
-		current = groups[1].list[1] or list[1]
+	if not current then                                    -- none chosen yet, or gone: the first whose app runs, else the core
+		for _, e in ipairs(all) do
+			if e.running then current = current or e end
+		end
+		current = current or all[1]
 		selected = current.id
 	end
+	f.ticks = #current.apps > 0                            -- (UI.TickApps)
 	local n, nHead, y = 0, 0, 0
 	for _, g in ipairs(groups) do
 		if #g.list > 0 then
-			nHead = nHead + 1
-			local h = f.heads[nHead] or S.Text(f.list, C.muted, true)
-			f.heads[nHead] = h
-			h:ClearAllPoints()
-			h:SetPoint("TOPLEFT", f.list, "TOPLEFT", 8, -y - 3)
-			h:SetText(g.kind == "apps" and A.GROUP or L.GROUP[g.kind])
-			h:Show()
-			y = y + 20
+			if g.kind ~= "core" then                          -- (the core's row: by itself, above the groups)
+				nHead = nHead + 1
+				local h = f.heads[nHead] or S.Text(f.list, C.muted, true)
+				f.heads[nHead] = h
+				h:ClearAllPoints()
+				h:SetPoint("TOPLEFT", f.list, "TOPLEFT", 8, -y - 3)
+				h:SetText(L.GROUP[g.kind])
+				h:Show()
+				y = y + 20
+			end
 			for _, e in ipairs(g.list) do
 				n = n + 1
 				local b = Item(n)
 				b:ClearAllPoints()
 				b:SetPoint("TOPLEFT", 0, -y)
 				b.id = e.id
+				local tag = g.kind == "custom" and L.WHERE[e.where] or e.temp and A.TEMP or ""
+				b.state:SetText(tag)
+				b.state:SetShown(tag ~= "")
 				b.label:SetText(e.title or e.id)
-				b.label:SetWidth(e.app and LEFT - 76 or LEFT - 30)
-				b.state:SetText(e.app and (e.waiting and A.WAITING or e.state == "on" and A.LIST_ON or A.LIST_OFF) or "")
-				b.state:SetShown(e.app ~= nil)
+				b.label:SetWidth(LEFT - 34 - (tag ~= "" and math.ceil(b.state:GetStringWidth()) + 6 or 0))
+				b.dot:SetShown(e.running and true or false)
+				S.Fill(b.dot, e.waiting and C.gold or C.ok)
 				S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
 				S.Ink(b.label, e.state == "on" and C.fg or C.muted)
 				b:Show()
@@ -619,7 +757,7 @@ function UI.DrawWindow()
 	f.list:SetHeight(BODY + f.sideRange)
 	if f.side:GetVerticalScroll() > f.sideRange then f.side:SetVerticalScroll(f.sideRange) end
 	Begin(f)
-	if current.app then AppPage(current) else Page(current) end
+	if current.loose then AppPage(current) else Page(current) end
 	f.range = math.max(0, f.y + 8 - BODY)                  -- how far the page scrolls
 	f.body:SetHeight(BODY + f.range)
 	if f.scroll:GetVerticalScroll() > f.range then f.scroll:SetVerticalScroll(f.range) end
@@ -674,16 +812,13 @@ function UI.Toggle()
 	end
 end
 
--- WuxianKit:Window(page): the window, open and in front, on an extension's page ("tune", "chat" ...; "kit" the core's);
--- without one, or with one not there, on the page it showed last (at first the first app's, else the core's). For other
+-- WuxianKit:Window(page): the window, open and in front, on an extension's page ("tune", "chat" ...; "kit" the core's),
+-- or on the page an app's card is on (the app's id, or "app:<id>": an extension of that name comes first); without one,
+-- or with one not there, on the page it showed last (at first the first whose app runs, else the core's). For other
 -- addons' buttons (WoWBridge's panel, its minimap button)
 function Kit:Window(page)
 	Frame()
-	local want
-	if type(page) == "string" then                          -- an extension's page, else an app's ("app:<id>" too)
-		local app = page:match("^app:(.+)$") or page
-		want = ns.extensions[page] and page or ns.App(app) and "app:" .. app or nil
-	end
+	local want = type(page) == "string" and Find(page) or nil
 	if want and want ~= selected then
 		selected = want
 		f.scroll:SetVerticalScroll(0)
@@ -705,9 +840,9 @@ function UI.Refresh()
 	end
 end
 
--- every few seconds (AppPanel.lua): an app's page drawn again ("last answer n min ago")
+-- every few seconds (AppPanel.lua): a page with an app's card drawn again ("last answer n min ago")
 function UI.TickApps()
-	if f and f:IsShown() and selected and selected:match("^app:") then UI.DrawWindow() end
+	if f and f:IsShown() and f.ticks then UI.DrawWindow() end
 end
 
 function UI.Tick()
@@ -742,7 +877,7 @@ ns.AddAction("button", function(id, i)
 	return ok
 end)
 
--- /wk <app> <rest>: its page when nothing follows; a word that names one of its controls (UI.AppControl: a word of
+-- /wk <app> <rest>: the page its card is on when nothing follows; a word that names one of its controls (UI.AppControl: a word of
 -- ns.CONTROL_WORDS, or the cmd or the label of one of its own) the command, given by its cmd; else the player's words,
 -- when it takes them; else what it takes
 local function AppCommand(id, rest)

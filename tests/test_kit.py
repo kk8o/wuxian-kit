@@ -275,11 +275,11 @@ class Core(unittest.TestCase):
         self.assertTrue(body[1].startswith("版本 "))
         self.assertIn("更改：客户端设置、系统设置选项、按键绑定、宏、编辑模式布局、导入布局、天赋配置、切换装备方案、保存装备方案、整理背包、"
                       "插件启用状态", body)
-        self.assertIn("内置", texts(w[b"list"]))                       # the list: WuxianKit's own, then other addons'
+        self.assertEqual(texts(w[b"list"]), ["内置"])                  # the list: 无限工坊's own (任务指引 too), no other
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
-                         ["核心", "调校", "聊天", "远程", "数据", "界面指引", "角色信息", "游戏动态",
+                         ["扩展框架", "调校", "聊天", "远程", "数据", "界面指引", "角色信息", "游戏动态",
                           "图鉴", "任务指引"])                                      # the kit's own: extensions, no app
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
@@ -290,11 +290,11 @@ class Core(unittest.TestCase):
         s2.login()
         s2.run(1)
         w2 = self.window(s2, "kit")
-        self.assertTrue(texts(w2[b"body"])[0].startswith("核心"))
+        self.assertTrue(texts(w2[b"body"])[0].startswith("扩展框架"))
         english = next(b for b in self.buttons(w2) if b[b"label"][b"text"] == b"English")
         click(english)                                                    # the core's page: the buttons
         self.assertIn("Language: English", s2.chat())
-        self.assertTrue(texts(w2[b"body"])[0].startswith("Core"))
+        self.assertTrue(texts(w2[b"body"])[0].startswith("Framework"))
         s2.g("SlashCmdList")[b"WUXIANKIT"](b"lang auto")
         self.assertIn("Language: Auto (client language)", s2.chat())
         self.assertIsNone(py(s2.g("WuxianKitDB")).get("lang"))

@@ -1,8 +1,9 @@
 """The window's apps (0.6, Core/UI/Window.lua) under Lua 5.1 in the mock client, over the apps' ns functions faked as in
-test_app_panel: the group 应用 first, before the extensions, with each app's state, the window first open on the first
-app's page, an app's page (where it came from, its card; remove for an agent's; a temporary one marked), redrawn when
-apps change; /wk <app> [words] (its controls, its words, what it takes, its page), /wk help, /wk's own words
-(ns.SLASH_WORDS) before any other's; and the core's page drawing the core's own options (称呼, 0.6)."""
+test_app_panel: no list of apps, an app's card on the page of what it came with (its addon's row here; an extension's
+and a local extension's in test_window_rows), the row marked while its app runs, the window first open on the first
+such row; only an agent's own app a row (the last group, its page with remove; a temporary one marked), redrawn when
+apps change; /wk <app> [words] (its controls, its words, what it takes, the page its card is on), /wk help, /wk's own
+words (ns.SLASH_WORDS) before any other's; and the core's page drawing the core's own options (称呼, 0.6)."""
 import unittest
 
 from kitmock import click, lupa, py, texts, type_into
@@ -32,74 +33,101 @@ class WindowApps(unittest.TestCase):
     def item(self, w, title):
         return next(b for b in shown(w[b"items"]) if b[b"label"][b"text"].decode() == title)
 
-    def test_the_apps_group(self):
-        """the group comes first, before the extensions, each app with a dim state; its page is its title, where it
-        came from and its card; an agent's has remove; one gone, the first app's page; a new app shows once kit.app
-        tells of it"""
+    def titles(self, w):
+        return [b[b"label"][b"text"].decode() for b in shown(w[b"items"])]
+
+    def pills(self, w):
+        """the page's capsules that show: its kind, where it runs"""
+        return [p[b"text"][b"text"].decode() for p in (w[b"pill"], w[b"where"]) if p[b"shown"]]
+
+    def test_the_rows(self):
+        """no app is a row: an addon's app is on its addon's row (已添加, in the game), the row with a dot while it
+        runs; an agent's own is a row in the last group, there only then; a hidden one nowhere but the core's last
+        lines; an app's page is found by its id; a new app shows once kit.app tells of it"""
         s = self.setup()
         s.lua.execute(b"__add('pipe', { by = 'agent', temp = true, hidden = true, decl = { title = 'Pipe' }, "
                       b"status = { app = 'pipe', on = true } })")
         w = self.window(s)
-        heads = texts(w[b"list"])
-        self.assertEqual(heads[0], "Apps")
-        self.assertNotIn("Pipe", [b[b"label"][b"text"].decode() for b in shown(w[b"items"])])   # hidden
-        self.assertLess(heads.index("Apps"), heads.index("Built-in"))
-        voice, bot = self.item(w, "Voice"), self.item(w, "Bot")
-        self.assertEqual((voice[b"state"][b"text"], bot[b"state"][b"text"]), (b"On", b"Off"))
-        self.assertFalse(self.item(w, "Core")[b"state"][b"shown"])
+        self.assertEqual(texts(w[b"list"]), ["Built-in", "Added", "Agent apps"])
+        titles = self.titles(w)
+        self.assertEqual((titles[0], titles[-2:]), ("Framework", ["WxVoice", "Bot"]))
+        for app in ("Voice", "Pipe", "pipe"):
+            self.assertNotIn(app, titles)
+        voice, bot = self.item(w, "WxVoice"), self.item(w, "Bot")
+        self.assertEqual((voice[b"state"][b"text"], voice[b"state"][b"shown"], bot[b"state"][b"shown"]),
+                         (b"Game", True, False))
+        self.assertEqual((voice[b"dot"][b"shown"], bot[b"dot"][b"shown"]), (True, False))   # Voice runs
+        self.assertEqual(py(voice[b"dot"][b"rgb"]), py(s.lua.eval(b"WuxianKit.Skin.C.ok")))
+        core = self.item(w, "Framework")
+        self.assertEqual((core[b"state"][b"shown"], core[b"dot"][b"shown"]), (False, False))
+        self.assertEqual(texts(w[b"body"])[-2:], ["Background listeners", "pipe"])   # the core's page: what listens
         click(voice)
         body = texts(w[b"body"])
-        self.assertEqual(body[:2], ["Voice", "Addon WxVoice"])
-        self.assertEqual(w[b"pill"][b"text"][b"text"], b"App")
+        self.assertEqual(body[:2], ["WxVoice", "App · Voice"])
+        self.assertEqual(self.pills(w), ["Added", "Game"])
         self.assertTrue(body[2].startswith("Agent here"))
-        self.assertEqual(labels(w), ["Stop", "Mute", "Unmute", "Stop"])        # (the last: the hidden one's line)
+        self.assertNotIn("Background listeners", body)
+        self.assertEqual(labels(w), ["Stop", "Mute", "Unmute"])                 # the card's; an addon's: no remove
         click(button(w, "Mute"))
         self.assertEqual(log(s), ["control voice mute"])
         click(bot)
         self.assertEqual(texts(w[b"body"])[:3], ["Bot", "Declared by an agent", "Ready to connect an agent"])
-        self.assertEqual(labels(w), ["Hand to AI", "Remove", "Stop"])
+        self.assertEqual(self.pills(w), ["App"])
+        self.assertEqual(labels(w), ["Hand to AI", "Remove"])
         click(button(w, "Remove"))
         self.assertEqual(log(s)[-1], "forget bot wipe")                         # the player's remove: all of it
-        self.assertEqual(texts(w[b"body"])[0], "Voice")                         # gone: the first app's page
-        self.assertNotIn("Bot", [b[b"label"][b"text"].decode() for b in shown(w[b"items"])])
-        s.lua.execute(b"__add('later', { decl = { title = 'Later' } }) "
+        self.assertEqual(texts(w[b"body"])[0], "WxVoice")                       # gone: the first whose app runs
+        self.assertNotIn("Bot", self.titles(w))
+        self.assertEqual(texts(w[b"list"]), ["Built-in", "Added"])              # the last group: gone with it
+        s.lua.execute(b"__add('later', { addon = 'WxVoice', decl = { title = 'Later' } }) "
                       b"WuxianKit:Emit('kit.app', { app = 'later', on = true })")
         s.run(0.1)
-        self.item(w, "Later")
+        self.assertIn("App · Later", texts(w[b"body"]))                         # the addon's second app: the same page
+        self.assertEqual(self.titles(w).count("WxVoice"), 1)
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
-        self.assertEqual(texts(w[b"list"])[0], "应用")
-        self.assertEqual(self.item(w, "Voice")[b"state"][b"text"].decode(), "运行中")
-        self.window(s, "voice")
-        self.assertEqual(texts(w[b"body"])[1], "插件 WxVoice")
-        self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "应用")
+        self.assertEqual(texts(w[b"list"]), ["内置", "已添加"])
+        self.assertEqual(self.item(w, "WxVoice")[b"state"][b"text"].decode(), "游戏")
+        self.assertEqual(texts(w[b"body"])[1], "应用 · Voice")
+        self.assertEqual(self.pills(w), ["已添加", "游戏"])
+        self.window(s, "kit")
+        self.assertEqual(texts(w[b"body"])[0], "扩展框架")
+        self.window(s, "voice")                                                 # an app's id: the page its card is on
+        self.assertEqual(texts(w[b"body"])[:2], ["WxVoice", "应用 · Voice"])
         s.lua.execute(b"WuxianKit:Extension('voice', { title = 'Voice ext' })")   # an extension of the same name first
         self.window(s, "voice")
         self.assertEqual(texts(w[b"body"])[0], "Voice ext")
         self.window(s, "app:voice")
-        self.assertEqual(texts(w[b"body"])[1], "插件 WxVoice")
+        self.assertEqual(texts(w[b"body"])[0], "WxVoice")
+        self.window(s, "nothing-of-the-kind")                                   # not there: the page it showed
+        self.assertEqual(texts(w[b"body"])[0], "WxVoice")
 
     def test_the_first_page(self):
-        """the window first opens on the first app's page, its item marked; later on the page it showed last; with no
-        app, on the core's"""
+        """the window first opens on the first row whose app runs, its item marked; later on the page it showed last;
+        with no app that runs, on the core's"""
         s = self.setup()
         self.slash(s, "")
         w = s.g("WuxianKitWindow")
-        self.assertEqual(texts(w[b"body"])[:2], ["Voice", "Addon WxVoice"])
+        self.assertEqual(texts(w[b"body"])[:2], ["WxVoice", "App · Voice"])
         gold = py(s.lua.eval(b"WuxianKit.Skin.C.goldSoft"))
         marked = [b[b"label"][b"text"].decode() for b in shown(w[b"items"]) if py(b[b"bg"][b"rgb"]) == gold]
-        self.assertEqual(marked, ["Voice"])
-        click(self.item(w, "Core"))
+        self.assertEqual(marked, ["WxVoice"])
+        click(self.item(w, "Framework"))
         self.slash(s, "")                                                       # closed
         self.assertFalse(w[b"shown"])
         self.slash(s, "")
-        self.assertEqual(texts(w[b"body"])[0], "Core")
+        self.assertEqual(texts(w[b"body"])[0], "Framework")
+        idle = start(self)
+        idle.lua.execute(b"__add('bot', { by = 'agent', decl = { title = 'Bot', prompt = 'bot-run' } })")
+        idle.g("SlashCmdList")[b"WUXIANKIT"](b"")                               # an app, but none that runs
+        self.assertEqual(texts(idle.g("WuxianKitWindow")[b"body"])[0], "Framework")
         bare = start(self)
         bare.g("SlashCmdList")[b"WUXIANKIT"](b"")
-        self.assertEqual(texts(bare.g("WuxianKitWindow")[b"body"])[0], "Core")
+        self.assertEqual(texts(bare.g("WuxianKitWindow")[b"body"])[0], "Framework")
+        self.assertEqual(texts(bare.g("WuxianKitWindow")[b"list"]), ["Built-in"])
 
     def test_an_agents_apps_page(self):
-        """an app an agent declared without a prompt: its page says an agent declared it, no main button (no 开始), its
-        item on or off; a temporary app's capsule says so; /wk <app> 开始|start is words like any other"""
+        """an app an agent declared without a prompt: its page says an agent declared it, no main button (no 开始); a
+        temporary app's capsule and its row say so; /wk <app> 开始|start is words like any other"""
         s = self.setup()
         s.lua.execute(b"__add('buddy', { by = 'agent', launch = true, controls = { 'mute', 'stop' }, "
                       b"decl = { title = 'Buddy', driver = 'program' } }) "
@@ -107,23 +135,22 @@ class WindowApps(unittest.TestCase):
                       b"status = { app = 'peek', on = true, said = 0 } })")
         w = self.window(s, "buddy")
         self.assertEqual(texts(w[b"body"])[:3], ["Buddy", "Declared by an agent", "Ready to connect an agent"])
-        self.assertEqual(w[b"pill"][b"text"][b"text"], b"App")
+        self.assertEqual(self.pills(w), ["App"])
         self.assertEqual(labels(w), ["Remove"])
-        self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"], b"Off")
-        s.lua.execute(b"__add('pal', { by = 'agent', decl = { title = 'Pal' }, ['local'] = { id = 'voice', title = 'Voice' } })")
-        w = self.window(s, "pal")
-        self.assertEqual(texts(w[b"body"])[1], "From the local extension Voice; added again while it is on")
-        self.assertEqual(labels(w), ["Remove"])                                 # one a local extension brought, too
-        click(self.item(w, "Peek"))
+        buddy, peek = self.item(w, "Buddy"), self.item(w, "Peek")
+        self.assertEqual((buddy[b"state"][b"shown"], buddy[b"dot"][b"shown"]), (False, False))
+        self.assertEqual((peek[b"state"][b"text"], peek[b"dot"][b"shown"]), (b"Temporary", True))
+        click(peek)
         self.assertEqual(texts(w[b"body"])[:2], ["Peek", "Declared by an agent"])
-        self.assertEqual(w[b"pill"][b"text"][b"text"], b"Temporary")
+        self.assertEqual(self.pills(w), ["Temporary"])
         self.assertEqual(labels(w), ["Stop", "Remove"])
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
-        self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "临时")
-        self.assertEqual(self.item(w, "Buddy")[b"state"][b"text"].decode(), "未运行")
+        self.assertEqual(self.pills(w), ["临时"])
+        self.assertEqual(texts(w[b"list"])[-1], "Agent 应用")
+        self.assertEqual(self.item(w, "Peek")[b"state"][b"text"].decode(), "临时")
         click(self.item(w, "Buddy"))
         self.assertEqual(texts(w[b"body"])[1:3], ["Agent 声明", "可以接入 Agent"])
-        self.assertEqual(w[b"pill"][b"text"][b"text"].decode(), "应用")
+        self.assertEqual(self.pills(w), ["应用"])
         s.lua.execute(b"__ns.SetLanguage('enUS')")
         self.assertIn("Buddy takes: mute, stop", self.slash(s, "buddy start"))
         self.assertIn("/wk buddy: Buddy · mute, stop", self.slash(s, "help"))
@@ -132,7 +159,7 @@ class WindowApps(unittest.TestCase):
         self.assertEqual(log(s), ["say buddy start", "say buddy 开始"])            # words, as any (it takes none)
 
     def test_the_page_ticks(self):
-        """an app's page is drawn again every few seconds while the window shows it"""
+        """a page with an app's card is drawn again every few seconds while the window shows it"""
         s = self.setup()
         now = int(s.lua.eval(b"time()"))
         s.g("__apps")[b"voice"][b"status"][b"seen"] = now - 61
@@ -221,7 +248,7 @@ class WindowApps(unittest.TestCase):
         own is labelled); one of its own answers to its cmd, and to its label only when that names nothing else"""
         s = self.setup()
         s.lua.execute("""
-			__add('tricky', { decl = { title = 'Tricky' }, status = { app = 'tricky', on = true },
+			__add('tricky', { addon = 'WxTricky', decl = { title = 'Tricky' }, status = { app = 'tricky', on = true },
 				controls = { 'stop', 'brief', 'recap', 'again', 'echo', 'wave', 'nod' },
 				labels = { brief = '离开', recap = 'Stop', again = 'Same', echo = 'same', wave = 'brief', nod = 'Nod!' } })
 		""".encode())

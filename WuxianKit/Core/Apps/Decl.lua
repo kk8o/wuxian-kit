@@ -6,8 +6,8 @@
 -- items are gathered into wakes (a digest, Digest.lua; with pace, the player's activity and quiet hours run it), which
 -- commands the player can give it in the game, how long it may go unheard from before it counts as gone (lease),
 -- options the player sets for it, and its prompt: the skill an AI client follows to drive it.
--- UI/AppPanel.lua draws it (the window's 应用 page, /wk <app> ...). The contract is ARCHITECTURE.md section 10; in
--- short:
+-- UI/AppPanel.lua draws it (its card on its extension's page of the window, /wk <app> ...). The contract is
+-- ARCHITECTURE.md section 10; in short:
 --
 --   WuxianKit:App(id, decl) -> app       an addon declares an app (functions allowed: check, urgent, enrich; docs: the
 --                                        folder of its AGENT.md and skills/ in its addon's); with no decl, the app

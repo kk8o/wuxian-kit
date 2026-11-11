@@ -8,6 +8,8 @@
 --                                changes them)
 --   kit.me                (See)  the player's name, what AI apps call them (the core's option nickname), their aliases
 --   kit.undo              (Do)   undo a proposal that ran
+--   kit.local.set         (Keep) 无限工坊's list of the extensions added to this computer that have a local part, for
+--                                the window to show them beside the game's (ns.LocalList)
 --   bus                   (Source) what addons emit on the bus, for apps to hear (bus:<topic or prefix.*>)
 --   me                    (Facet)  the player now (WuxianKit:Me()), for apps to see (see = { "me" }: state.me)
 -- (The apps' capabilities, kit.app.* and kit.apps, are in Core/Apps/Api.lua.)
@@ -28,9 +30,64 @@ kit:Scope("undo", L"SCOPE_UNDO")
 kit:Option("nickname", { title = W"NICKNAME", kind = "text", default = "", hint = W"NICKNAME_HINT" })
 
 kit:See("extensions", { title = L"LIST_EXTENSIONS",
-	doc = "the extensions: id, title, version, addon, builtin, state (on, off, disabled in the game's addon list, missing: "
-		.. "cannot load), how many capabilities",
+	doc = "the extensions in the game: id, title, version, addon, author, builtin (in WuxianKit itself), official "
+		.. "(无限工坊's own: the built-in ones and those it gives in an addon of their own), state (on, off, disabled in "
+		.. "the game's addon list, missing: cannot load), how many capabilities",
 	run = function() return ns.ExtensionList() end })
+
+------------------------------------------------------------------------------------------------------------------------
+-- the local extensions: what 无限工坊 says is added to this computer (an extension with a local part: a program,
+-- documents, apps it declares). The game knows nothing of them by itself, so 无限工坊 gives the whole list, at every
+-- kit.ready and when one is added, removed, turned on or off; kept in memory only (a reload: given again). The window
+-- lists them with the game's extensions (UI/Window.lua); nothing else reads them
+
+local LOCAL_MOST, LOCAL_IDS = 32, 16     -- extensions kept; ids kept in one's game and adds
+local roster = {}
+
+local function Short(v, most)
+	if type(v) ~= "string" then return nil end
+	v = ns.Cut((v:gsub("%c+", " ")), most)
+	return v ~= "" and v or nil
+end
+
+local function Ids(v)
+	local out = {}
+	for _, id in ipairs(type(v) == "table" and v or {}) do
+		if #out < LOCAL_IDS and type(id) == "string" and #id <= 40 and id:match("^[a-z][a-z0-9_]*$") then
+			out[#out + 1] = id
+		end
+	end
+	return out
+end
+
+-- the list as it is kept: { id, title, version, author, notes, where ("local", or "both": also in the game), on,
+-- game (the ids of its extensions in the game), adds (the ids of the apps it adds to) }, texts as given (escape
+-- them to draw them)
+function ns.LocalList() return roster end
+
+kit:Keep("local.set", { title = "kit.local.set", args = { extensions = "table" },
+	doc = "无限工坊 calls this, not an agent: the extensions added to this computer that have a local part, the whole "
+		.. "list each time (it takes the place of the one before; kept until the UI reloads). Each {id, title, version?, "
+		.. "author?, notes?, where (local, or both: in the game too), on (enabled), game? (the ids of its extensions in "
+		.. "the game), adds? (the ids of the apps it adds to)}; one that is not so is left out. The window lists them with "
+		.. "the game's extensions. Answers {count}",
+	run = function(_, a)
+		local out, seen = {}, {}
+		for _, v in ipairs(a.extensions) do
+			local id = type(v) == "table" and v.id
+			if #out < LOCAL_MOST and type(id) == "string" and #id <= 40 and id:match("^[a-z][a-z0-9_]*$")
+				and not seen[id] then
+				seen[id] = true
+				out[#out + 1] = { id = id, title = Short(v.title, 60) or id, version = Short(v.version, 24),
+					author = Short(v.author, 40), notes = Short(v.notes, 200),
+					where = v.where == "both" and "both" or "local", on = v.on ~= false,
+					game = Ids(v.game), adds = Ids(v.adds) }
+			end
+		end
+		roster = out
+		ns.Changed("local")
+		return { count = #out }
+	end })
 
 kit:See("capabilities", { title = L"LIST_CAPABILITIES",
 	doc = "every capability of the extensions that are on: id, kind (see, keep and point run at once; say and do make a "

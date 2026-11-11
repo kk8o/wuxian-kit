@@ -696,16 +696,31 @@ function ns.Installed()
 	return out
 end
 
+-- the extensions 无限工坊 gives that are not in this addon, each with the addon it comes in: they count as built in
+-- (official) where the extensions are grouped, as 无限工坊's App groups them (its KIT_EXTENSIONS), and only from
+-- that addon
+ns.OFFICIAL = { guides = "WuxianKit_Guides" }
+
+-- an addon's author as its .toc says (## Author), or nil
+local function Author(addon)
+	if type(addon) ~= "string" or addon == "" then return nil end
+	local ok, author = pcall(C_AddOns.GetAddOnMetadata, addon, "Author")
+	if ok and type(author) == "string" and author ~= "" then return author end
+end
+
 -- every extension as the window and kit.extensions show it: the core first, then as they were defined, then the
--- installed ones not loaded; state on / off / disabled (in the game's addon list) / missing (cannot load: reason)
+-- installed ones not loaded; state on / off / disabled (in the game's addon list) / missing (cannot load: reason);
+-- official: 无限工坊's own (in this addon: builtin, or one of ns.OFFICIAL from its addon); author: its addon's
 function ns.ExtensionList()
 	local out, seen = {}, {}
 	local installed = ns.Installed()
 	for _, id in ipairs(order) do
 		local ext = extensions[id]
-		out[#out + 1] = { id = id, title = ns.T(ext.title), version = ext.version, addon = ext.addon or (installed[id] or {}).addon,
-			builtin = ext.builtin or nil, core = id == "kit" or nil, state = ext.active and "on" or "off",
-			capabilities = #ext.capOrder }
+		local addon = ext.addon or (installed[id] or {}).addon
+		out[#out + 1] = { id = id, title = ns.T(ext.title), version = ext.version, addon = addon,
+			builtin = ext.builtin or nil, official = (ext.builtin or ns.OFFICIAL[id] == addon) and true or nil,
+			author = not ext.builtin and Author(addon) or nil, core = id == "kit" or nil,
+			state = ext.active and "on" or "off", capabilities = #ext.capOrder }
 		seen[id] = true
 	end
 	local rest = {}
@@ -713,6 +728,7 @@ function ns.ExtensionList()
 		if not seen[id] then
 			local state = not e.enabled and "disabled" or ((e.loadable or e.reason == "DEMAND_LOADED") and "off") or "missing"
 			rest[#rest + 1] = { id = id, title = e.title, version = e.version, addon = e.addon, state = state,
+				official = ns.OFFICIAL[id] == e.addon or nil, author = Author(e.addon),
 				reason = state == "missing" and e.reason or nil, capabilities = 0 }
 		end
 	end

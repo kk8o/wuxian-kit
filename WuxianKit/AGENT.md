@@ -124,8 +124,9 @@ Read them with the workshop's `events` tool, for example
 
 There are no listen tools. To hear the game over time (chat lines, game moments, quest steps, bus events) you run an
 **app**: a declaration of what it hears, what it sees, how its items are gathered into wakes, the commands the player
-can give it and how long it may go without hearing from you. The player sees each app as a card in the Apps (应用)
-group of the /wk window, with its state, a stop button, its controls and its options. `wk_kit_apps` lists them.
+can give it and how long it may go without hearing from you. The player sees each app as a card in the /wk window, on
+the page of the extension it belongs to (an app of your own that belongs to none has a row under Agent 应用, Agent
+apps), with its state, a stop button, its controls and its options. `wk_kit_apps` lists them.
 
 An agent drives every app, following the skill named in its `prompt`. The player hands you its start line (the card's
 交给 AI, Hand to AI): call `wk_docs` with `{"skill": "<prompt>"}` and follow the steps. An app without a prompt has no

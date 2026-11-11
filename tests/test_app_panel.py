@@ -27,7 +27,8 @@ function ns.AppList()
 	for _, id in ipairs(__order) do
 		local t = __apps[id]
 		if t then
-			out[#out + 1] = { id = id, title = t.decl.title, by = t.by or "addon", addon = t.addon, on = t.status.on or false,
+			out[#out + 1] = { id = id, title = t.decl.title, by = t.by or "addon", addon = t.addon,
+				extension = t.decl.extension, on = t.status.on or false,
 				ends = t.status.ends, present = t.status.present, prompt = t.decl.prompt,
 				start = t.decl.prompt and t.decl.prompt:match("^[%w_%-]+$") and ("Start " .. t.decl.prompt) or nil,
 				temp = t.temp or false, hidden = t.hidden, ["local"] = t["local"], waiting = t.status.waiting }
