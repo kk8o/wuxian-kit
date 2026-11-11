@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: MyGuildTools
+## Notes: the example app of ARCHITECTURE.md (section 10), as written there (the tests keep the document honest)
+## Version: 1.0.0
+## Dependencies: WuxianKit
+## X-WuxianKit-Extension: myguild
+## LoadOnDemand: 1
+
+MyGuildTools.lua
+Apps\Officers\App.lua

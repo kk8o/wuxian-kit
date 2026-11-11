@@ -5,7 +5,7 @@ the second its time ends); kit.app.forget and kit.app.describe; kit.app.declare 
 a local extension's apps; a declaration that no longer holds; present; said by the day; a character's runs untouched by
 another's; the manifest's revision."""
 from kitmock import py
-from test_apps import AppCase, FAKES
+from test_apps import AppCase, FAKES, SALON
 from test_facets import PROBE
 from test_sources import RADIO
 
@@ -254,7 +254,7 @@ class Forget(Case):
         self.assertEqual(self.app_events(s, "x")[-1], {"app": "x", "on": False, "why": "forgotten"})
         self.assertIn("X: stopped", s.chat())
         self.assertIsNone(self.row(s, "x"))
-        self.assertEqual([a["id"] for a in self.agent(s, "kit.apps")], ["guild"])
+        self.assertEqual([a["id"] for a in self.agent(s, "kit.apps")], [])
         self.assertNotIn("x", [a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]])
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.x.decl"))
         self.assertEqual(s.lua.eval(b"WuxianKitDB.apps.x.options.volume"), 7)
@@ -288,9 +288,10 @@ class Forget(Case):
 
     def test_forget_is_for_an_agent_s_apps(self):
         s = self.start()
-        self.assertIn("app guild is an addon's (WuxianKit): only an app an agent declared is forgotten",
-                      self.fails(s, "kit.app.forget", "{ app = 'guild' }"))
-        self.assertIsNotNone(self.row(s, "guild"))
+        s.lua.execute(SALON)
+        self.assertIn("app salon is an addon's (WxSalon): only an app an agent declared is forgotten",
+                      self.fails(s, "kit.app.forget", "{ app = 'salon' }"))
+        self.assertIsNotNone(self.row(s, "salon"))
         self.agent(s, "kit.app.open", "{ app = 't', lease = 0, temp = { hear = { 'bus:demo.*' } } }")
         self.agent(s, "kit.app.forget", "{ app = 't' }")                   # a temporary one: as a stop
         self.assertEqual(self.app_events(s, "t")[-1], {"app": "t", "on": False, "why": "forgotten"})
@@ -355,13 +356,14 @@ class Describe(Case):
         s.lua.execute(b"__fns['kit.app.open']({ app = 't', lease = 0, "
                       b"temp = __fns['kit.app.describe']({ app = 't' }).decl })")
         self.assertEqual([e["on"] for e in self.app_events(s, "t")], [True, True])   # the same: it goes on
-        d = self.agent(s, "kit.app.describe", "{ app = 'guild' }")
+        s.lua.execute(SALON)
+        d = self.agent(s, "kit.app.describe", "{ app = 'salon' }")
         self.assertEqual((d["by"], d["temp"], d["decl"]["title"], d["decl"]["addon"], d["decl"]["extension"]),
-                         ("addon", False, "公会聊天", "WuxianKit", "chat"))   # its texts in the language in force
+                         ("addon", False, "沙龙", "WxSalon", "chat"))         # its texts in the language in force
         self.assertEqual([k for k in d["decl"] if k in ("check", "enrich")], [])
         self.assertTrue(self.lua(s, "(function() local function data(v) if type(v) == 'function' then return false end "
                                     "if type(v) == 'table' then for _, x in pairs(v) do if not data(x) then return false "
-                                    "end end end return true end return data(__fns['kit.app.describe']({ app = 'guild' })) "
+                                    "end end end return true end return data(__fns['kit.app.describe']({ app = 'salon' })) "
                                     "end)()"))
 
 
@@ -404,7 +406,8 @@ class Whole(Case):
             at = found
         self.assertIn("at most 8 (kit.app.forget withdraws one)", cap["doc"])
         self.assertIn("default 600, 0 none, at least 60", cap["doc"])
-        described = self.agent(s, "kit.app.describe", "{ app = 'guild' }")["decl"]
+        s.lua.execute(SALON)
+        described = self.agent(s, "kit.app.describe", "{ app = 'salon' }")["decl"]
         self.assertEqual([k for k in described if k not in names + ["addon", "extension", "docs"]], [])
         self.assertIn("no argument color", self.fails(s, "kit.app.declare", "{ app = 'c', color = 'red' }"))
 
@@ -432,7 +435,7 @@ class Places(Case):
         self.assertNotIn("local", self.row(s, "l0"))
         self.assertEqual(self.agent(s, "kit.app.declare", local(16))["local"], {"id": "voice", "title": "Voice"})
         s2 = self.start(s.reload())                                        # all of them back
-        self.assertEqual(len(py(s2.ns.AppList())), 1 + 8 + 16)
+        self.assertEqual(len(py(s2.ns.AppList())), 8 + 16)
         self.assertEqual(s2.chat().count("declaration no longer holds"), 0)
 
     def test_the_revision_follows_the_label(self):

@@ -518,9 +518,9 @@ local function MinutesOf(v, what)
 	return math.max(1, math.min(MINUTES_MOST, v))
 end
 
--- an addon's docs: a folder in its addon's ("Apps/Guild"), as given with / and no slash at either end
+-- an addon's docs: a folder in its addon's ("Apps/Officers"), as given with / and no slash at either end
 local function Docs(v)
-	if type(v) ~= "string" then Fail("docs is a folder in the addon's, such as \"Apps/Guild\"") end
+	if type(v) ~= "string" then Fail("docs is a folder in the addon's, such as \"Apps/Officers\"") end
 	v = v:gsub("\\", "/"):gsub("^/+", ""):gsub("/+$", "")
 	return v ~= "" and v or nil
 end

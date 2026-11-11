@@ -5,7 +5,7 @@ registered yet (blocked until it is); a state is cut to FACET_MAX; the core's me
 import unittest
 
 from kitmock import py
-from test_apps import AppCase
+from test_apps import AppCase, SALON
 
 # an extension of the test's, with a facet whose on and off are counted and whose read gives __probe
 PROBE = b"""
@@ -85,7 +85,8 @@ class Declare(FacetCase):
         st = self.opens(s, "{ app = 'v', hear = { 'bus:demo.*' }, see = { 'me', 'group', 'me' } }")
         self.assertEqual((st["on"], st["see"]), (True, ["me", "group"]))
         self.assertEqual(next(a for a in self.agent(s, "kit.apps") if a["id"] == "v")["see"], ["me", "group"])
-        self.assertNotIn("see", next(a for a in self.agent(s, "kit.apps") if a["id"] == "guild"))   # none: not listed
+        s.lua.execute(SALON)
+        self.assertNotIn("see", next(a for a in self.agent(s, "kit.apps") if a["id"] == "salon"))   # none: not listed
         st = self.agent(s, "kit.app.declare", "{ app = 'p', see = { 'me' } }")
         self.assertEqual(st["see"], ["me"])
 
@@ -133,7 +134,8 @@ class Wakes(FacetCase):
         now = s.lua.eval(b"time()")
         self.assertEqual((r["app"], r["at"], r["state"]["probe"], r["state"]["me"]["level"]), ("v", now, {"n": 1}, 8))
         self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'v' }")["seen"], now)
-        self.assertEqual(self.agent(s, "kit.app.state", "{ app = 'guild' }")["state"], {})    # it sees nothing
+        s.lua.execute(SALON)
+        self.assertEqual(self.agent(s, "kit.app.state", "{ app = 'salon' }")["state"], {})    # it sees nothing
         self.assertIn("no app ghost", self.fails(s, "kit.app.state", "{ app = 'ghost' }"))
         s.lua.execute(b"__probe = nil")
         self.assertNotIn("probe", self.agent(s, "kit.app.state", "{ app = 'v' }")["state"])   # none now

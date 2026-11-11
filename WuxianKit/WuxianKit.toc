@@ -55,4 +55,3 @@ Extensions\Game\Today.lua
 Extensions\Codex\Codex.lua
 Extensions\Route\Route.lua
 Extensions\Route\Native.lua
-Apps\Guild\App.lua

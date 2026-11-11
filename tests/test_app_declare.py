@@ -5,6 +5,7 @@ one of the 8, gone once stopped or reloaded)."""
 import unittest
 
 from kitmock import Session, lupa, py
+from test_apps import SALON
 from test_standalone import bridge
 
 
@@ -58,8 +59,8 @@ class Declared(unittest.TestCase):
         self.assertEqual((ad["docs"], ad["temp"]), ("WxAd/Apps/Ad", False))
         self.assertNotIn("driver", ad)                                         # an addon's Lua: an unknown field, unread
         self.assertNotIn("launch", ad)
-        guild = next(a for a in py(s.lua.eval(b"WuxianKit:Manifest()"))["apps"] if a["id"] == "guild")
-        self.assertEqual(guild["docs"], "WuxianKit/Apps/Guild")
+        s.lua.execute(SALON)                                                   # no docs of its own: none listed
+        self.assertNotIn("docs", next(a for a in py(s.lua.eval(b"WuxianKit:Manifest()"))["apps"] if a["id"] == "salon"))
 
     def test_a_remembered_declaration_with_a_driver_is_dropped(self):
         s = self.start()
@@ -110,9 +111,10 @@ class Declared(unittest.TestCase):
 
     def test_declare_an_addons_app(self):
         s = self.start()
-        self.assertIn("app guild is an addon's (WuxianKit): its declaration is the addon's",   # an error, nothing ignored
-                      self.fails(s, "kit.app.declare", "{ app = 'guild', title = 'Mine', hear = { 'bus:x' } }"))
-        self.assertEqual(self.listed(s, "guild")["title"], "Guild chat")
+        s.lua.execute(SALON)
+        self.assertIn("app salon is an addon's (WxSalon): its declaration is the addon's",   # an error, nothing ignored
+                      self.fails(s, "kit.app.declare", "{ app = 'salon', title = 'Mine', hear = { 'bus:x' } }"))
+        self.assertEqual(self.listed(s, "salon")["title"], "Salon")
 
     def test_a_local_extensions_app(self):
         """local {id, title}: a label, listed with it; the player removes such an app as any other of an agent's"""
@@ -128,7 +130,8 @@ class Declared(unittest.TestCase):
             self.assertIs(s.ns.ForgetApp(app, True), True)
             self.assertIsNone(self.listed(s, app.decode()))
             self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps." + app))
-        self.assertIs(s.ns.ForgetApp(b"guild", True), False)           # an addon's stays
+        s.lua.execute(SALON)
+        self.assertIs(s.ns.ForgetApp(b"salon", True), False)           # an addon's stays
 
     def test_temporary_apps(self):
         s = self.start()
@@ -159,9 +162,10 @@ class Declared(unittest.TestCase):
         s2 = self.start(s.reload())                                            # a reload ends the others
         ids = [a["id"] for a in self.agent(s2, "kit.apps")]
         self.assertEqual([i for i in ids if i.startswith("t")], [])
-        self.assertIn("app guild is an addon's",                               # an addon's app is never temporary
-                      self.fails(s2, "kit.app.open", "{ app = 'guild', temp = {} }"))
-        self.assertIs(self.listed(s2, "guild")["temp"], False)
+        s2.lua.execute(SALON)
+        self.assertIn("app salon is an addon's",                               # an addon's app is never temporary
+                      self.fails(s2, "kit.app.open", "{ app = 'salon', temp = {} }"))
+        self.assertIs(self.listed(s2, "salon")["temp"], False)
 
     def test_a_blocked_temporary_app_is_not_kept(self):
         s = self.start()

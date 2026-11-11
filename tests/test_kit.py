@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from kitmock import KIT_DIR, Session, click, lupa, py, texts, type_into
+from test_apps import SALON
 
 
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
@@ -278,8 +279,8 @@ class Core(unittest.TestCase):
         self.assertIn("无限工坊 · 扩展框架", texts(w))
         items = w[b"items"]
         self.assertEqual([items[i][b"label"][b"text"].decode() for i in range(1, len(items) + 1) if items[i][b"shown"]],
-                         ["公会聊天", "核心", "调校", "聊天", "远程", "数据", "界面指引", "角色信息", "游戏动态",
-                          "图鉴", "任务指引"])                                      # the apps first, then the extensions
+                         ["核心", "调校", "聊天", "远程", "数据", "界面指引", "角色信息", "游戏动态",
+                          "图鉴", "任务指引"])                                      # the kit's own: extensions, no app
         proposal = s.g("WuxianKitProposal")
         self.assertEqual((proposal[b"run"][b"label"][b"text"].decode(), proposal[b"decline"][b"label"][b"text"].decode()),
                          ("执行", "拒绝"))
@@ -372,6 +373,33 @@ class Core(unittest.TestCase):
                 self.assertIn(line.strip(), doc)
         self.sessions = [s]
 
+    def test_the_architecture_app(self):
+        """ARCHITECTURE.md's example app (section 10), in the addon of an extension as another addon brings one: listed
+        with its addon, its extension and its docs folder (the skill is there), it runs, and stops with its extension"""
+        s = self.start(fixtures=("MyGuildTools",))
+        m = py(s.lua.eval(b"WuxianKit:Manifest()"))
+        ext = next(e for e in m["extensions"] if e["id"] == "myguild")
+        self.assertEqual((ext["title"], ext["addon"], ext["state"]), ("Guild tools", "MyGuildTools", "on"))
+        self.assertEqual([a["id"] for a in m["apps"]], ["officers"])              # the only app: the kit brings none
+        app = m["apps"][0]
+        self.assertEqual((app["title"], app["by"], app["addon"], app["extension"], app["docs"], app["prompt"]),
+                         ("官员频道", "addon", "MyGuildTools", "myguild", "MyGuildTools/Apps/Officers", "officer-chat"))
+        self.assertEqual((app["hear"], app["see"]), (["chat:officer", "game:guild"], ["me"]))
+        fixtures = Path(__file__).parent / "fixtures"
+        self.assertTrue((fixtures / app["docs"] / "skills" / f"{app['prompt']}.md").is_file())
+        self.assertTrue(self.call(s, "kit.app.open", "{ app = 'officers' }")["on"])
+        s.ns.Switch(b"myguild", False)                                             # its extension off: it stops
+        self.assertEqual(self.events(s, "kit.app")[-1], {"app": "officers", "on": False, "why": "extension"})
+        again = self.call(s, "kit.app.open", "{ app = 'officers' }")               # and cannot start: it says why
+        self.assertIs(again["on"], False)
+        self.assertIn("Guild tools", again["blocked"])
+        doc = (KIT_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")       # the document shows it as it runs
+        lua = (fixtures / "MyGuildTools" / "Apps" / "Officers" / "App.lua").read_text(encoding="utf-8")
+        for line in lua.splitlines()[1:]:
+            if line.strip():
+                self.assertIn(line.strip(), doc)
+        self.sessions = [s]
+
     def test_the_skills_name_real_tools(self):
         """every skill shipped with WuxianKit has its name, Chinese title, descriptions and arguments, and every wk_ tool
         or capability id it names is one the manifest has (or the App's own wk_docs, wk_wait, wk_propose)"""
@@ -382,9 +410,9 @@ class Core(unittest.TestCase):
         caps = {c["id"] for e in m["extensions"] for c in e.get("capabilities") or []}
         tools = {"wk_" + c.replace(".", "_") for c in caps} | {"wk_docs", "wk_wait", "wk_propose"}
         root = Path(__file__).resolve().parents[1] / "WuxianKit"
-        skills = (sorted(root.glob("skills/*.md")) + sorted(root.glob("Extensions/*/skills/*.md"))
-                  + sorted(root.glob("Apps/*/skills/*.md")))
-        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guide-tour", "tune-setup", "guild-chat"])
+        skills = sorted(root.glob("skills/*.md")) + sorted(root.glob("Extensions/*/skills/*.md"))
+        self.assertEqual([p.stem for p in skills], ["kit-app", "kit-extension", "guide-tour", "tune-setup"])
+        self.assertFalse((root / "Apps").exists())                       # the kit brings no app, so no app's skill
         for p in skills:
             text = p.read_text(encoding="utf-8")
             head = dict(re.findall(r"^([a-z-]+): (.+)$", text.split("---")[1], re.M))
@@ -442,12 +470,13 @@ class Core(unittest.TestCase):
         """off from the window: its capabilities refuse, the app it belongs to stops, it stays off after a reload; on
         again by a proposal (kit.extension.set, a Setting), which can be undone"""
         s = self.start()
-        self.assertTrue(self.call(s, "kit.app.open", "{ app = 'guild' }")["on"])   # the kit's own, of the chat extension
+        s.lua.execute(SALON)
+        self.assertTrue(self.call(s, "kit.app.open", "{ app = 'salon' }")["on"])   # an addon's, of the chat extension
         w = self.window(s, "chat")
         click(self.checks(w)["Enabled"])
         self.assertIn('Disabled: Chat', s.chat())
         self.assertIn("no capability chat.send", self.fails(s, "WuxianKit:Call('chat.send', { channel = 'guild', text = 'x' })"))
-        self.assertEqual(self.events(s, "kit.app")[-1], {"app": "guild", "on": False, "why": "extension"})
+        self.assertEqual(self.events(s, "kit.app")[-1], {"app": "salon", "on": False, "why": "extension"})
         exts = {e["id"]: e["state"] for e in self.call(s, "kit.extensions")}
         self.assertEqual(exts["chat"], "off")
         s2 = s.reload()
@@ -459,7 +488,8 @@ class Core(unittest.TestCase):
         self.assertEqual(p["steps"][0]["preview"], ["Chat: Disabled → Enabled"])
         click(self.run_button(s2))
         self.assertTrue(s2.lua.eval(b"WuxianKit:Capability('chat.send')"))
-        self.assertFalse(self.call(s2, "kit.app.status", "{ app = 'guild' }")["on"])   # its app did not come back on
+        s2.lua.execute(SALON)
+        self.assertFalse(self.call(s2, "kit.app.status", "{ app = 'salon' }")["on"])   # its app did not come back on
         self.call(s2, "kit.undo", f"{{ id = {p['id']} }}")
         click(self.run_button(s2))
         self.assertFalse(s2.lua.eval(b"WuxianKit:Capability('chat.send')"))

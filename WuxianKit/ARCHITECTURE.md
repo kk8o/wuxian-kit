@@ -55,9 +55,6 @@ WuxianKit/
   Extensions/Route/        系统扩展「任务指引」（第 13 节）
     Route.lua              接口 Route:Provide、来源 route、状态面 route、选择提供者
     Native.lua             内置提供者「游戏自带」
-  Apps/<名称>/              成品：一个应用一个文件夹
-  Apps/Guild/App.lua                 框架自带的应用 guild（公会聊天，第 10 节）
-  Apps/Guild/skills/guild-chat.md    它的技能
   skills/                  开发说明：kit-app.md（写应用）、kit-extension.md（写扩展）
 ```
 
@@ -70,7 +67,7 @@ WuxianKit_Guides/          自定义扩展「任务指引适配」（guides，�
   RestedXP.lua             RestedXP 的适配器
 ```
 
-- 载入顺序（.toc）：核心（最后是 `Builtins.lua`、`Apps/`），然后各扩展，最后各应用（`Apps\Guild\App.lua`）。应用载入时，它要听的来源、要看的状态面已经登记。
+- 载入顺序（.toc）：核心（最后是 `Builtins.lua`、`Apps/`），然后各扩展。框架不带应用（成品）：应用由带来扩展的插件声明（第 10 节），那些插件在框架之后载入，应用要听的来源、要看的状态面那时已经登记。
 - 说明文件夹（docs）：扩展的和应用的是同一个约定，一份可选的 `AGENT.md`（给 Agent 的说明）加上可选的 `skills/*.md`（技能，第 7 节）。
 
 ## 3. 扩展
@@ -90,7 +87,7 @@ demo:Scope("settings", L"SCOPE")
 - `id`：小写字母、数字和下划线。能力的 id 是 `<扩展>.<名称>`，事件主题是 `<扩展>.<主题>`。
 - `info` 的字段：`title`、`version`、`notes`、`addon`（所属插件的文件夹名，别的插件的扩展写它）、`defaults`（存储的默认值）、`setup(self)`（启用时）、`teardown(self)`（停用时）、`docs`（`AGENT.md` 与 `skills/` 所在的子文件夹，相对于插件文件夹；不写就是插件文件夹本身）、`prompt`（`skills/` 里一个技能的 `name`，见下）。
 - 多个文件组成的扩展，其他文件用 `Kit:Extension("demo")`（不带 `info`）取回同一个对象。
-- 扩展不声明应用，也不引用应用。要交给 AI 运行的，另写一个应用（第 10 节）。
+- 扩展的能力、来源、状态面不引用应用。要交给 AI 运行的会话写成应用（第 10 节）：由带来这个扩展的插件声明，`extension` 写这个扩展，应用随扩展发布，扩展停用时应用停止。
 
 ### 生命周期
 
@@ -392,7 +389,7 @@ demo:Facet("demo", {
 3. 在插件文件夹放 `AGENT.md`，需要时加 `skills/`。
 4. 检查：用无限工坊的 `check` 检查插件；进游戏后 `/wk` 里应出现它的一页（不装无限工坊时，也可以用 `/run` 调 `WuxianKit:Capabilities()` 看能力是否齐全）；装了无限工坊时，Agent 用 `wk_docs` 查看它的工具、来源、状态面和说明，用临时应用试听它的来源、试看它的状态面。
 5. 发布：可以申请收录进无限工坊网站的扩展目录，玩家就能在 App 的「扩展」页安装。
-6. 插件还要带应用的（交给 AI 的会话），在插件里另建一个文件夹放应用的声明和技能（第 10 节「插件声明」）；扩展的代码不引用它。
+6. 插件还要带应用的（交给 AI 的会话），在插件里另建一个文件夹放应用的声明和技能（第 10 节「插件声明」），声明的 `extension` 写自己的扩展；扩展的代码不引用它。只有一个应用的小扩展也可以把声明写在扩展的文件里、技能放进扩展的 `skills/`（不写 `docs`）。
 7. 要把第三方插件接到框架定好的接口上（如任务指引），写一个自定义扩展做适配器（第 13 节「适配器」）：核心和系统扩展不认识第三方插件。
 
 ## 9. 公共接口与约定
@@ -493,13 +490,13 @@ WuxianKit:App("officers", {
 | `minutes` | 最长运行多久（默认 120，最多 720）。`kit.app.open` 的 `minutes`、`lease` 只管那一次运行，优先于声明的 |
 | `options` | 玩家给应用设的选项，`name → { kind, title, default, hint, choices, min, max, step, unit, order }`，种类同扩展选项；按 `order`（再按名字）排，核心的两个在最前；Agent 给的最多 8 个 |
 | `prompt` | 技能名：有了它就有启动语 `start`（见下），卡片上有「交给 AI」 |
-| `docs` | 只限插件声明：应用的说明文件夹，相对所属插件的文件夹（公会聊天：`"Apps/Guild"`），里面是可选的 `AGENT.md` 与 `skills/`；清单里同扩展的 `docs` 写成 `Interface\AddOns` 下的路径（`"WuxianKit/Apps/Guild"`） |
+| `docs` | 只限插件声明：应用的说明文件夹，相对所属插件的文件夹（如 `"Apps/Officers"`），里面是可选的 `AGENT.md` 与 `skills/`；清单里同扩展的 `docs` 写成 `Interface\AddOns` 下的路径（`"MyGuildTools/Apps/Officers"`）。不写时，技能放在所属扩展的 `skills/` 里 |
 | `temp` | 不是声明的字段，是 `kit.app.open` 的参数：一张表，临时应用的整份声明（见「临时应用」） |
 | `addon`、`extension` | 所属插件、所属扩展（Lua 声明）：所属扩展停用时应用停止、不能开始 |
 | `check` | （Lua）开始前的前提，返回原因就不开始，卡片上显示原因 |
 | `enrich` | （Lua）条目发出前就地补字段 |
 
-框架自己带一个应用 `guild`（公会聊天，`Apps/Guild/App.lua`）：所属插件 WuxianKit，`docs = "Apps/Guild"`，技能 `Apps/Guild/skills/guild-chat.md`（提示词 `guild-chat`）；听 `chat:guild` 和 `game:guild`，`pace = true`，指令 `mute`、`unmute`、`stop`，`say = true`，租期 600 秒、最长 120 分钟，选项 `topics`「想多聊的话题」与 `avoid`「不聊的话题」（`order` 1、2），`check`：没有公会就不开始。没有 `enrich`。聊天或游戏动态停用时不能开始。游戏事实由 Agent 自己用无限图鉴的 MCP（wuxianwow.com/mcp）查。装了框架和无限工坊的玩家都有它；id 沿用无限公会助手 0.3 的 `guild`，玩家存在 `WuxianKitDB.apps.guild` 的选项接着用。无限公会助手不再声明它；旧版（0.3.0）还声明时，它后载入，它的声明替换框架的（同 id 后声明的为准，不报错）。
+框架自己不带应用：每个应用都由一个扩展带来（别的插件的扩展，或无限工坊的本机扩展），或由 Agent 声明。公会聊天是独立的扩展 `guildchat`（插件 `WuxianGuildChat`，不随框架发布），它声明应用 `guild`：id 沿用下来，玩家存在 `WuxianKitDB.apps.guild` 的选项接着用。
 
 ### 唤醒
 
@@ -878,7 +875,7 @@ ext:On("ADDON_LOADED", function(self) if self.active then Offer() end end)
 | 来源 `ext:Source`；摘要挪到 `Core/Digest.lua` | 扩展的监听 `ext:Feed`：聊天、游戏动态各一套开始、停止、状态、回看的工具，外加监听开停的事件 |
 | 临时应用（`kit.app.open` 的 `temp`） | 调试时开聊天、游戏动态的监听 |
 | `kit.app.declare`（无限工坊替本机扩展的应用声明）、卡片「交给 AI」 | 陪玩用 `start.ps1`、`stop.ps1` 自己启停进程，自带大脑 |
-| 应用的 `docs`；公会聊天搬到 `Apps/Guild/` | 公会聊天的声明和技能放在聊天扩展里 |
+| 应用的 `docs`；公会聊天搬出框架，成为独立的扩展 `guildchat`（插件 `WuxianGuildChat`），框架不带应用 | 公会聊天的声明和技能放在聊天扩展里 |
 
 分层的第二步（同在 0.6）：**事实归核心，说法归应用。**陪玩接上分层之后，「现在怎样」仍由应用自己推算：从游戏动态的条目里数今天的击杀、从条目上的 `me` 取玩家、解析 RestedXP 步骤的原文找「还差几只」。这些是事实，第二个应用也要；该说什么才是应用自己的事。于是状态面进核心，任务指引成为接口，第三方插件移出核心。
 

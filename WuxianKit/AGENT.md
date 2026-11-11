@@ -134,8 +134,8 @@ button on its card; the agent that declared it opens it (as a temporary app whil
 the game while it is on and withdraws them when it is turned off or removed (the options the player set stay). You
 drive them as any other, using that extension's tools for what runs on this computer.
 
-The kit brings one app of its own: `guild` (公会聊天), guild chat with the player's character; its skill is
-`guild-chat`.
+The kit brings no app of its own: every app comes with an extension (another addon's, or a local one of 无限工坊)
+or is one an agent declared.
 
 ### Sources
 

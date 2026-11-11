@@ -31,7 +31,7 @@
 
 核心自己登记状态面 `me`（玩家的名字、称呼、等级、职业、区域、战斗、经验等）。
 
-自带应用：公会聊天（`guild`），用玩家自己的角色参与公会聊天，由 AI 对话照技能 `guild-chat` 驱动。
+框架不带应用。应用（交给 AI 的会话）由各扩展带来，例如独立发布的扩展「公会聊天」。
 
 自定义扩展「任务指引适配」（`WuxianKit_Guides`，单独的插件）：把 RestedXP 接到任务指引上。装了 RestedXP 的玩家另装它。
 
@@ -60,7 +60,6 @@ WuxianKit/                 插件本身（Interface\AddOns\WuxianKit）
     Builtins.lua           核心自己的扩展 kit：扩展开关、提案查询、撤销、清单；来源 bus、状态面 me
     Apps/                  应用运行时（Decl、Deliver、Run、Api 四个文件）：kit.app.*、WuxianKit:App
   Extensions/<名称>/        内置扩展（零件）：代码、AGENT.md、skills/；Route/ 是任务指引
-  Apps/<名称>/              自带应用（成品）：Guild/（公会聊天：App.lua、skills/guild-chat.md）
 WuxianKit_Guides/          自定义扩展「任务指引适配」（单独的插件）：Guides.lua、RestedXP.lua
 tests/                     在 Lua 5.1（lupa）模拟的客户端里测试
 tools/install.py           装进游戏
@@ -105,7 +104,7 @@ WuxianKit is an extension framework for World of Warcraft: Wuxian addons that wo
 
 WuxianKit is optional: Wuxian Workshop does not install it.
 
-Built-in extensions: Tune (the game's settings, found by their names in the Settings panel; key bindings, macros, Edit Mode layouts, talent loadouts, equipment sets, bag sorting, addons on or off, profiles), Chat (sending, and the source `chat`), Game events (the source `game`, the facet `today`), Quest guide (the source and facet `route`: the step the player is on, from the game's own quest tracking or from a guide addon through an adapter), Character info (and the facet `group`), Codex, UI guide, Data, and Remote (tune proposals between players; accepting them is off by default). The core registers the facet `me`. Built-in app: Guild chat (`guild`), driven by an AI conversation that follows the skill `guild-chat`. A custom extension in its own addon, Quest guide adapters (`WuxianKit_Guides`), plugs RestedXP into the quest guide.
+Built-in extensions: Tune (the game's settings, found by their names in the Settings panel; key bindings, macros, Edit Mode layouts, talent loadouts, equipment sets, bag sorting, addons on or off, profiles), Chat (sending, and the source `chat`), Game events (the source `game`, the facet `today`), Quest guide (the source and facet `route`: the step the player is on, from the game's own quest tracking or from a guide addon through an adapter), Character info (and the facet `group`), Codex, UI guide, Data, and Remote (tune proposals between players; accepting them is off by default). The core registers the facet `me`. The kit brings no app of its own: apps (sessions handed to an AI) come with extensions, such as the separately released Guild chat. A custom extension in its own addon, Quest guide adapters (`WuxianKit_Guides`), plugs RestedXP into the quest guide.
 
 Install it from the Extensions page of the Wuxian Workshop app, or unzip the download from the [extension catalog](https://wuxianwow.com/workshop/extensions) into `Interface\AddOns` and restart the game. `/wk` opens its window.
 

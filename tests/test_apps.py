@@ -43,6 +43,17 @@ WuxianKit:On('*', function(topic, data) __events[#__events + 1] = { topic = topi
 """
 
 
+# An app an addon declares, as the addon of an extension brings one (WuxianKit has none of its own): its title in both
+# languages, a prompt, an owning extension, a function (check) a description never carries.
+SALON = """
+do
+	local L = WuxianKit:Words { zhCN = { T = "沙龙" }, enUS = { T = "Salon" } }
+	WuxianKit:App('salon', { title = L"T", prompt = 'salon-chat', addon = 'WxSalon', extension = 'chat',
+		hear = { 'chat:guild', 'game:guild' }, check = function() end })
+end
+""".encode()
+
+
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
 class AppCase(unittest.TestCase):
     def start(self, s=None, guid=None, **kw):
@@ -124,8 +135,8 @@ class Basics(AppCase):
         st = self.agent(s, "kit.app.status", "{ app = 'notes' }")
         self.assertEqual((st["heard"], st["wakes"], st["next"]), (2, 2, first + 1))
         apps = self.agent(s, "kit.apps")
-        self.assertEqual([a["id"] for a in apps], ["guild", "notes"])     # the kit's own guild chat first
-        self.assertEqual(apps[1], {"id": "notes", "title": "Notes", "by": "agent", "on": True, "ends": now + 7200,
+        self.assertEqual([a["id"] for a in apps], ["notes"])              # the kit brings no app of its own
+        self.assertEqual(apps[0], {"id": "notes", "title": "Notes", "by": "agent", "on": True, "ends": now + 7200,
                                    "present": True, "temp": False})
 
         st = self.agent(s, "kit.app.stop", "{ app = 'notes' }")
@@ -236,7 +247,7 @@ class Basics(AppCase):
         ):
             self.assertIn(why, self.fails(s, "kit.app.open", args), args)
         self.assertIn("no app ghost (kit.apps lists them)", self.fails(s, "kit.app.status", "{ app = 'ghost' }"))
-        self.assertEqual([a["id"] for a in self.agent(s, "kit.apps")], ["guild"])   # nothing kept of a refused one
+        self.assertEqual([a["id"] for a in self.agent(s, "kit.apps")], [])   # nothing kept of a refused one
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.a"))
 
         st = self.opens(s, "{ app = 'a', hear = { 'game:quest', 'game:quest.turnin', 'chat:*', "
@@ -291,7 +302,7 @@ __app = WuxianKit:App('club', { title = 'Club chat', addon = 'WxClub', prompt = 
         st = self.agent(s, "kit.app.open", "{ app = 'club', lease = 120 }")
         self.assertEqual((st["title"], st["by"], st["hear"], st["lease"]),
                          ("Club chat", "addon", ["chat:guild", "game:guild"], 120))
-        self.assertEqual(self.agent(s, "kit.apps")[1], {"id": "club", "title": "Club chat", "by": "addon",
+        self.assertEqual(self.agent(s, "kit.apps")[0], {"id": "club", "title": "Club chat", "by": "addon",
                                                         "addon": "WxClub", "on": True, "ends": st["ends"],
                                                         "present": True, "prompt": "club-chat",
                                                         "start": START["en"].format("Club chat", "club-chat"),
@@ -580,11 +591,13 @@ class Manifest(AppCase):
     def test_apps_in_the_manifest(self):
         s = self.start()
         m = self.lua(s, "WuxianKit:Manifest()")
-        guild = {"id": "guild", "title": "Guild chat", "by": "addon", "addon": "WuxianKit", "topic": "app.guild",
-                 "hear": ["chat:guild", "game:guild"], "see": {}, "prompt": "guild-chat",
-                 "start": START["en"].format("Guild chat", "guild-chat"), "extension": "chat",
-                 "docs": "WuxianKit/Apps/Guild", "temp": False}
-        self.assertEqual(m["apps"], [guild])                               # the kit's own
+        self.assertEqual(m["apps"], {})                                    # the kit brings none of its own
+        s.lua.execute(SALON)                                               # the app an extension's addon brings
+        salon = {"id": "salon", "title": "Salon", "by": "addon", "addon": "WxSalon", "topic": "app.salon",
+                 "hear": ["chat:guild", "game:guild"], "see": {}, "prompt": "salon-chat",
+                 "start": START["en"].format("Salon", "salon-chat"), "extension": "chat", "temp": False}
+        m = self.lua(s, "WuxianKit:Manifest()")
+        self.assertEqual(m["apps"], [salon])
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
                          {"app": "string", "on": "boolean", "ends": "number?", "why": "string?", "waiting": "string?"})
@@ -598,7 +611,7 @@ class Manifest(AppCase):
         self.opens(s, "{ app = 'mm', title = 'MM', hear = { 'bus:demo.*' }, prompt = 'mm-skill' }")
         s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', hear = { 'game:quest' } })")
         m = self.lua(s, "WuxianKit:Manifest()")
-        self.assertEqual(m["apps"], [guild, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
+        self.assertEqual(m["apps"], [salon, {"id": "mm", "title": "MM", "by": "agent", "topic": "app.mm", "hear": ["bus:demo.*"],
                                       "see": {}, "prompt": "mm-skill", "start": START["en"].format("MM", "mm-skill"),
                                       "temp": False},
                                      {"id": "ad", "title": "AD", "by": "addon", "addon": "WxAd", "topic": "app.ad",
@@ -608,7 +621,7 @@ class Manifest(AppCase):
         self.assertEqual(self.events(s, "kit.changed")[-1]["revision"], m["revision"])
         self.assertIs(s.ns.ForgetApp(b"ad", True), False)                 # an addon's stays
         self.assertIs(s.ns.ForgetApp(b"mm", True), True)                  # the player removes it: all of it
-        self.assertEqual([a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]], ["guild", "ad"])
+        self.assertEqual([a["id"] for a in self.lua(s, "WuxianKit:Manifest()")["apps"]], ["salon", "ad"])
         self.assertIsNone(s.lua.eval(b"WuxianKitDB.apps.mm"))
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "mm", "on": False, "why": "player"})
 
@@ -617,6 +630,7 @@ class Manifest(AppCase):
         the language in force, its title as it is (an agent's raw: it is data); none without a prompt; a change of
         language changes it and the revision"""
         s = self.start()
+        s.lua.execute(SALON)
         self.opens(s, "{ app = 'tt', title = 'Tea \"time\" |cff00ff00ok|r', hear = { 'bus:t.*' }, "
                                       "prompt = 'tea-time' }")
         self.opens(s, "{ app = 'np', title = 'No prompt', hear = { 'bus:n.*' } }")
@@ -635,9 +649,9 @@ class Manifest(AppCase):
         s.ns.SetLanguage(b"zhCN")
         zh = {a["id"]: a for a in self.agent(s, "kit.apps")}
         self.assertEqual(zh["tt"]["start"], START["zh"].format('Tea "time" |cff00ff00ok|r', "tea-time"))
-        self.assertEqual(zh["guild"]["start"], START["zh"].format("公会聊天", "guild-chat"))
+        self.assertEqual(zh["salon"]["start"], START["zh"].format("沙龙", "salon-chat"))   # an addon's: its words
         m2 = self.lua(s, "WuxianKit:Manifest()")
-        self.assertEqual({a["id"]: a for a in m2["apps"]}["guild"]["start"], START["zh"].format("公会聊天", "guild-chat"))
+        self.assertEqual({a["id"]: a for a in m2["apps"]}["salon"]["start"], START["zh"].format("沙龙", "salon-chat"))
         self.assertNotEqual(m2["revision"], m["revision"])
 
 

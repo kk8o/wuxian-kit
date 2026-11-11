@@ -26,7 +26,7 @@ local function StartLine(app)
 	return W.START:format(ns.Text(Title(app)), prompt)
 end
 
--- an addon's app's docs as the manifest gives a folder: under Interface\AddOns ("WuxianKit/Apps/Guild"), or nil
+-- an addon's app's docs as the manifest gives a folder: under Interface\AddOns ("MyGuildTools/Apps/Officers"), or nil
 local function DocsPath(app)
 	local docs, addon = app.decl.docs, app.decl.addon
 	if docs and addon then return addon .. "/" .. docs end

@@ -53,16 +53,19 @@ Make the AI app {{app}}. What it should do: {{goal}}
      `App.lua`:
 
          WuxianKit:App("<id>", { title = "...", prompt = "<skill>", docs = "Apps/<Name>",
-           addon = "<Addon>", hear = { ... }, pace = true, controls = { "mute", "unmute", "stop" }, ... })
+           addon = "<Addon>", extension = "<extension>", hear = { ... }, pace = true,
+           controls = { "mute", "unmute", "stop" }, ... })
 
-     `docs` is the folder, relative to the addon's. Lua may add `check` (why it cannot start now), `enrich(item)`
-     and `urgent(item)`; `app:Push(data)` sends items only the addon sees.
+     `docs` is the folder, relative to the addon's. `extension` is the extension the addon brings: the app is
+     released with it, and stops and cannot start while it is off. Lua may add `check` (why it cannot start now),
+     `enrich(item)` and `urgent(item)`; `app:Push(data)` sends items only the addon sees.
    - The skill, `Apps/<Name>/skills/<skill>.md`: front matter `name` (= `prompt`), `title`, `title-zh`,
      `description`, `description-zh`, `arguments`, and `needs: shell` (it waits in the background). The steps an AI
      follows in a conversation of its own: check what the app needs, open it with `wk_kit_app_open` and
      `{"app": "<id>", "minutes": ...}`, then the wait loop (Waiting for wakes, below), how to answer each kind of
-     item, how to stop. Write only the wake fields the skill uses and point to this skill for the rest. The kit's own
-     app `guild` is a full example: `wk_docs` with `{"skill": "guild-chat"}`.
+     item, how to stop. Write only the wake fields the skill uses and point to this skill for the rest. The kit
+     brings no app of its own; where the player has the extension 公会聊天 (`guildchat`), its app `guild` is a full
+     example: `wk_docs` with `{"skill": "guild-chat"}`.
    - The `.toc`: `App.lua` after the addon's other files; `## Dependencies: WuxianKit`, or `## OptionalDeps: WuxianKit`
      with the declaration inside `if WuxianKit then ... end`.
    - The workshop's `check` on the addon until it reports no errors. A new file needs a full restart of the game.

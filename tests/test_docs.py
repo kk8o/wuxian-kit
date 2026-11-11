@@ -37,7 +37,7 @@ class Docs(unittest.TestCase):
     def test_they_are_there_and_lf(self):
         names = {p.relative_to(KIT).as_posix() for p in docs()}
         for name in ("AGENT.md", "ARCHITECTURE.md", "skills/kit-app.md", "skills/kit-extension.md",
-                     "Apps/Guild/skills/guild-chat.md", "Extensions/Chat/AGENT.md", "Extensions/Game/AGENT.md",
+                     "Extensions/Chat/AGENT.md", "Extensions/Game/AGENT.md",
                      "Extensions/Route/AGENT.md", "Extensions/Sense/AGENT.md"):
             self.assertIn(name, names)
         for p in docs():
@@ -66,7 +66,7 @@ class Docs(unittest.TestCase):
         self.assertIn("never in quiet hours", wake)             # full does not wake there
         self.assertIn("`ref`", wake)                            # a source's own number is not the id
         # the others name what they use and point here; none writes the whole shape again
-        for parts in (("AGENT.md",), ("Apps", "Guild", "skills", "guild-chat.md")):
+        for parts in (("AGENT.md",),):
             other = text(*parts)
             self.assertNotIn(shape, other, parts[-1])
             self.assertRegex(other, r"`kit-app`|\"skill\": \"kit-app\"", parts[-1])
@@ -84,7 +84,7 @@ class Docs(unittest.TestCase):
         end = waiting[waiting.index("`END <why>`"):]
         self.assertEqual(tuple(re.findall(r"`([a-z]+)`\s+\(", end)), WHYS)       # every why, each said once
         self.assertLess(waiting.index("wk_kit_app_open"), waiting.index("in the background"))   # open, then wait
-        for parts in (("AGENT.md",), ("Apps", "Guild", "skills", "guild-chat.md")):
+        for parts in (("AGENT.md",),):
             other = text(*parts)
             self.assertRegex(other, r"wuxian listen \S+ (\[)?--once", parts[-1])
             self.assertIn("--since", other, parts[-1])
