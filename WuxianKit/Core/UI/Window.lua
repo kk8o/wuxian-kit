@@ -66,7 +66,7 @@ local A = Kit:Words {
 }
 UI.AppWords = A
 
-local W, H, LEFT = 670, 470, 206
+local W, H, LEFT = 670, 520, 206
 local TITLE_W = W - LEFT - 210            -- a page's title: room after it for its two capsules
 local BODY, ROW = H - 66, 19              -- the page's height; a line's (Put: 14 and 5 between)
 local HISTORY_SHOWN = 8
@@ -624,6 +624,22 @@ end
 local function Frame()
 	if f then return f end
 	f = S.Panel("WuxianKitWindow", W, H, "window")
+	-- a scrolled part's thumb: a thin bar at its right, there only while it has more than it shows
+	local function Thumb(scroll, dx)
+		local t = f:CreateTexture(nil, "OVERLAY")
+		S.Fill(t, C.goldD, 0.8)
+		t:Hide()
+		function scroll.place()
+			local range, top = scroll.range or 0, scroll:GetVerticalScroll()
+			t:SetShown(range > 0)
+			if range <= 0 then return end
+			local h = math.max(24, math.floor(BODY * BODY / (BODY + range)))
+			t:ClearAllPoints()
+			t:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", dx, -math.floor((BODY - h) * math.min(1, top / range) + 0.5))
+			t:SetSize(2, h)
+		end
+		scroll.thumb = t
+	end
 	tinsert(UISpecialFrames, "WuxianKitWindow")             -- Esc closes it
 	f.title = S.Text(f, C.gold)
 	f.title:SetPoint("TOPLEFT", 14, -12)
@@ -639,7 +655,9 @@ local function Frame()
 	f.side:EnableMouseWheel(true)
 	f.side:SetScript("OnMouseWheel", function(self, delta)
 		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScroll() - delta * 2 * 24, f.sideRange or 0)))
+		self.place()
 	end)
+	Thumb(f.side, -1)
 	f.list = CreateFrame("Frame", nil, f.side)
 	f.list:SetSize(LEFT - 10, BODY)
 	f.side:SetScrollChild(f.list)
@@ -650,7 +668,9 @@ local function Frame()
 	f.scroll:EnableMouseWheel(true)
 	f.scroll:SetScript("OnMouseWheel", function(self, delta)
 		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScroll() - delta * 3 * ROW, f.range or 0)))
+		self.place()
 	end)
+	Thumb(f.scroll, 7)
 	f.body = CreateFrame("Frame", nil, f.scroll)
 	f.body:SetSize(W - LEFT - 28, BODY)
 	f.width = W - LEFT - 28
@@ -756,12 +776,16 @@ function UI.DrawWindow()
 	f.sideRange = math.max(0, y - 8 - BODY)                -- how far the list scrolls
 	f.list:SetHeight(BODY + f.sideRange)
 	if f.side:GetVerticalScroll() > f.sideRange then f.side:SetVerticalScroll(f.sideRange) end
+	f.side.range = f.sideRange
+	f.side.place()
 	Begin(f)
 	if current.loose then AppPage(current) else Page(current) end
 	f.range = math.max(0, f.y + 8 - BODY)                  -- how far the page scrolls
 	f.body:SetHeight(BODY + f.range)
 	if f.scroll:GetVerticalScroll() > f.range then f.scroll:SetVerticalScroll(f.range) end
 	f.more:SetShown(f.range > 0)
+	f.scroll.range = f.range
+	f.scroll.place()
 	Finish(f)
 end
 

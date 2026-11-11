@@ -116,6 +116,40 @@ class LocalRows(Rows):
         w = self.window(s)
         self.assertEqual(len(self.titles(w)), len([t for t in self.titles(w) if not t.startswith("t")]) + 32)
 
+    def test_the_list_scrolls_with_a_thumb(self):
+        """a list longer than the window: cut at its edge, the wheel scrolls it, and a thin bar at its right says so
+        and where it is; a list that fits has none"""
+        s = start(self)
+        w = self.window(s)
+        side = w[b"side"]
+        thumb = side[b"thumb"]
+        self.assertFalse(thumb[b"shown"], "the list fits")
+        self.call(s, "kit.local.set", """(function()
+			local list = {}
+			for i = 1, 16 do list[i] = { id = 'x' .. i, title = 'X' .. i, where = 'local' } end
+			return { extensions = list }
+		end)()""")
+        s.run(0.1)
+        w = self.window(s)
+        more, body = w[b"sideRange"], side[b"h"]
+        self.assertGreater(more, 0)
+        self.assertTrue(thumb[b"shown"])
+        self.assertEqual(thumb[b"point"][5], 0, "at the start: the bar at the top")
+        self.assertLess(thumb[b"h"], body)
+        wheel = side[b"scripts"][b"OnMouseWheel"]
+        for _ in range(40):
+            wheel(side, -1)
+        self.assertEqual(side[b"scrollTop"], more)
+        self.assertEqual(-thumb[b"point"][5] + thumb[b"h"], body, "at the end: the bar at the bottom")
+        wheel(side, 1)
+        self.assertLess(side[b"scrollTop"], more)
+        self.assertLess(-thumb[b"point"][5] + thumb[b"h"], body)
+        self.call(s, "kit.local.set", "{ extensions = {} }")
+        s.run(0.1)
+        w = self.window(s)
+        self.assertFalse(thumb[b"shown"])
+        self.assertEqual(side[b"scrollTop"], 0)
+
     def test_an_app_names_its_local_extension(self):
         """an app a local extension declared (无限工坊's label on it) sits on that extension's row of the list
         无限工坊 gave, not on one of its own"""
