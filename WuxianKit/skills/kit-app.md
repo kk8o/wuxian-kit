@@ -99,7 +99,8 @@ Make the AI app {{app}}. What it should do: {{goal}}
    wakes, or read `wk_kit_app_recent` with `{"app": "<id>", "since": 0}` after making the thing happen in the game;
    then `wk_kit_app_stop`. A temporary app that proved useful becomes an addon's declaration or a local extension's
    app. (`hidden: true`, only in a `temp` declaration, is for a program's plumbing: no card and no chat line, but
-   the player sees it under 后台监听 on the Apps page and can stop it there. Not for an app the player uses.)
+   the player sees it under 后台监听 at the end of the /wk window's 扩展框架 page and can stop it there. Not for an
+   app the player uses.)
 7. Running an app in a conversation (through its skill, or a temporary app):
    - Open it first: `wk_kit_app_open` answers the app's status (`on`, `next`, `ends`, `lease`, ...). If `on` is
      false, `blocked` says why (an extension off, a source or facet it needs not registered, its check): it did not

@@ -895,7 +895,8 @@ end
 local FULL = {
 	temp = "at most %d temporary apps run at once: stop one (kit.app.stop) or reuse its id",
 	agent = "at most %d apps an agent declared are kept: declare one again under its id (kit.apps lists them), "
-		.. "withdraw one (kit.app.forget) or ask the player to remove one on the /wk window's Apps page",
+		.. "withdraw one (kit.app.forget) or ask the player to remove one in the /wk window (each has a page under "
+		.. "Agent 应用, with 移除)",
 	["local"] = "at most %d apps of local extensions are kept: withdraw one (kit.app.forget)",
 }
 

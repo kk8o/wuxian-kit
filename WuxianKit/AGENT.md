@@ -220,8 +220,9 @@ The declaration's fields:
   无限工坊's MCP tools. A skill ships in an addon's docs folder, so an app you mean to keep with its skill is best
   declared by an addon (the skill `kit-app`).
 - `local: {id, title}`: set by 无限工坊 for the apps a local extension brings (never by you). It is only a label: the
-  card says which local extension the app comes from, and has 移除 like any other. These apps do not count against
-  your 8 (there may be 16 of them).
+  app's card is on that extension's page in the /wk window, with no 移除 (the player removes the extension in
+  无限工坊's App, and its apps go with it); only when 无限工坊 does not list that extension does the card have 移除.
+  These apps do not count against your 8 (there may be 16 of them).
 
 When it cannot start, `wk_kit_app_open` does not fail; it answers the status:
 
@@ -245,8 +246,8 @@ it with `wk_kit_app_stop` when you are done.
 
 `hidden: true` is taken only inside `temp` (a remembered declaration with it is an error): plumbing of a program,
 such as 无限工坊's reactions, not an app for the player. It has no card and no chat line when it starts or stops. It
-is not secret: while it runs, the Apps page lists it under 后台监听 (Listening in the background) with a stop button,
-and `wk_kit_apps` lists it.
+is not secret: while it runs, the 扩展框架 page of the /wk window lists it at its end, under 后台监听 (Background
+listeners), with a stop button, and `wk_kit_apps` lists it.
 
 ### Wakes and items
 

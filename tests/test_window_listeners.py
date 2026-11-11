@@ -5,7 +5,7 @@ marked on its row, and an app a local extension brought on that extension's row 
 import unittest
 
 from kitmock import click, lupa, py, texts
-from test_app_panel import labels, log, shown, start
+from test_app_panel import button, labels, log, shown, start
 
 
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
@@ -109,9 +109,10 @@ class WindowListeners(unittest.TestCase):
         self.assertFalse(dot()[b"shown"])
 
     def test_a_local_extensions_app(self):
-        """an app a local extension brought, 无限工坊 having named no extension (an older one): a row for that
-        extension from the app's own label (已添加, on this computer), the app's card on its page, with no remove:
-        the extension is taken away in 无限工坊's App, and the app with it"""
+        """an app a local extension brought, 无限工坊 having named no such extension (it gave no list, the extension
+        is gone, or an agent wrote the label): a row for that extension from the app's own label (已添加, on this
+        computer), the page says 无限工坊 does not list it, and each app's card has a remove (nothing in 无限工坊's
+        App would take it away): the app goes, and the row with its last one"""
         s = start(self)
         s.lua.execute(b"__add('pal', { by = 'agent', decl = { title = 'Pal', prompt = 'pal-run' }, "
                       b"['local'] = { id = 'pals', title = 'Pals |cff00ff00x|r' } }) "
@@ -121,17 +122,28 @@ class WindowListeners(unittest.TestCase):
         self.assertEqual(self.titles(w)[-2:], ["Pals ||cff00ff00x||r", "Bot"])     # one row for both its apps
         self.assertEqual(texts(w[b"list"]), ["Built-in", "Added", "Agent apps"])
         self.assertEqual(self.item(w, "Pals ||cff00ff00x||r")[b"state"][b"text"], b"Local")
-        self.assertEqual(texts(w[b"body"])[:4],
-                         ["Pals ||cff00ff00x||r", "Enabled", "Managed in the Wuxian Workshop app", "App · Pal"])
+        self.assertEqual(texts(w[b"body"])[:3],
+                         ["Pals ||cff00ff00x||r", "Wuxian Workshop does not list this extension", "App · Pal"])
+        self.assertNotIn("Managed in the Wuxian Workshop app", texts(w[b"body"]))
         self.assertIn("App · Chum", texts(w[b"body"]))
         self.assertEqual([p[b"text"][b"text"] for p in (w[b"pill"], w[b"where"]) if p[b"shown"]], [b"Added", b"Local"])
-        self.assertEqual(labels(w), ["Hand to AI"])
+        self.assertEqual(labels(w), ["Hand to AI", "Remove", "Remove"])
         checks = w[b"checks"]
         self.assertEqual([c for c in (checks[i] for i in range(1, len(checks) + 1)) if c[b"shown"]], [])   # no switch
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
-        self.assertEqual(texts(w[b"body"])[1:4], ["已启用", "在无限工坊 App 中管理", "应用 · Pal"])
-        self.assertEqual(labels(w), ["交给 AI"])
+        self.assertEqual(texts(w[b"body"])[1:3], ["无限工坊未列出此扩展", "应用 · Pal"])
+        self.assertEqual(labels(w), ["交给 AI", "移除", "移除"])
         self.assertEqual(self.item(w, "Pals ||cff00ff00x||r")[b"state"][b"text"].decode(), "本机")
+        click(button(w, "移除"))                                                 # the first card's: pal
+        self.assertEqual(log(s)[-1], "forget pal wipe")                         # the player's remove: all of it
+        s.lua.execute(b"__ns.SetLanguage('enUS')")
+        self.assertNotIn("App · Pal", texts(w[b"body"]))
+        self.assertIn("App · Chum", texts(w[b"body"]))
+        self.assertEqual(labels(w), ["Remove"])
+        s.lua.execute(b"WuxianKit:Call('kit.local.set', { extensions = { { id = 'pals', title = 'Pals' } } })")
+        s.run(0.1)                                                              # 无限工坊 lists it: managed there
+        self.assertEqual(texts(w[b"body"])[:4], ["Pals", "Enabled", "Managed in the Wuxian Workshop app", "App · Chum"])
+        self.assertEqual(labels(w), [])
 
 if __name__ == "__main__":
     unittest.main()

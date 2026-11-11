@@ -15,6 +15,9 @@
 -- the extension its declaration names, else the local extension that brought it, else its addon's extension (an addon
 -- with apps and no extension is a row itself). Only an app an agent declared by itself, with no extension at all, is
 -- a row of its own, in a last group (Agent 应用) that is there only then, its page the card with a remove button.
+-- An app whose local extension 无限工坊 does not list (it gave no list, or one without it: the extension is gone, or
+-- nobody added it) is on a row made from the app's own label; that page says so and its cards have the remove button
+-- too, as nothing in 无限工坊's App would take such an app away.
 -- The window first opens on the first row with an app that runs (none: the core's). The core's page ends with the
 -- hidden apps that run (后台监听: a program's plumbing is not listed, but the player sees what listens and can stop
 -- it). /wk <app> opens the page its card is on; /wk <app> <word or words> gives it the player's command or words; the
@@ -30,6 +33,7 @@ local A = Kit:Words {
 		PILL = "应用", TEMP = "临时", BY_AGENT = "Agent 声明", REMOVE = "移除",
 		APP = "应用 · %s", TEMP_APP = "临时应用 · %s", APP_OPTIONS = "应用选项",
 		ADDS = "补充：%s", ADDS_TO = "补充到应用：%s", MANAGED = "在无限工坊 App 中管理",
+		UNLISTED = "无限工坊未列出此扩展",
 		WAITING = "等待中", WAIT_HINT = "就绪后自动开始",
 		LISTENERS = "后台监听", LISTEN_MORE = "%s 等 %d 项", LISTEN_UNTIL = "至 %s",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
@@ -48,6 +52,7 @@ local A = Kit:Words {
 		PILL = "App", TEMP = "Temporary", BY_AGENT = "Declared by an agent", REMOVE = "Remove",
 		APP = "App · %s", TEMP_APP = "Temporary app · %s", APP_OPTIONS = "App options",
 		ADDS = "Additions: %s", ADDS_TO = "Adds to the apps: %s", MANAGED = "Managed in the Wuxian Workshop app",
+		UNLISTED = "Wuxian Workshop does not list this extension",
 		WAITING = "Waiting", WAIT_HINT = "Starts by itself once ready",
 		LISTENERS = "Background listeners", LISTEN_MORE = "%s, %d in all", LISTEN_UNTIL = "until %s",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
@@ -387,7 +392,8 @@ end
 -- Rows(): the list's groups in order ({ kind (core, sys, custom, agent), list }) and every row. A row: { id (what
 -- `selected` holds), title, version, addon, author, notes, where (game, local, both), state (on, off, disabled,
 -- missing), apps (its rows of UI.Apps), running, waiting (one of its apps is), and one of: ext (a row of
--- ns.ExtensionList, with its fields), managed (a local extension: 无限工坊's App turns it on and off), loose (an
+-- ns.ExtensionList, with its fields), managed (a local extension: 无限工坊's App turns it on and off), unlisted (a
+-- local extension 无限工坊 does not list, known by its apps' label only: they can be removed here), loose (an
 -- agent's app with no extension: app, temp), or none (an addon with apps and no extension) }. Texts are ready to draw
 local function Rows()
 	local groups = { { kind = "core", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} },
@@ -423,8 +429,8 @@ local function Rows()
 		local row = a.extension and byId[a.extension] or a.localId and byLocal[a.localId]
 			or not agent and a.addon and byAddon[a.addon] or nil
 		if row then                                           -- (found)
-		elseif a.localId then                                 -- 无限工坊 gave no list (an older one): the app's own label
-			row = Add(3, { id = "local:" .. a.localId, title = a.from, where = "local", state = "on", managed = true })
+		elseif a.localId then                                 -- not in 无限工坊's list (or no list): the app's own label
+			row = Add(3, { id = "local:" .. a.localId, title = a.from, where = "local", state = "on", unlisted = true })
 			byLocal[a.localId] = row
 		elseif not agent and a.addon then                     -- an addon with apps and no extension: the addon
 			local ok, _, title = pcall(C_AddOns.GetAddOnInfo, a.addon)
@@ -490,11 +496,13 @@ local function Adders(id)
 end
 
 -- a row's apps, each under its heading: its card (its own options under 应用选项: the page has the extension's 选项
--- too), then the local extensions that add to it
+-- too; with 移除 when 无限工坊 does not list its extension), then the local extensions that add to it
 local function Apps(e)
 	for _, a in ipairs(e.apps) do
+		local id = a.id
 		Heading((a.temp and A.TEMP_APP or A.APP):format(a.title))
-		UI.AppCard(a.id, nil, A.APP_OPTIONS)
+		UI.AppCard(id, e.unlisted and { { A.REMOVE, false, function() ns.Act("app.forget", id) end } } or nil,
+			A.APP_OPTIONS)
 		local adds = Adders(a.id)
 		if adds then Put(0, C.muted, A.ADDS:format(adds)) end
 	end
@@ -511,6 +519,7 @@ local function Page(e)
 	if #facts > 0 then Put(0, C.muted, table.concat(facts, " · ")) end
 	if e.notes then Put(0, C.muted, e.notes) end
 	if e.managed then Put(0, C.muted, A.MANAGED) end        -- on, off, removed: in 无限工坊's App, not here
+	if e.unlisted then Put(0, C.muted, A.UNLISTED) end      -- (nothing there to remove it with: its apps' cards do)
 	if e.adds and #e.adds > 0 then                          -- the apps it adds to (their documents, their wakes)
 		local names = {}
 		for _, id in ipairs(e.adds) do names[#names + 1] = UI.AppTitle(id) end

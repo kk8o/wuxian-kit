@@ -484,7 +484,7 @@ WuxianKit:App("officers", {
 | `urgent` | 不用 `pace` 时，哪些条目立即唤醒：`why` 或 `kind` 的列表；Lua 声明也可以是函数 `urgent(item)`。有 `pace` 时只看当前档的 `wake`（同样按 `why` 或 `kind`） |
 | `controls` | 玩家能下的指令（卡片上的按钮、`/wk <应用> <词>`）：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑，或应用自己的 `{ cmd, label }`（cmd 小写字母、数字、`_`；label 一个词、不超过 24 字节，按钮上显示它）；合计不超过 12 个；`stop` 由核心执行（停止应用），其余只转告应用 |
 | `hidden` | `true`：程序的内部管道（如无限工坊的反射），不是给玩家的应用。只在临时应用的声明（`kit.app.open` 的 `temp`）里收，记住的声明带它报错。没有卡片，开始、停止时不在聊天框提示；运行时在「扩展框架」页底部的「后台监听」里列一行（标题、停止按钮），`kit.apps` 照样列出 |
-| `local` | `{ id, title }`：无限工坊替本机扩展声明应用时带上（Agent 不用填）。只是标注，没有特权：卡片写「来自本机扩展「title」」，照样有「移除」。带它的应用不占 Agent 的 8 个，另算，最多 16 个 |
+| `local` | `{ id, title }`：无限工坊替本机扩展声明应用时带上（Agent 不用填）。只是标注，没有特权：应用的卡片在那个本机扩展的页面上，移除扩展在无限工坊 App 里做，卡片没有「移除」；无限工坊的名单里没有这个扩展时，页面写「无限工坊未列出此扩展」，卡片带「移除」。带它的应用不占 Agent 的 8 个，另算，最多 16 个 |
 | `say` | `true`：玩家可以用 `/wk <id> <一句话>` 对应用说话 |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有心跳就算离开，应用停止（`why = "left"`）。心跳只有 Agent 的 `kit.app.open`、`kit.app.status`、`kit.app.state`、`kit.app.recent` |
 | `minutes` | 最长运行多久（默认 120，最多 720）。`kit.app.open` 的 `minutes`、`lease` 只管那一次运行，优先于声明的 |
@@ -599,7 +599,7 @@ WuxianKit:App("officers", {
   - 本机扩展（无限工坊的名单，见下）：页面写版本、状态、作者、说明和「在无限工坊 App 中管理」，没有开关和按钮。名单里 `where = "both"` 且 `game` 里的扩展游戏里有：不另起一行，那一行标「游戏 · 本机」，作者没有时用名单里的。
   - 没有定义扩展、只声明了应用的插件：一行，名字是插件标题。
 - 名单 `kit.local.set { extensions }`（存储类，无限工坊调，不是给 Agent 的）：这台电脑上已添加、带本机部分的扩展，每次整份（替换上一份，只在内存，重载后工坊再给）。每项 `{ id, title, version?, author?, notes?, where（local / both）, on, game?（它在游戏里的扩展 id）, adds?（它补充的应用 id）}`；不合规的项跳过，最多 32 项，回答 `{ count }`。只有窗口读它（`ns.LocalList`），不进清单，不发 `kit.changed`。
-- 应用的归属，先到先得：声明里的 `extension` → 带来它的本机扩展（`local.id`；名单里没有这一项时按 `local.title` 临时成行）→ 声明它的插件。都没有（Agent 自己声明的、临时的）才出现在最后一组「Agent 应用」里，各占一行，页面有「移除」（声明、选项、记录全删）；这一组空着时不显示。
+- 应用的归属，先到先得：声明里的 `extension` → 带来它的本机扩展（`local.id`；名单里没有这一项时按 `local.title` 临时成行，页面写「无限工坊未列出此扩展」，它的应用卡片带「移除」）→ 声明它的插件。都没有（Agent 自己声明的、临时的）才出现在最后一组「Agent 应用」里，各占一行，页面有「移除」（声明、选项、记录全删）；这一组空着时不显示。
 - 扩展页上每个应用一节：标题「应用 · 名字」（临时的「临时应用 · 名字」）、卡片、「应用选项」；有启用着的本机扩展给它补充时，卡片下一行「补充：…」，那个本机扩展自己的页面写「补充到应用：…」。
 - 有应用在运行的行，名字前有圆点（等待中是金色）；停用的行名字变暗。打开窗口时没有选过页面：先落在有应用运行的那一行，否则「扩展框架」。
 - 卡片的主按钮：没运行时，有 `prompt` →「交给 AI」，没有 → 没有主按钮。运行中：停止、指令按钮。临时应用标「临时」，没有「交给 AI」。
@@ -623,7 +623,7 @@ WuxianKit:App("officers", {
 
 ### Lua 与清单
 
-Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Running()`、`app:Push(data)`）；`WuxianKit:AppControl(id, cmd)`、`WuxianKit:AppSay(id, text)`（玩家的指令与话；`/wk <id> <词或话>`、卡片按钮都走它们）；`WuxianKit:AppPanel(id, parent, width)`：在插件自己的窗口里画应用卡片（状态、主按钮、停止、指令按钮、选项），和 `/wk` 的应用页是同一张，返回带 `:Refresh()` 的框体。
+Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Running()`、`app:Push(data)`）；`WuxianKit:AppControl(id, cmd)`、`WuxianKit:AppSay(id, text)`（玩家的指令与话；`/wk <id> <词或话>`、卡片按钮都走它们）；`WuxianKit:AppPanel(id, parent, width)`：在插件自己的窗口里画应用卡片（状态、主按钮、停止、指令按钮、选项），和 `/wk` 窗口里的卡片是同一张，返回带 `:Refresh()` 的框体。
 
 清单：`Kit:Manifest()` 的 `apps`：`[{ id, title, by, temp, addon?, extension?, docs?, topic = "app.<id>", hear, see, prompt?, start? }]`，修订号包含它；游戏不在线时无限工坊也从保留的清单拿到启动语和应用的技能。
 
