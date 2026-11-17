@@ -143,16 +143,16 @@ class Overview(Case):
         self.assertEqual(self.given(s)[2:], [[]])
 
     def test_a_title_within_what_the_panel_takes(self):
-        """60 bytes: cut on a character; an agent's title escaped, and not cut through an escaped |"""
+        """60 bytes: cut on a character; plain text, as it was given: the panel (WoWBridge) escapes what it draws"""
         s = self.start()
         s.lua.execute(f"WuxianKit:App('long', {{ title = '{'字' * 30}' }})".encode())
         self.agent(s, "kit.app.open", "{ app = 'long' }")
         self.assertEqual(self.given(s)[-1], [("字" * 19 + "…", "Agent")])
         self.agent(s, "kit.app.stop", "{ app = 'long' }")
         self.opens(s, f"{{ app = 'pipes', title = '{'|' * 40}' }}")
-        self.assertEqual(self.given(s)[-1], [("|" * 56 + "…", "Agent")])
+        self.assertEqual(self.given(s)[-1], [("|" * 40, "Agent")])
         self.agent(s, "kit.app.declare", "{ app = 'pipes', title = 'a|cffff0000b' }")
-        self.assertEqual(self.given(s)[-1], [("a||cffff0000b", "Agent")])
+        self.assertEqual(self.given(s)[-1], [("a|cffff0000b", "Agent")])
 
     def test_through_a_reload(self):
         s = self.start()

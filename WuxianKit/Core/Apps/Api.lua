@@ -51,17 +51,15 @@ local function DrivenBy(app, s)
 	return (s.seen ~= nil or app.by ~= "addon") and "agent" or "addon"
 end
 
--- the app's title as the panel draws it: an addon's own as it is, another's escaped (a text from outside), within
--- PANEL_TEXT bytes (cut on a character, and not through an escaped |)
+-- the app's title for the panel: plain text as it was given (WoWBridge escapes what it draws: one place does it),
+-- within PANEL_TEXT bytes (cut on a character)
 local function PanelText(app)
 	local text = ns.Text(Title(app))
-	if By(app) ~= "addon" then text = ns.Escape(text) end
 	if text == "" then text = app.id end
 	if #text <= PANEL_TEXT then return text end
 	local n = PANEL_TEXT - 3                                -- (room for the mark)
 	while n > 0 and text:byte(n + 1) >= 128 and text:byte(n + 1) < 192 do n = n - 1 end
 	text = text:sub(1, n)
-	if By(app) ~= "addon" and #text:match("|*$") % 2 == 1 then text = text:sub(1, -2) end
 	return text .. "…"
 end
 
