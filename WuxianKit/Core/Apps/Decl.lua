@@ -25,10 +25,12 @@
 -- whole declaration of a kept app: a field not given is its default; not started, no heartbeat), kit.app.open { app,
 -- minutes?, lease?, temp? } (starts it, or goes on; temp: a table, the whole declaration of a temporary app, there for
 -- this run only), kit.app.stop { app }, kit.app.forget { app } (an agent's app withdrawn: stopped with why
--- "forgotten", its declaration gone, the player's options kept). See: kit.app.describe { app } ({ app, by, temp, decl }:
--- the declaration as normalized; declared again it changes nothing), kit.app.status { app } (also the heartbeat),
--- kit.app.state { app }, kit.app.recent { app, since, limit }, kit.apps. Events: app.<id> (the app's wakes), kit.app
--- ({ app, on, why?, ends?, waiting?, link?, pace? } when one starts, stops, or waits for what it needs).
+-- "forgotten", its declaration gone, the player's options kept), kit.app.report { app, key, state, ... } (Report.lua:
+-- what the program that drives an app tells the game of its work). See: kit.app.describe { app } ({ app, by, temp,
+-- decl }: the declaration as normalized; declared again it changes nothing), kit.app.status { app } (also the
+-- heartbeat), kit.app.state { app }, kit.app.recent { app, since, limit }, kit.apps. Events: app.<id> (the app's
+-- wakes), kit.app ({ app, on, why?, ends?, waiting?, link?, pace? } when one starts, stops, or waits for what it
+-- needs).
 --
 -- One table says what a declaration is: FIELDS, a row a field ({ name, type, doc, check, default, status, list, addon,
 -- build }). kit.app.declare's arguments and doc, the check, the defaults, the declaration as data (what is compared,
@@ -36,8 +38,8 @@
 -- hidden is a temporary app's only (plumbing: no card, no chat lines; listed while it runs); local = { id, title } is
 -- a label (the local extension of 无限工坊 an app comes with): such apps do not count among the AGENT_MOST an agent
 -- keeps, at most LOCAL_MOST of them; only such an app may have driver = "local" (that extension's own program drives
--- it, not an agent: it has no start line). A temporary app is in memory only, at most TEMP_MOST at once, gone once it
--- stops or the UI reloads.
+-- it, not an agent: it has no start line, its run has no end, only its lease, and it tells the lists by = "local").
+-- A temporary app is in memory only, at most TEMP_MOST at once, gone once it stops or the UI reloads.
 --
 -- For the window:
 --   ns.AppList()                  the apps as kit.apps answers (each row with on, temp, hidden, waiting, local, pace,
@@ -45,6 +47,9 @@
 --   ns.App(id)                    the app object, or nil
 --   ns.AppStatus(id)              as kit.app.status answers (without marking it heard from)
 --   ns.AppStop(id, why)           stops it ("player" from the window)
+--   ns.AppStart(id)               the player starts one its local extension's program drives again (the card's 开始)
+--   ns.AppStartable(id)           whether they can now, and why not
+--   ns.AppReport(id)              the newest report its program gave (Report.lua), or nil
 --   ns.AppOptionList(id)          its options as kit.options answers ({ [name] = { title, kind, value, ... } })
 --   ns.SetAppOption(id, name, v)  the player set one: true and the value kept, or false
 --   ns.AppControls(id)            { { cmd, label } } in its declared order (label: the core's word, or the app's own)
@@ -56,15 +61,16 @@
 -- Storage: WuxianKitDB.apps[id] = { decl (an agent's declaration, normalized: FIELDS' data), options (the player's),
 -- chars = { [the character's GUID] = { run (this run: ends, started, seen, lease, heard, wakes, lastWake, pace, quiet,
 -- and the digest's options, buffer, first, last, urgentAt), recent = { n, items } (the last RING items), last = { why }
--- (how the last run ended), said = { d, n } } } }: what is the account's is at the top, what is a character's under its
--- GUID (A.Char). An addon's declaration is kept in memory only (it may carry functions) and wins over an agent's of the
--- same id; a temporary app's whole record is in memory. A record without decl is an addon's app's, or what is left of
+-- (how the last run ended), said = { d, n }, reports (Report.lua: the last report of each of its last keys) } } }:
+-- what is the account's is at the top, what is a character's under its GUID (A.Char). An addon's declaration is kept
+-- in memory only (it may carry functions) and wins over an agent's of the same id; a temporary app's whole record is
+-- in memory. A record without decl is an addon's app's, or what is left of
 -- an app forgotten (its options, picked up when it is declared again).
 --
 -- An app has its declaration twice: app.decl, as the runtime reads it (sets, labels by cmd, functions), and app.data,
 -- as data (FIELDS' checks give it, every default filled in: compared, kept, described).
 --
--- The runtime is four files (Core/Apps/, in load order), split by what they do:
+-- The runtime is five files (Core/Apps/, in load order), split by what they do:
 --   Decl.lua     (this one) the fields, declarations checked and normalized, the stored record, the app object and its
 --                options, declaring (WuxianKit:App, an agent's Declare, ns.ForgetApp), the declarations back from
 --                storage
@@ -72,6 +78,7 @@
 --   Run.lua      runs: quiet hours and pace, what a run hears and sees, Reconcile (the one place that decides whether
 --                an app runs, waits or stops), start / stop / the ticker, the player's commands and words
 --   Api.lua      kit.app.* and kit.apps, the status, and the ns functions the window uses
+--   Report.lua   kit.app.report, the reports kept, ext:OnReport
 -- What they share is the private table ns.apps (A in each file): a name another file uses is a field of A under the
 -- same name, set at the end of the file that defines it and read into a local at the top of the files loaded after it.
 -- A file loaded before calls it as A.Name(...) when it runs (here: A.Host, A.Stop, A.Drop, A.Reconcile). A.loggedIn is
@@ -84,11 +91,12 @@ local A = ns.apps
 local W = Kit:Words {
 	zhCN = {
 		STARTED = "%s：已开始，至 %s", STOPPED = "%s：已停止", EXPIRED = "%s：已到时间，已停止",
-		LEFT = "%s：Agent 已离开，已停止", STOPPED_WHY = "%s：已停止，%s",
+		LEFT = "%s：Agent 已离开，已停止", LEFT_LOCAL = "%s：本机端无响应，已停止", STOPPED_WHY = "%s：已停止，%s",
 		EXT_OFF = "所属扩展「%s」已停用", EXT_MISSING = "所属扩展「%s」未载入", NEEDS = "需要开启「%s」扩展",
 		NEEDS_SOURCE = "需要来源「%s」", NEEDS_FACET = "需要状态面「%s」",
 		DECL_DROPPED = "应用「%s」的声明已失效，已移除",
 		ACTIVITY = "活跃度", A_QUIET = "安静", A_NORMAL = "适中", A_LIVELY = "活跃",
+		ACTIVITY_STEP = "活跃度：%s → %s", ACTIVITY_EDGE = { quiet = "已是最安静", lively = "已是最活跃" },
 		ACTIVITY_HINT = "安静：只在点名时唤醒；适中：接话、提问时唤醒，冷场时也唤醒；活跃：话题正热时也唤醒，节奏更快",
 		QUIET = "免打扰时段", QUIET_HINT = "如 01:00-08:00；这段时间只在点名时唤醒",
 		CONTROL = { mute = "静音", unmute = "开声", less = "少说", more = "多说", test = "试音", pause = "暂停",
@@ -97,11 +105,14 @@ local W = Kit:Words {
 	},
 	enUS = {
 		STARTED = "%s: started, until %s", STOPPED = "%s: stopped", EXPIRED = "%s: time is up, stopped",
-		LEFT = "%s: the agent left, stopped", STOPPED_WHY = "%s: stopped. %s",
+		LEFT = "%s: the agent left, stopped", LEFT_LOCAL = "%s: its local program does not answer, stopped",
+		STOPPED_WHY = "%s: stopped. %s",
 		EXT_OFF = "Its extension %s is off", EXT_MISSING = "Its extension %s is not loaded",
 		NEEDS = "Needs the %s extension on", NEEDS_SOURCE = "Needs the source %s", NEEDS_FACET = "Needs the state %s",
 		DECL_DROPPED = "The app %s's declaration no longer holds: removed",
 		ACTIVITY = "Activity", A_QUIET = "Quiet", A_NORMAL = "Normal", A_LIVELY = "Lively",
+		ACTIVITY_STEP = "Activity: %s → %s",
+		ACTIVITY_EDGE = { quiet = "Already the quietest", lively = "Already the liveliest" },
 		ACTIVITY_HINT = "Quiet: wakes only when you are named; Normal: also for follow-ups, questions and lulls; "
 			.. "Lively: also when the talk is hot, faster",
 		QUIET = "Quiet hours", QUIET_HINT = "Such as 01:00-08:00; only wakes when you are named then",
@@ -635,15 +646,11 @@ Field { name = "lease", type = "number?",
 
 Field { name = "link", type = "string?", status = true, list = true,
 	doc = "live: while it runs 无限工坊 keeps its link to the game open (reactions, a voice that answers at once); "
-		.. "standby (the default): the link opens when there is something to carry and closes after",
+		.. "not given: the link opens when there is something to carry and closes after",
 	check = function(v)
-		if v ~= "live" and v ~= "standby" then Fail("link is live or standby (the default)") end
-		return v == "live" and "live" or nil                 -- (standby is no mark at all)
+		if v ~= "live" then Fail("link is \"live\", or not given") end
+		return v
 	end }
-
-Field { name = "minutes", type = "number?",
-	doc = ("how long a run lasts, default %d, at most %d"):format(MINUTES, MINUTES_MOST),
-	check = function(v) return MinutesOf(v, "minutes") end, default = MINUTES }
 
 Field { name = "options", type = "table?",
 	doc = ("at most %d the player sets: name -> {kind boolean|text|number|choice|list, title, default, hint, choices "
@@ -697,13 +704,28 @@ Field { name = "local", type = "table?", status = true, list = true,
 
 Field { name = "driver", type = "string?", status = true, list = true,
 	doc = "who drives it: agent (the default), an agent following its skill; local, the program of the local "
-		.. "extension it comes with (only with local, set by 无限工坊): no start line, no 交给 AI on its card",
+		.. "extension it comes with (only with local, set by 无限工坊): no start line, no 交给 AI on its card, by local "
+		.. "in the lists, a run without an end (no minutes: its lease alone ends it), and kit.app.report takes its reports",
 	check = function(v, c)
 		if v ~= "agent" and v ~= "local" then Fail("driver is agent (the default) or local") end
 		if v == "local" and not c.data["local"] then
 			Fail("driver local is for an app 无限工坊 declares for a local extension (with local {id, title})")
 		end
 		return v == "local" and "local" or nil               -- (agent is no mark at all)
+	end }
+
+-- (after driver: a run its local extension's program drives has no end, so no minutes)
+Field { name = "minutes", type = "number?",
+	doc = ("how long a run lasts, default %d, at most %d; not with driver local: such a run does not end by the clock")
+		:format(MINUTES, MINUTES_MOST),
+	check = function(v, c)
+		if c.data.driver == "local" then
+			Fail("minutes does not go with driver local: its run has no end, only its lease")
+		end
+		return MinutesOf(v, "minutes")
+	end,
+	default = function(c)
+		if c.data.driver ~= "local" then return MINUTES end
 	end }
 
 Field { name = "addon", addon = true, check = Name }
@@ -843,10 +865,27 @@ local function Owned(app)
 	if type(s) == "table" then return s end
 end
 
+-- whether its local extension's program drives it (driver local), not an agent
+local function Driven(app) return app.decl.driver == "local" end
+
+-- whether a run's time is over (one a program drives has none: its lease alone ends it)
+local function Over(app, s, now)
+	return not Driven(app) and (tonumber(s.ends) or 0) <= now
+end
+
+-- when a run ends, as it is told (nil for one that has no end)
+local function Ends(app, s)
+	if not Driven(app) then return s.ends end
+end
+
+-- who an app is by, as the lists and the status tell it: local for one a program drives, else who declared it (addon,
+-- agent)
+local function By(app) return Driven(app) and "local" or app.by end
+
 -- its run while it runs
 local function Run(app)
 	local s = Owned(app)
-	if s and (tonumber(s.ends) or 0) > time() then return s end
+	if s and not Over(app, s, time()) then return s end
 end
 
 local function Title(app)
@@ -1043,5 +1082,6 @@ A.Split, A.Trim = Split, Trim
 A.CheckId, A.LeaseOf, A.MinutesOf = CheckId, LeaseOf, MinutesOf
 A.apps, A.order, A.App = apps, order, App
 A.Record, A.Char, A.Owned, A.Run, A.Title = Record, Char, Owned, Run, Title
+A.Driven, A.Over, A.Ends, A.By = Driven, Over, Ends, By
 A.Paced, A.Digesting, A.Bound = Paced, Digesting, Bound
 A.Declare = Declare

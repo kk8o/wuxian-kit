@@ -387,7 +387,7 @@ end
 
 ------------------------------------------------------------------------------------------------------------------------
 -- the bus: WuxianKit:On(topic, fn(topic, data)) hears a topic ("chat.message"), a module's ("chat.*") or all ("*");
--- WuxianKit:Emit(topic, data) tells them, and the agent (Bridge.lua)
+-- WuxianKit:Emit(topic, data) tells them, and the agent (Bridge.lua); not a topic of the core's own (kit.*, app.*)
 
 local listeners, token = {}, 0
 
@@ -410,8 +410,14 @@ end
 -- an event's topic and a capability's id are at most NAME_MAX bytes: what WoWBridge carries, and the same without it
 ns.NAME_MAX = 64
 
--- topics only the core sends (ns.EmitCore): 无限工坊 acts on them as the player's own doing, so no addon may
-local CORE_ONLY = { ["kit.local.option"] = true }
+-- the core's own topics: kit.* (what the core tells: kit.app, kit.option, kit.local.option ...) and app.* (the apps'
+-- wakes). WuxianKit:Emit refuses them, and the core sends them with ns.EmitCore. This keeps an addon from sending one
+-- by mistake (无限工坊 acts on some as the player's own doing); it is no wall: every addon runs in the one Lua
+-- environment, and one that means to can reach whatever the core can
+local function Reserved(topic)
+	local head = topic:match("^([^.]*)")
+	return head == "kit" or head == "app"
+end
 
 local function Bus(topic, data)
 	for _, l in pairs(listeners) do
@@ -424,11 +430,13 @@ function Kit:Emit(topic, data)
 	if type(topic) ~= "string" or topic == "" or #topic > ns.NAME_MAX then
 		error(("WuxianKit:Emit(topic, data): topic is a string of at most %d bytes"):format(ns.NAME_MAX), 2)
 	end
-	if CORE_ONLY[topic] then error(("WuxianKit:Emit(topic, data): only WuxianKit itself sends %s"):format(topic), 2) end
+	if Reserved(topic) then
+		error(("WuxianKit:Emit(topic, data): kit.* and app.* are WuxianKit's own topics (not %s)"):format(topic), 2)
+	end
 	Bus(topic, data)
 end
 
--- a bus event of the core's own, one of CORE_ONLY too (the player changed a local extension's option: UI/Window.lua)
+-- a bus event of the core's own (kit.*, app.*)
 function ns.EmitCore(topic, data)
 	Bus(topic, data)
 end

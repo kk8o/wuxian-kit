@@ -9,7 +9,7 @@ ns.UI = UI
 
 local HEX = { panel = "23242a", panel2 = "2b2f37", line = "35363d", fg = "e8e4d8", muted = "9c9ea6", gold = "d8a85a",
 	goldD = "8a6424", goldSoft = "3a3120", sky = "7fb3e0", skySoft = "323b47", ok = "6fcf97", bad = "f28b82",
-	ink = "1b1c21" }
+	amber = "e89a3c", ink = "1b1c21" }
 local C = {}
 for k, hex in pairs(HEX) do
 	C[k] = { tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255, 1 }
@@ -92,8 +92,9 @@ function S.Hyperlinks(f, hover)
 	f:SetScript("OnHyperlinkLeave", LinkLeave)
 end
 
--- a dark panel with a hairline round it, movable by dragging; its place kept in WuxianKitDB.pos[key]
-function S.Panel(name, w, h, key)
+-- a dark panel with a hairline round it, movable by dragging; its place kept in WuxianKitDB.pos[key]. solid: its fill
+-- lets nothing behind it through (a window with pages of text over the chat frame)
+function S.Panel(name, w, h, key, solid)
 	local f = CreateFrame("Frame", name, UIParent)
 	f:SetSize(w, h)
 	f:SetFrameStrata("DIALOG")
@@ -112,7 +113,7 @@ function S.Panel(name, w, h, key)
 	end)
 	local bg = f:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	S.Fill(bg, C.panel, 0.96)
+	S.Fill(bg, C.panel, solid and 1 or 0.96)
 	for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1 },
 		{ "TOPLEFT", "BOTTOMLEFT", 1 }, { "TOPRIGHT", "BOTTOMRIGHT", 1 } }) do
 		local t = f:CreateTexture(nil, "BORDER")
@@ -149,8 +150,8 @@ function S.Button(parent, label, primary, onClick)
 	b:SetFontString(b.label)
 	b.primary = primary
 	function b.Look(hover)
-		if not b:IsEnabled() then
-			S.Fill(b.bg, C.line)
+		if not b:IsEnabled() then                           -- (the chosen one of a row still tells itself apart)
+			S.Fill(b.bg, b.primary and C.goldSoft or C.line)
 			S.Ink(b.label, C.muted)
 		elseif b.primary then
 			S.Fill(b.bg, hover and C.goldD or C.gold)
@@ -170,6 +171,22 @@ end
 function S.Enable(b, on)
 	b:SetEnabled(on and true or false)
 	b.Look(false)
+end
+
+-- a check box (S.Check) or a text box (S.Edit) that can or cannot be changed: one that cannot is dim and takes no
+-- click, no keyboard
+local WHITE = { 1, 1, 1, 1 }                            -- (ChatFontNormal's own: a text box's text as it was)
+
+function S.Usable(w, on)
+	on = on and true or false
+	w:SetEnabled(on)
+	if w.label then                                     -- a check box
+		S.Ink(w.label, on and C.fg or C.muted)
+		S.Fill(w.mark, on and C.gold or C.muted)
+	else
+		w:EnableMouse(on)
+		S.Ink(w, on and WHITE or C.muted)
+	end
 end
 
 -- a check box with its label; onClick(self, checked)

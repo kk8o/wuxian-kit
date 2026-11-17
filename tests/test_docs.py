@@ -16,6 +16,9 @@ GONE = (
     (r"they win on this machine", "a local section is information, not permission: the skill's own rules win"),
     (r"\bApps\.lua\b", "Core/Apps.lua is now Core/Apps/Decl.lua, Deliver.lua, Run.lua and Api.lua"),
     (r"`ignored`", "kit.app.open takes no fields of a declaration, so it lists none as ignored"),
+    (r"本机扩展(未运行|无响应|没在运行)|由本机扩展「", "the player reads 本机端, and 未运行"),
+    (r"0\.6\.1(?! 没有发布)", "0.6.1 was never released: what it brought is 0.7's"),
+    (r"只有核心能发|冒充不了", "the reserved topics keep mistakes out, they are no wall"),
 )
 
 
@@ -102,39 +105,81 @@ class Docs(unittest.TestCase):
         for word in ("blocked", "waiting", "hidden", "forgotten", "temp"):
             self.assertIn(word, guide, word)
             self.assertIn(word, arch, word)
-        for name in ("Decl.lua", "Deliver.lua", "Run.lua", "Api.lua"):
+        for name in ("Decl.lua", "Deliver.lua", "Run.lua", "Api.lua", "Report.lua"):
             self.assertIn(name, arch)
             self.assertTrue((KIT / "Core" / "Apps" / name).exists(), name)
 
     def test_link_and_less_more(self):
-        """0.6.1: the field link and the core's less and more, told where each text tells the declaration and the
-        control item"""
+        """the field link (live only) and the core's less and more, told where each text tells the declaration and
+        the control item"""
         arch, guide, skill = text("ARCHITECTURE.md"), text("AGENT.md"), text("skills", "kit-app.md")
         apps = section(arch, "10. 应用（0.6）")
         self.assertRegex(apps, r"(?m)^\| `link` \| ")
         self.assertIn("`stop`、`less`、`more` 由核心执行", apps)
         self.assertIn("`{ app, on, ends?, why?, waiting?, link?, pace? }`", apps)
-        self.assertTrue(section(arch, "16. 版本 0.6.1"))
+        self.assertTrue(section(arch, "16. 版本 0.7"))
+        self.assertIn("只收 `\"live\"`", apps)
+        for words in ("活跃度：适中 → 安静", "已是最安静", "已是最活跃", "不画「少说」「多说」"):
+            self.assertIn(words, apps, words)
         for doc, name in ((guide, "AGENT.md"), (skill, "kit-app.md")):
             self.assertIn("`link", doc, name)
             self.assertIn("{cmd, activity, was, edge?}", doc, name)
         self.assertIn("`edge: true`", section(skill, "The wake"))
 
     def test_driver_and_local_options(self):
-        """0.6.1: the field driver and the local options of kit.local.set, with the event only the core sends"""
+        """the field driver (a run without an end, by local, its card in the local part's words) and the local
+        options of kit.local.set"""
         arch, guide, skill = text("ARCHITECTURE.md"), text("AGENT.md"), text("skills", "kit-app.md")
         apps = section(arch, "10. 应用（0.6）")
         self.assertRegex(apps, r"(?m)^\| `driver` \| ")
-        for words in ("由本机扩展「<local.title>」运行", "本机扩展未运行", "本机选项", "在无限工坊 App 中修改",
-                      "`kit.local.option { extension, name, value }`", "`ns.EmitCore`", "driver?"):
+        for words in ("本机端运行中", "本机端未运行", "「已停止」，按钮「开始」", "本机端无响应，已停止", "不到期",
+                      "`by` 也是 `\"local\"`", "游戏选项", "本机选项", "以下在无限工坊 App 中修改", "待确认", "10 秒",
+                      "无限工坊未连接", "`kit.local.option { extension, name, value }`", "driver?",
+                      "游戏 1.2.0 已启用 · 本机端 1.2.0 运行中", "另有 N 项"):
             self.assertIn(words, apps, words)
-        v061 = section(arch, "16. 版本 0.6.1")
-        for words in ("`driver`", "`kit.local.option", "本机选项"):
-            self.assertIn(words, v061, words)
+        v07 = section(arch, "16. 版本 0.7")
+        for words in ("`driver`", "`kit.local.option", "本机选项", "`kit.app.report`", "`ext:Local()`", "`get`、`set`"):
+            self.assertIn(words, v07, words)
         self.assertIn('`driver: "local"`', guide)
+        self.assertIn('`by: "local"`', guide)
         self.assertIn("`kit.local.option`", guide)
         self.assertIn('"driver": "local"', skill)
         self.assertIn("本机选项", skill)
+        self.assertIn("kit 0.7.0", skill)
+
+    def test_reports_and_the_local_part(self):
+        """0.7: the one channel from a local extension's program to the game, what a game extension knows of its
+        local part, and the topics that are the core's own, each told where it belongs"""
+        arch, guide = text("ARCHITECTURE.md"), text("AGENT.md")
+        apps = section(arch, "10. 应用（0.6）")
+        for heading in ("### 上报", "### 本机端"):
+            self.assertIn(heading, apps)
+        for words in ("`kit.app.report { app, key, state, step?, text?, done?, total?, retry?, data?, at?, late? }`",
+                      "`{ kept = true }`", "最近 8 个 `key`", "`ext:OnReport(app, fn)`", "`fn(report, replay)`",
+                      "`ext:Local()` → `{ known, listed, on, running, version, options = { name = value } }`",
+                      "`kit.local { extension = <游戏扩展的 id> }`", "`running`", "`addons`", "`ns.LocalOf`",
+                      "`kit.app.stop { app, why? }`"):
+            self.assertIn(words, apps, words)
+        common = section(arch, "9. 公共接口与约定")
+        for words in ("`kit.*`", "`app.*`", "`ns.EmitCore`", "防误用，不是防攻击", "同一个 Lua 环境"):
+            self.assertIn(words, common, words)
+        ext = section(arch, "3. 扩展")
+        for words in ("`ext:Local()`", "`ext:OnReport(app, fn)`", "`get`、`set`"):
+            self.assertIn(words, ext, words)
+        self.assertIn("wk_kit_app_report", guide)
+        self.assertIn("`kit.local`", guide)
+        self.assertIn("`kit.*` and `app.*` are WuxianKit's own topics", guide)
+        ours = text("skills", "kit-extension.md")
+        for words in ("`ext:Local()`", "`ext:OnReport(app, fn)`", "get = function()", "`kit.*` and `app.*`"):
+            self.assertIn(words, ours, words)
+
+    def test_the_version(self):
+        toc = (KIT / "WuxianKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Version: 0.7.0", toc)
+        self.assertIn("Core\\Apps\\Report.lua", toc)
+        readme = (KIT.parent / "README.md").read_text(encoding="utf-8")
+        self.assertIn("需要无限工坊 0.10.0 或更高版本", readme)
+        self.assertIn("It needs Wuxian Workshop 0.10.0 or later", readme)
 
     def test_the_words_with_two_meanings(self):
         arch = text("ARCHITECTURE.md")

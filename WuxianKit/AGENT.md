@@ -119,7 +119,10 @@ Read them with the workshop's `events` tool, for example
 - `kit.option`: the player changed an option: an extension's (`{extension, name, value}`) or an app's
   (`{app, name, value}`).
 - `kit.local.option`: for 无限工坊, not you: the player changed a local extension's option in the /wk window
-  (`{extension, name, value}`); 无限工坊 applies it. Only WuxianKit sends it.
+  (`{extension, name, value}`); 无限工坊 applies it. `kit.*` and `app.*` are WuxianKit's own topics: no addon's
+  `Emit` sends them.
+- `kit.local`: for addons, not you: what a game extension knows of its part on this computer changed
+  (`{extension}`).
 - `kit.dropped`: extension events lost because they came too fast (how many, by topic). WuxianKit's own events wait
   and are sent again when there is room (the last 50); while 无限工坊 is not linked, only the last few are kept.
 
@@ -132,7 +135,7 @@ the page of the extension it belongs to (an app of your own that belongs to none
 apps), with its state, a stop button, its controls and its options. `wk_kit_apps` lists them.
 
 An agent drives an app, following the skill named in its `prompt`, unless a local extension's own program does
-(`driver: "local"`, below). The player hands you its start line (the card's 交给 AI, Hand to AI): call `wk_docs` with
+(`driver: "local"`, below: `by` is `"local"` in `wk_kit_apps`). The player hands you its start line (the card's 交给 AI, Hand to AI): call `wk_docs` with
 `{"skill": "<prompt>"}` and follow the steps. An app without a prompt has no button on its card; the agent that
 declared it opens it (as a temporary app while debugging). A local extension of 无限工坊 (one that runs on this
 computer) may bring apps. They go with the extension: 无限工坊 keeps them declared in the game while it is on and
@@ -216,7 +219,7 @@ The declaration's fields:
   `more` of an app with `pace` (the activity a step); you are told of each. `say: true`: the player can talk to you
   with `/wk <app> <words>`.
 - `link: "live"`: while the app runs, 无限工坊 keeps its link to the game open (for an app that must answer at once:
-  reactions, a voice). Leave it out (`"standby"`, the default) otherwise.
+  reactions, a voice). Leave it out otherwise: `"live"` is its only value, anything else is an error.
 - `lease`: seconds without a heartbeat of yours (below) before the app stops (default 600, at least 60, 0 none).
   `minutes`: how long it may run (default 120, at most 720). `wk_kit_app_open` may give either for one run.
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,
@@ -231,9 +234,12 @@ The declaration's fields:
   无限工坊's App, and its apps go with it); only when 无限工坊 does not list that extension does the card have 移除.
   These apps do not count against your 8 (there may be 16 of them).
 - `driver: "local"`: set by 无限工坊 (with `local`, never by you) for an app the local extension's own program drives:
-  it opens the app and handles its wakes, no agent. Such an app has no start line and no 交给 AI on its card, which
-  says the local extension runs it; `wk_kit_apps` and `wk_kit_app_status` show `driver: "local"`. Do not open or
-  wait for it yourself. Without `local`, `driver` other than `"agent"` (the default) is an error.
+  无限工坊 keeps it open while that program runs and hands it its wakes, no agent. Such an app has no start line and
+  no 交给 AI on its card; its run has no end (no `minutes`, no `ends`: its lease alone, which 无限工坊 keeps);
+  `wk_kit_apps` and `wk_kit_app_status` show `driver: "local"` and `by: "local"`. Its card says whether that program
+  runs (本机端运行中, 本机端未运行) and shows the newest report the program gave (`wk_kit_app_report` is
+  无限工坊's to call, not yours). Do not open, stop or wait for it yourself. Without `local`, `driver` other than
+  `"agent"` (the default) is an error.
 
 When it cannot start, `wk_kit_app_open` does not fail; it answers the status:
 

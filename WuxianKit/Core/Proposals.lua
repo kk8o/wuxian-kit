@@ -174,7 +174,7 @@ local function SetState(p, state)
 		Prune()
 	end
 	if ns.UI then ns.UI.Refresh() end
-	Kit:Emit("kit.proposal", Summary(p))
+	ns.EmitCore("kit.proposal", Summary(p))
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -546,7 +546,7 @@ function ns.Propose(list, opts)
 	if granted then
 		p.auto = true
 		p.state = "waiting"
-		Kit:Emit("kit.proposal", Summary(p))
+		ns.EmitCore("kit.proposal", Summary(p))
 		local ok, why = Go(p)                 -- now, or when combat ends; while blocked the ticker tries again
 		if not ok then
 			ns.Say(L.AUTO_LATER:format(p.id, WhyText(p, why)) .. L.CANCEL_HINT:format(p.id))
@@ -640,7 +640,7 @@ local function Undo(id)
 	if p then
 		SetState(p, "undone")
 	else
-		Kit:Emit("kit.proposal", { id = id, state = "undone", title = h.title, source = h.source })
+		ns.EmitCore("kit.proposal", { id = id, state = "undone", title = h.title, source = h.source })
 		if ns.UI then ns.UI.Refresh() end
 	end
 	return true

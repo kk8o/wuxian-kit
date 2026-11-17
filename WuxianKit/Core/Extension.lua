@@ -7,9 +7,10 @@
 -- proposals not run yet go; what its proposals changed stays (the history undoes it), what it made of the UI stays until
 -- a reload. Its storage is WuxianKitDB.ext[id], info.defaults filled in.
 --   info: { title, version, notes, addon, docs, prompt, defaults = {...}, setup(self) when it goes on, teardown(self)
---           when it goes off }; docs: the folder (in its addon's) of its AGENT.md and skills/ for the agent (Agent access
---           spec); prompt: the name of one of its skills (ext.prompt; kept for the workshop, no button: an app's
---           card hands its start line to an AI)
+--           when it goes off }; addon: the folder of the addon it is in (not given: the addon whose file defines it,
+--           read off the call stack); docs: the folder (in its addon's) of its AGENT.md and skills/ for the agent
+--           (Agent access spec); prompt: the name of one of its skills (ext.prompt; kept for the workshop, no button:
+--           an app's card hands its start line to an AI)
 --   ext:On(event, fn(self, event, ...))   a game event, handed over while it is on
 --   ext:Every(seconds, fn(self))           a timer, running while it is on
 --   ext:Emit(topic, data)                  the bus event "<id>.<topic>" (and so an agent event)
@@ -20,13 +21,18 @@
 --   ext:Scope(name, title | { title, budget = { per, most } })   a category the player may let go without asking;
 --                                          name may have dots (guild.reply); budget: the limit suggested when it is
 --                                          ticked (ns.ScopeBudget)
---   ext:Option(name, { title, kind, default, hint, changed(self, value), ... })   a choice the player makes on its page
---                                          (or an OptionsPanel), and only there: kit.options reads them, nothing else
---                                          changes them; ext:Get(name) is its value (a list: a copy). kind: boolean (the
---                                          default), text, number { min, max, step = 1, unit }, choice { choices =
---                                          { { value, label } ... } }, list (strings: split at , ， 、, trimmed, none
---                                          empty or twice, at most 20 of at most 32 bytes); a change calls changed and
---                                          emits kit.option { extension, name, value }
+--   ext:Option(name, { title, kind, default, hint, changed(self, value), get(), set(value), ... })   a choice the
+--                                          player makes on its page (or an OptionsPanel), and only there: kit.options
+--                                          reads them, nothing else changes them; ext:Get(name) is its value (a list: a
+--                                          copy). kind: boolean (the default), text, number { min, max, step = 1, unit },
+--                                          choice { choices = { { value, label } ... } }, list (strings: split at , ， 、,
+--                                          trimmed, none empty or twice, at most 20 of at most 32 bytes); a change calls
+--                                          changed and emits kit.option { extension, name, value }. With get and set the
+--                                          value is kept by the extension itself (its own saved variables), not in the
+--                                          core's storage: get() answers it (nil: the default), set(value) keeps it
+--   ext:Local() -> { known, listed, on, running, version, options }   (Builtins.lua) its part on this computer, as
+--                                          无限工坊 lists it; the bus event kit.local { extension } says when it changed
+--   ext:OnReport(app, fn(report, replay))  (Apps/Report.lua) what the program of its local part reports for an app
 --   ext:Command(word, fn(self, rest), help)  "/wk <word> ..." runs fn while it is on; /wk help lists it
 --   ext:Source(name, spec) -> source       what apps hear: the hear entries <name>:<what> (see "sources" below)
 --   ext:Facet(name, spec) -> facet         what apps see: a state each of their wakes carries (see "facets" below)
@@ -101,7 +107,7 @@ function ns.Enable(ext)
 	if ext.setup then ns.Safe(ext.setup, ext) end
 	ns.FacetsLive(ext, true)                          -- (its facets that apps look at: on)
 	ns.Changed("extension", ext)
-	Kit:Emit("kit.extension", { id = ext.id, on = true })
+	ns.EmitCore("kit.extension", { id = ext.id, on = true })
 end
 
 function ns.Disable(ext)
@@ -116,16 +122,29 @@ function ns.Disable(ext)
 	ns.FacetsLive(ext, false)                         -- (its facets' off, before its teardown)
 	if ext.teardown then ns.Safe(ext.teardown, ext) end
 	ns.Changed("extension", ext)
-	Kit:Emit("kit.extension", { id = ext.id, on = false })
+	ns.EmitCore("kit.extension", { id = ext.id, on = false })
 end
 
 ------------------------------------------------------------------------------------------------------------------------
 -- defining one
 
+-- the addon whose file called WuxianKit:Extension: its folder, as the client names the file in the call stack
+-- ("Interface/AddOns/<folder>/..."): the first frame that is not WuxianKit's own; nil when the stack does not say
+-- (code run from the chat line, a client without debugstack)
+local function Caller()
+	if type(debugstack) ~= "function" then return nil end
+	local ok, stack = pcall(debugstack, 2, 8, 0)
+	if not ok or type(stack) ~= "string" then return nil end
+	for folder in stack:gmatch("[Aa]dd[Oo]ns[\\/]([^\\/]+)[\\/]") do
+		if folder ~= addonName then return folder end
+	end
+end
+
 function Kit:Extension(id, info)
 	if type(id) ~= "string" or not id:match("^[a-z][a-z0-9_]*$") then
 		error("WuxianKit:Extension(id, info): id is lowercase letters, digits and _", 2)
 	end
+	if id == "app" then error("WuxianKit:Extension(id, info): app is the apps' own (their wakes are app.<id>)", 2) end
 	local ext = extensions[id]
 	if ext and info == nil then return ext end           -- another file of an extension defined before
 	info = info or {}
@@ -137,7 +156,7 @@ function Kit:Extension(id, info)
 		order[#order + 1] = id
 	end
 	ext.title, ext.version, ext.notes = info.title or id, info.version, info.notes
-	ext.addon = info.addon or (ext.builtin and addonName) or nil
+	ext.addon = info.addon or (ext.builtin and addonName) or ext.addon or Caller()
 	ext.defaults, ext.setup, ext.teardown, ext.docs = info.defaults, info.setup, info.teardown, info.docs
 	ext.prompt = type(info.prompt) == "string" and info.prompt ~= "" and info.prompt or nil
 	ns.Changed("extension", ext)
@@ -280,16 +299,18 @@ local function List(v)
 	return out
 end
 
--- value as option o keeps it: a number in its range on its step, one of its choices, a list (a new table); what does
--- not fit is the default
+-- value as option o keeps it: a number in its range on its step (no step: as it is), one of its choices, a list (a
+-- new table); what does not fit is the default
 local function Normalize(o, value)
 	local kind = o.kind
 	if kind == "text" then return tostring(value == nil and "" or value) end
 	if kind == "number" then
 		local v = tonumber(value)
 		if not ns.Finite(v) then return o.default end
-		local base = o.min or 0
-		v = base + math.floor((v - base) / o.step + 0.5) * o.step
+		if o.step then
+			local base = o.min or 0
+			v = base + math.floor((v - base) / o.step + 0.5) * o.step
+		end
 		if o.max and v > o.max then v = o.max end
 		if o.min and v < o.min then v = o.min end
 		return tonumber(("%.10g"):format(v))               -- steps of 0.1 without the float's tail
@@ -318,6 +339,12 @@ function Extension:Option(name, spec)
 	spec = spec or {}
 	local kind = KINDS[spec.kind] and spec.kind or "boolean"
 	local o = { name = name, title = spec.title or name, kind = kind, hint = spec.hint, changed = spec.changed }
+	if spec.get ~= nil or spec.set ~= nil then              -- kept by the extension itself: both, or neither
+		if type(spec.get) ~= "function" or type(spec.set) ~= "function" then
+			error(("ext:Option(%s, spec): get and set are functions, given together"):format(ns.Text(name)), 2)
+		end
+		o.get, o.set = spec.get, spec.set
+	end
 	if kind == "number" then
 		o.min, o.max, o.unit = tonumber(spec.min), tonumber(spec.max), spec.unit
 		if o.min and o.max and o.max < o.min then o.min, o.max = o.max, o.min end
@@ -349,26 +376,37 @@ end
 function Extension:Get(name)
 	local o = self.options[name]
 	local saved
-	if type(self.db) == "table" and type(self.db.options) == "table" then saved = self.db.options[name] end
+	if o and o.get then                                 -- the extension keeps it
+		local ok, v = pcall(o.get)
+		if ok then saved = v else geterrorhandler()(v) end
+	elseif type(self.db) == "table" and type(self.db.options) == "table" then
+		saved = self.db.options[name]
+	end
 	if saved == nil then saved = o and o.default end
 	if o and (o.kind == "number" or o.kind == "choice" or o.kind == "list") then return Normalize(o, saved) end
 	return saved
 end
 
--- the player set an option in the window or an OptionsPanel (the only ways one changes): kept as its kind keeps it;
--- a change calls its changed and emits kit.option. true and the value kept, or false (no such option)
+-- the player set an option in the window or an OptionsPanel (the only ways one changes): kept as its kind keeps it
+-- (one with set: handed to the extension, and read back); a change calls its changed and emits kit.option. true and
+-- the value kept, or false (no such option)
 function ns.SetOption(ext, name, value)
 	local o = ext.options[name]
 	if not o then return false end
-	ext.db = ext.db or Storage(ext)
-	ext.db.options = type(ext.db.options) == "table" and ext.db.options or {}
 	local before = ext:Get(name)
 	if o.kind == "number" and not ns.Finite(tonumber(value)) then value = before end   -- not a number: as it was
 	value = Normalize(o, value)
-	ext.db.options[name] = value
+	if o.set then
+		ns.Safe(o.set, Copy(value))
+		value = ext:Get(name)
+	else
+		ext.db = ext.db or Storage(ext)
+		ext.db.options = type(ext.db.options) == "table" and ext.db.options or {}
+		ext.db.options[name] = value
+	end
 	if not Same(before, value) then
 		if o.changed then ns.Safe(o.changed, ext, Copy(value)) end
-		Kit:Emit("kit.option", { extension = ext.id, name = name, value = Copy(value) })
+		ns.EmitCore("kit.option", { extension = ext.id, name = name, value = Copy(value) })
 	end
 	return true, Copy(value)
 end
@@ -719,7 +757,8 @@ function ns.ExtensionList()
 		local ext = extensions[id]
 		local addon = ext.addon or (installed[id] or {}).addon
 		out[#out + 1] = { id = id, title = ns.T(ext.title), version = ext.version, addon = addon,
-			builtin = ext.builtin or nil, official = (ext.builtin or ns.OFFICIAL[id] == addon) and true or nil,
+			builtin = ext.builtin or nil,
+			official = (ext.builtin or (addon ~= nil and ns.OFFICIAL[id] == addon)) and true or nil,
 			author = not ext.builtin and Author(addon) or nil, core = id == "kit" or nil,
 			state = ext.active and "on" or "off", capabilities = #ext.capOrder }
 		seen[id] = true

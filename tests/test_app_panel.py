@@ -41,7 +41,7 @@ function ns.AppStatus(id) return __apps[id] and __apps[id].status end
 function ns.AppStop(id, why)
 	Log("stop " .. id .. " " .. why)
 	__apps[id].status.on = false
-	WuxianKit:Emit("kit.app", { app = id, on = false, why = why })
+	ns.EmitCore("kit.app", { app = id, on = false, why = why })
 end
 function ns.AppOptionList(id) return __apps[id] and __apps[id].options end
 function ns.SetAppOption(id, name, v)
@@ -110,6 +110,16 @@ def button(frame, label):
 
 def log(s):
     return py(s.g("__log")) or []
+
+
+def marks(item):
+    """where a row of the window's list runs, as its marks say it: "game", "local", "game local", or "" for none"""
+    return " ".join(place for place in ("game", "local") if item[b"marks"][place.encode()][b"shown"])
+
+
+def rows(w):
+    """the titles of every row of the window's list, those out of sight (a list that does not fit) too"""
+    return [w[b"items"][i][b"label"][b"text"].decode() for i in range(1, int(w[b"nItems"]) + 1)]
 
 
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
@@ -432,7 +442,7 @@ class AppPanel(unittest.TestCase):
         st[b"on"], st[b"ends"], st[b"seen"] = True, now + 600, now - 61
         for topic in ("kit.app", "kit.option", "kit.changed", "app.voice"):
             st[b"said"] = len(topic)
-            s.lua.execute(f"WuxianKit:Emit({topic!r}, {{ app = 'voice' }})".encode())
+            s.lua.execute(f"__ns.EmitCore({topic!r}, {{ app = 'voice' }})".encode())
             s.run(0.1)
             self.assertIn(f"Said today: {len(topic)}", texts(p)[0], topic)
         self.assertIn("Last answer 1 min ago", texts(p)[0])

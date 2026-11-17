@@ -1,7 +1,7 @@
-"""Apps, 0.6.1 (ARCHITECTURE section 10 and section 16): the declaration's link (live, standby or none; only live is
-kept) in the status, the rows of kit.apps, describe and the kit.app event (with pace, the activity now, beside it); and
-the player's less and more, which the core carries out for an app with pace (the activity a step, kit.option, then the
-control item {cmd, activity, was, edge?}) and only tells an app without."""
+"""Apps (ARCHITECTURE section 10): the declaration's link (live, or none; anything else refused, "standby" too) in the
+status, the rows of kit.apps, describe and the kit.app event (with pace, the activity now, beside it); and the player's
+less and more, which the core carries out for an app with pace (the activity a step, kit.option, then the control item
+{cmd, activity, was, edge?}, which WuxianKit:AppControl answers too) and only tells an app without."""
 import unittest
 
 from kitmock import lupa, py
@@ -19,7 +19,7 @@ def control(wake):
 
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
 class Link(Case):
-    def test_live_standby_or_none(self):
+    def test_live_or_none(self):
         s = self.start()
         st = self.agent(s, "kit.app.declare", "{ app = 'voice', title = 'Voice', link = 'live' }")
         self.assertEqual(st["link"], "live")
@@ -27,12 +27,10 @@ class Link(Case):
         self.assertEqual(self.agent(s, "kit.app.describe", "{ app = 'voice' }")["decl"]["link"], "live")
         again = self.agent(s, "kit.app.declare", "{ app = 'voice', title = 'Voice', link = 'live' }")
         self.assertFalse(again["changed"])
-        for decl in ("{ app = 'chat', title = 'Chat' }", "{ app = 'chat', title = 'Chat', link = 'standby' }"):
-            st = self.agent(s, "kit.app.declare", decl)
-            self.assertNotIn("link", st, decl)                            # standby is no mark at all
-            self.assertNotIn("link", self.row(s, "chat"), decl)
-            self.assertNotIn("link", self.agent(s, "kit.app.describe", "{ app = 'chat' }")["decl"], decl)
-        self.assertFalse(st["changed"])                                   # standby given is none given
+        st = self.agent(s, "kit.app.declare", "{ app = 'chat', title = 'Chat' }")
+        self.assertNotIn("link", st)                                      # none given: no mark at all
+        self.assertNotIn("link", self.row(s, "chat"))
+        self.assertNotIn("link", self.agent(s, "kit.app.describe", "{ app = 'chat' }")["decl"])
         st = self.agent(s, "kit.app.declare", "{ app = 'voice', title = 'Voice' }")   # the whole declaration: gone
         self.assertTrue(st["changed"])
         self.assertNotIn("link", st)
@@ -41,17 +39,17 @@ class Link(Case):
 
     def test_refused(self):
         s = self.start()
-        for value in ("'always'", "'LIVE'", "''"):
+        for value in ("'standby'", "'always'", "'LIVE'", "''"):           # (standby was 0.6.1's word for none)
             err = self.fails(s, "kit.app.declare", f"{{ app = 'x', link = {value} }}")
-            self.assertIn("link is live or standby", err, value)
+            self.assertIn('link is "live", or not given', err, value)
         for value in ("true", "1", "{}"):
             self.assertIn("link", self.fails(s, "kit.app.declare", f"{{ app = 'x', link = {value} }}"), value)
-        self.assertIn("link is live or standby",
+        self.assertIn('link is "live", or not given',
                       self.fails(s, "kit.app.open", "{ app = 'tmp', temp = { link = 'open' } }"))
         self.assertEqual([a["id"] for a in py(s.ns.AppList())], [])
         ok, err = s.lua.eval(b"pcall(WuxianKit.App, WuxianKit, 'bad', { title = 'Bad', link = 'yes' })")
         self.assertFalse(ok)
-        self.assertIn("link is live or standby", err.decode())
+        self.assertIn('link is "live", or not given', err.decode())
 
     def test_an_addons_and_a_temporary_app(self):
         s = self.start()
@@ -132,7 +130,7 @@ class Link(Case):
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
 class LessMore(Case):
     def control(self, s, app, word):
-        self.assertIs(s.lua.eval(f"WuxianKit:AppControl({app!r}, {word!r})".encode()), True, word)
+        self.assertIs(s.lua.eval(f"(WuxianKit:AppControl({app!r}, {word!r}))".encode()), True, word)
         return self.wakes(s, app)[-1]
 
     def options(self, s):
@@ -192,14 +190,48 @@ class LessMore(Case):
                       "{ cmd = 'louder', label = 'Louder' }, 'stop' }, lease = 0 }")
         for word in ("mute", "test", "louder"):
             self.assertEqual(control(self.control(s, "g", word)), {"cmd": word})
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('g', 'less')"), False)   # not one of its controls
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('g', 'less'))"), False)   # not one of its controls
         self.assertEqual(self.events(s, "kit.option"), [])
         self.assertEqual(self.agent(s, "kit.app.status", "{ app = 'g' }")["pace"], "normal")
+
+    def test_what_it_answers(self):
+        """WuxianKit:AppControl answers true and what the app was told: for less and more of an app with pace, where
+        its activity is now (the slash command says it to the player)"""
+        s = self.start()
+        self.opens(s, PACED)
+        self.assertEqual(self.lua(s, "{ WuxianKit:AppControl('g', 'less') }"),
+                         [True, {"cmd": "less", "activity": "quiet", "was": "normal"}])
+        self.assertEqual(self.lua(s, "{ WuxianKit:AppControl('g', 'less') }"),
+                         [True, {"cmd": "less", "activity": "quiet", "was": "quiet", "edge": True}])
+        self.assertEqual(self.lua(s, "{ WuxianKit:AppControl('g', 'nope') }"), [False])
+        self.opens(s, "{ app = 'v', controls = { 'less', 'mute' }, hear = { 'bus:demo.*' } }")
+        self.assertEqual(self.lua(s, "{ WuxianKit:AppControl('v', 'less') }"), [True, {"cmd": "less"}])
+        self.assertEqual(self.lua(s, "{ WuxianKit:AppControl('v', 'mute') }"), [True, {"cmd": "mute"}])
+
+    def test_the_slash_command_says_the_activity(self):
+        """/wk <app> less|more of an app with pace: 活跃度：适中 → 安静, and at an end 已是最安静 / 已是最活跃"""
+        s = self.start()
+        self.opens(s, PACED)
+        slash = s.g("SlashCmdList")[b"WUXIANKIT"]
+
+        def says(words):
+            s.lines.clear()
+            slash(words.encode())
+            return s.lines[-1].split("|r ", 1)[-1]
+        self.assertEqual(says("g less"), "Activity: Normal → Quiet")
+        self.assertEqual(says("g less"), "Already the quietest")
+        s.lua.execute(b"__ns.SetLanguage('zhCN')")
+        self.assertEqual(says("g more"), "活跃度：安静 → 适中")
+        self.assertEqual(says("g 多说"), "活跃度：适中 → 活跃")
+        self.assertEqual(says("g more"), "已是最活跃")
+        self.assertEqual(says("g 少说"), "活跃度：活跃 → 适中")
+        self.assertEqual(says("g stop"), "已告知「Guild」：停止")           # any other command: as ever
+        self.assertEqual(says("g less"), "「Guild」未运行")
 
     def test_not_while_it_is_off(self):
         s = self.start()
         self.agent(s, "kit.app.declare", PACED)
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('g', 'less')"), False)
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('g', 'less'))"), False)
         self.assertEqual(self.events(s, "kit.option"), [])
         self.assertEqual(py(s.ns.AppOptionList(b"g"))["activity"]["value"], "normal")
 

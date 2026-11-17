@@ -52,7 +52,15 @@ Make the addon {{addon}} a WuxianKit extension. What it should offer: {{goal}}
    - registering a source or a facet again from the same extension replaces it (the apps that hear the source
      subscribe to the new one). `ext:Source(name, nil)` and `ext:Facet(name, nil)` take it back: an app that runs
      and needs it waits half a minute for it to come again, then stops (`why` `extension`), and no app that needs
-     it can start meanwhile.
+     it can start meanwhile;
+   - an option whose value the addon already keeps in its own saved variables: `ext:Option(name, { kind, title,
+     get = function() ... end, set = function(v) ... end })`, so the value is kept once;
+   - events: `ext:Emit(topic, data)` sends `<id>.<topic>`. `kit.*` and `app.*` are WuxianKit's own topics:
+     `WuxianKit:Emit` refuses them;
+   - an extension with a part on the computer too (a local extension of 无限工坊 with the same id, or whose manifest
+     brings this addon): `ext:Local()` answers `{known, listed, on, running, version, options}` of that part (the
+     bus event `kit.local {extension}` says when it changed), and `ext:OnReport(app, fn)` hears what its program
+     reports for an app it drives (`fn(report, replay)`; `ARCHITECTURE.md` section 10).
 5. Docs: an `AGENT.md` in the addon folder (what the tools are for, how to use them together, its sources and their
    items' fields, its facets and their fields, cautions), and
    `skills/<name>.md` only for a workflow that needs several tools in order (its front matter: `name`, `title`,

@@ -1,8 +1,9 @@
 -- Apps, what the agent and the window read and call (see Decl.lua for the apps, the contract, and for how the four
 -- files share names): the start line, the status, the ns functions the window uses (ns.App, ns.AppList,
--- ns.AppManifest, ns.AppStatus, ns.AppStop, ns.AppOptionList, ns.SetAppOption, ns.AppControls), the core's
--- capabilities (Keep: kit.app.declare / open / stop / forget; See: kit.app.describe / status / state / recent and
--- kit.apps), the event kit.app, and the count of what the agent said today.
+-- ns.AppManifest, ns.AppStatus, ns.AppStop, ns.AppStart, ns.AppStartable, ns.AppOptionList, ns.SetAppOption,
+-- ns.AppControls), the core's capabilities (Keep: kit.app.declare / open / stop / forget; See: kit.app.describe /
+-- status / state / recent and kit.apps; kit.app.report is in Report.lua), the event kit.app, and the count of what the
+-- agent said today.
 -- Here by choice: StartLine and DocsPath (only the lists and the status use them); ns.AppOptionList and
 -- ns.SetAppOption (the window's, over Decl.lua's Bound); the said count (kit.proposal), beside the status that reads
 -- it. ns.ForgetApp is in Decl.lua, with the fields (FIELDS) the arguments, the docs, the status and the lists here are
@@ -14,6 +15,7 @@ local W, MOST, ID_MAX, FIELDS, DECLARE_ARGS, FieldDocs = A.W, A.MOST, A.ID_MAX, 
 local Copy, Plain, Fail = A.Copy, A.Plain, A.Fail
 local CheckId, LeaseOf, MinutesOf, Declare = A.CheckId, A.LeaseOf, A.MinutesOf, A.Declare
 local apps, order, Run, Title, Paced, Bound = A.apps, A.order, A.Run, A.Title, A.Paced, A.Bound
+local Driven, Ends, By = A.Driven, A.Ends, A.By
 local RING, State, Recent = A.RING, A.State, A.Recent
 local Retune, Drop, Stop, Present, Blocked, Start, Reconcile = A.Retune, A.Drop, A.Stop, A.Present, A.Blocked,
 	A.Start, A.Reconcile
@@ -22,7 +24,7 @@ local Retune, Drop, Stop, Present, Blocked, Start, Reconcile = A.Retune, A.Drop,
 -- points it at the app's skill; nil for an app without a prompt, and for one its local extension's program drives
 local function StartLine(app)
 	local prompt = app.decl.prompt
-	if type(prompt) ~= "string" or prompt == "" or app.decl.driver == "local" then return nil end
+	if type(prompt) ~= "string" or prompt == "" or Driven(app) then return nil end
 	return W.START:format(ns.Text(Title(app)), prompt)
 end
 
@@ -57,12 +59,12 @@ end
 
 local function Status(app)
 	local d, s, now = app.decl, Run(app), time()
-	local out = Marked({ app = app.id, title = Title(app), by = app.by, on = s ~= nil, said = Said(app),
+	local out = Marked({ app = app.id, title = Title(app), by = By(app), on = s ~= nil, said = Said(app),
 		lease = (s and s.lease) or (not s and d.lease) or 0, next = Recent(app, math.huge, 1).next,
 		start = StartLine(app), temp = app.temp == true }, app, "status")
 	if out.next == math.huge then out.next = 0 end
 	if s then
-		out.ends, out.started, out.heard, out.wakes, out.lastWake, out.seen = s.ends, s.started, s.heard or 0,
+		out.ends, out.started, out.heard, out.wakes, out.lastWake, out.seen = Ends(app, s), s.started, s.heard or 0,
 			s.wakes or 0, s.lastWake, s.seen
 		out.present = Present(s, now)
 		out.waiting = app.waiting                           -- (on, and not heard yet: what it waits for)
@@ -112,8 +114,8 @@ function ns.AppList()
 		local app = apps[id]
 		local s = Run(app)
 		if s or not app.decl.hidden then
-			out[#out + 1] = Marked({ id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
-				ends = s and s.ends or nil, present = Present(s, now), start = StartLine(app),
+			out[#out + 1] = Marked({ id = id, title = Title(app), by = By(app), addon = app.addon, on = s ~= nil,
+				ends = s and Ends(app, s) or nil, present = Present(s, now), start = StartLine(app),
 				blocked = not s and Blocked(app) or nil, waiting = s and app.waiting or nil, temp = app.temp == true,
 				see = #app.decl.see > 0 and Copy(app.decl.see) or nil, pace = Activity(app, s) }, app, "list")
 		end
@@ -125,7 +127,7 @@ function ns.AppManifest()
 	local out = {}
 	for _, id in ipairs(order) do
 		local app = apps[id]
-		out[#out + 1] = Marked({ id = id, title = Title(app), by = app.by, addon = app.addon, topic = "app." .. id,
+		out[#out + 1] = Marked({ id = id, title = Title(app), by = By(app), addon = app.addon, topic = "app." .. id,
 			hear = Copy(app.decl.hear), see = Copy(app.decl.see), start = StartLine(app), docs = DocsPath(app),
 			temp = app.temp == true }, app, "list")
 	end
@@ -141,6 +143,31 @@ end
 function ns.AppStop(id, why)
 	local app = apps[id]
 	return app ~= nil and Stop(app, why or "player")
+end
+
+-- whether the player can start app id now, one its local extension's program drives that does not run: that program
+-- runs (无限工坊's list says so: it sees kit.app and goes on feeding it), and nothing the app needs is missing.
+-- Else false and why: "local" (the program does not run, or no list yet), "blocked"; false alone for any other app
+function ns.AppStartable(id)
+	local app = apps[id]
+	if not app or not Driven(app) or Run(app) then return false end
+	local x = ns.LocalEntry(app.decl["local"].id)
+	if not (x and x.on and x.running) then return false, "local" end
+	if Blocked(app) then return false, "blocked" end
+	return true
+end
+
+-- the player starts it (the card's 开始, after their own stop): its run begins as kit.app.open would begin it,
+-- told as ever (kit.app on = true), with nobody heard from yet; its lease counts from now
+function ns.AppStart(id)
+	if not ns.AppStartable(id) then return false end
+	local app = apps[id]
+	local ok, err = pcall(Start, app, nil, app.decl.lease, false)
+	if not ok then
+		geterrorhandler()(err)
+		return false
+	end
+	return Run(app) ~= nil
 end
 
 function ns.AppOptionList(id)
@@ -181,7 +208,7 @@ function ns.SetAppOption(id, name, value)
 		if o.changed then ns.Safe(o.changed, app, Copy(value)) end
 		local s = Run(app)
 		if s and Paced(app) and (name == "activity" or name == "quiet") then Retune(app, s) end
-		Kit:Emit("kit.option", { app = id, name = name, value = Copy(value) })
+		ns.EmitCore("kit.option", { app = id, name = name, value = Copy(value) })
 	end
 	return true, Copy(value)
 end
@@ -219,6 +246,9 @@ local function Open(_, a, opts)
 		Fail("no app %s: kit.app.declare declares one that is kept, kit.app.open's temp (its whole declaration) a "
 			.. "temporary one; kit.apps lists the apps there are", a.app)
 	end
+	if minutes and Driven(app) then
+		Fail("app %s is driven by its local extension's program: its run has no end, so no minutes", app.id)
+	end
 	minutes = minutes or app.decl.minutes
 	if lease == nil then lease = app.decl.lease end
 	if not Run(app) then
@@ -239,7 +269,8 @@ end
 kit:Keep("app.open", { title = "kit.app.open", args = { app = "string", minutes = "number?", lease = "number?",
 	temp = "table?" }, run = Open,
 	doc = ("starts an app that is declared (kit.app.declare, or an addon's: kit.apps lists them); one already running "
-		.. "goes on with the new minutes and lease (default: its declaration's). temp: a table, the whole declaration "
+		.. "goes on with the new minutes and lease (default: its declaration's; no minutes for an app with driver "
+		.. "local: its run has no end). temp: a table, the whole declaration "
 		.. "of a temporary app (kit.app.declare's fields, and hidden; given again it replaces the one before): to "
 		.. "listen for a while, as when debugging, or a program's plumbing; not remembered, not one of the %d kept, at "
 		.. "most %d at once, gone once it stops or the UI reloads (temp for a kept app of yours makes it temporary: "
@@ -278,11 +309,15 @@ end
 A.Redeclare = Redeclare
 Redeclare()
 
-kit:Keep("app.stop", { title = "kit.app.stop", args = { app = "string" },
-	doc = "stops an app (kit.app {app, on = false, why = \"stopped\"}; a temporary app goes with it); answers its status",
+local STOP_WHYS = { stopped = true, extension = true }
+
+kit:Keep("app.stop", { title = "kit.app.stop", args = { app = "string", why = "string?" },
+	doc = "stops an app (kit.app {app, on = false, why = \"stopped\"}; a temporary app goes with it); answers its "
+		.. "status. why: stopped (the default), or extension (无限工坊's: the local extension that drives it stopped)",
 	run = function(_, a)
 		local app = Need(a.app)
-		Stop(app, "stopped")
+		if a.why ~= nil and not STOP_WHYS[a.why] then Fail("why is stopped (the default) or extension") end
+		Stop(app, a.why or "stopped")
 		return Status(app)
 	end })
 
@@ -300,18 +335,20 @@ kit:Keep("app.forget", { title = "kit.app.forget", args = { app = "string" },
 	end })
 
 kit:See("app.describe", { title = "kit.app.describe", args = { app = "string" },
-	doc = "an app's declaration as it is kept: {app, by (addon|agent), temp, decl (every field of kit.app.declare with "
+	doc = "an app's declaration as it is kept: {app, by (addon|agent|local), temp, decl (every field of "
+		.. "kit.app.declare with "
 		.. "its value, defaults filled in, lease 0 for none; texts an addon gives read in the language in force)}. "
 		.. "decl given back to kit.app.declare changes nothing (changed false): compare before you declare. Not a "
 		.. "heartbeat",
 	run = function(_, a)
 		local app = Need(a.app)
-		return { app = app.id, by = app.by, temp = app.temp == true, decl = Plain(app.data) }
+		return { app = app.id, by = By(app), temp = app.temp == true, decl = Plain(app.data) }
 	end })
 
 kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 	doc = "an app's status, and your heartbeat (kit.app.open, status, state and recent of yours mark the app heard "
-		.. "from): {app, title, by (addon|agent), on, ends, started, heard (items this run), wakes, lastWake, seen (your "
+		.. "from): {app, title, by (addon|agent; local: its local extension's program drives it), on, ends (none for by "
+		.. "local: its run has no end), started, heard (items this run), wakes, lastWake, seen (your "
 		.. "last call), present (you called within its lease), lease (seconds, 0 none), waiting? (while on: what it "
 		.. "needs that is not registered yet, such as another addon's source after a reload; nothing is heard until it "
 		.. "is, and it stops, why \"extension\", if that takes more than half a minute), why (while off: how its last "
@@ -351,7 +388,8 @@ kit:See("app.recent", { title = "kit.app.recent", args = { app = "string", since
 
 kit:See("apps", { title = "kit.apps",
 	doc = "the apps: [{id, title, by (addon: an addon declared it; agent: declared by kit.app.declare or kit.app.open's "
-		.. "temp), addon?, on, ends, present, prompt? (its skill), start? (the start line: one sentence that tells an AI "
+		.. "temp; local: its local extension's program drives it), addon?, on, ends (none for by local), present, "
+		.. "prompt? (its skill), start? (the start line: one sentence that tells an AI "
 		.. "client to read the skill with wk_docs), extension? (the extension it belongs to), blocked? (why it cannot "
 		.. "start, while off), waiting? (while on: what it needs that is not registered yet), see? (the states it sees), "
 		.. "pace? (with pace: the activity now, quiet|normal|lively), link? (live: 无限工坊 keeps the link open while it "
@@ -360,7 +398,8 @@ kit:See("apps", { title = "kit.apps",
 		.. "无限工坊 it comes with)}]. Not a heartbeat: it does not keep an app alive",
 	run = function() return ns.AppList() end })
 
-kit:Event("app", { doc = "an app started, stopped, or what it waits for changed: {app, on, ends (while on), waiting "
+kit:Event("app", { doc = "an app started, stopped, or what it waits for changed: {app, on, ends (while on; none for an "
+	.. "app its local extension's program drives), waiting "
 	.. "(on, and something it needs is not registered yet: nothing is heard until it is; without: it hears), link (on, "
 	.. "of an app declared link live: keep the link open while it runs), pace (on, of an app with pace: the activity "
 	.. "now; kit.option tells a change), why (a stop: stopped by kit.app.stop, player, expired, left (its lease), "

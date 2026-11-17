@@ -7,7 +7,7 @@ words (ns.SLASH_WORDS) before any other's; and the core's page drawing the core'
 import unittest
 
 from kitmock import click, lupa, py, texts, type_into
-from test_app_panel import button, labels, log, shown, start
+from test_app_panel import button, labels, log, marks, shown, start
 
 
 @unittest.skipIf(lupa is None, "lupa (Lua 5.1 for Python) is not installed")
@@ -54,12 +54,12 @@ class WindowApps(unittest.TestCase):
         for app in ("Voice", "Pipe", "pipe"):
             self.assertNotIn(app, titles)
         voice, bot = self.item(w, "WxVoice"), self.item(w, "Bot")
-        self.assertEqual((voice[b"state"][b"text"], voice[b"state"][b"shown"], bot[b"state"][b"shown"]),
-                         (b"Game", True, False))
+        self.assertEqual((marks(voice), voice[b"state"][b"shown"], marks(bot), bot[b"state"][b"shown"]),
+                         ("game", False, "", False))                           # where it runs: a mark, no words
         self.assertEqual((voice[b"dot"][b"shown"], bot[b"dot"][b"shown"]), (True, False))   # Voice runs
         self.assertEqual(py(voice[b"dot"][b"rgb"]), py(s.lua.eval(b"WuxianKit.Skin.C.ok")))
         core = self.item(w, "Framework")
-        self.assertEqual((core[b"state"][b"shown"], core[b"dot"][b"shown"]), (False, False))
+        self.assertEqual((core[b"state"][b"shown"], marks(core), core[b"dot"][b"shown"]), (False, "", False))
         self.assertEqual(texts(w[b"body"])[-2:], ["Background listeners", "pipe"])   # the core's page: what listens
         click(voice)
         body = texts(w[b"body"])
@@ -80,13 +80,17 @@ class WindowApps(unittest.TestCase):
         self.assertNotIn("Bot", self.titles(w))
         self.assertEqual(texts(w[b"list"]), ["Built-in", "Added"])              # the last group: gone with it
         s.lua.execute(b"__add('later', { addon = 'WxVoice', decl = { title = 'Later' } }) "
-                      b"WuxianKit:Emit('kit.app', { app = 'later', on = true })")
+                      b"__ns.EmitCore('kit.app', { app = 'later', on = true })")
         s.run(0.1)
         self.assertIn("App · Later", texts(w[b"body"]))                         # the addon's second app: the same page
         self.assertEqual(self.titles(w).count("WxVoice"), 1)
         s.lua.execute(b"__ns.SetLanguage('zhCN')")
         self.assertEqual(texts(w[b"list"]), ["内置", "已添加"])
-        self.assertEqual(self.item(w, "WxVoice")[b"state"][b"text"].decode(), "游戏")
+        voice = self.item(w, "WxVoice")                                         # the mark in words: under the mouse
+        voice[b"scripts"][b"OnEnter"](voice)
+        self.assertEqual(s.g("GameTooltip")[b"text"].decode(), "WxVoice\n|cff9c9ea6游戏|r")
+        voice[b"scripts"][b"OnLeave"](voice)
+        self.assertFalse(s.g("GameTooltip")[b"shown"])
         self.assertEqual(texts(w[b"body"])[1], "应用 · Voice")
         self.assertEqual(self.pills(w), ["已添加", "游戏"])
         self.window(s, "kit")

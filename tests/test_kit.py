@@ -318,7 +318,7 @@ class Core(unittest.TestCase):
         self.assertEqual((cvar["kind"], cvar["title"], cvar["args"]["name"]), ("do", "Client settings", "string"))
         self.assertEqual([v["topic"] for v in ext["kit"]["events"]], ["kit.proposal", "kit.extension", "kit.dropped",
                                                                      "kit.changed", "kit.ready", "kit.option",
-                                                                     "kit.local.option", "kit.app"])
+                                                                     "kit.local", "kit.local.option", "kit.app"])
         self.assertEqual([v["topic"] for v in ext["gate"]["events"]], ["gate.result"])
         self.assertEqual((len(ext["chat"]["events"]), len(ext["game"]["events"])), (0, 0))   # what they tell, apps hear
         sources = {e["id"]: [x["name"] for x in e.get("sources") or []] for e in m["extensions"]}

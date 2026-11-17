@@ -4,25 +4,33 @@
 -- its scopes to tick "without asking", each ticked one with its budget (a button that goes through the usual ones), and
 -- what it can do, a line of titles for each kind. The core's own page lists, instead of what it can do (that is the
 -- agent's), what has not run yet, to stop, and what ran, to undo. A page longer than the window scrolls with the mouse
--- wheel, and so does the list at the left. One window: nothing else is spread over the screen.
+-- wheel, and so does the list at the left (no row of it is shown cut at an edge: one that does not fit whole waits
+-- for the wheel, and a line at the bottom says how many do). One window: nothing else is spread over the screen.
 -- WuxianKit:OptionsPanel(id, parent, width) draws an extension's options in another addon's window with the same
 -- controls; both change the same values (the "option" action) and both redraw when one changes.
 -- The list, as 无限工坊's App has its extensions: the core's row (扩展框架), then 内置 (无限工坊's own extensions), then
 -- 已添加 (the others: another addon's in the game, and the ones added to this computer, which 无限工坊 names:
--- ns.LocalList), each of those with where it runs (游戏, 本机, 游戏 · 本机). There is no list of apps: an app is on
--- the page of the extension it came with, under its own heading, as its card (UI.AppCard, AppPanel.lua: 交给 AI for
+-- ns.LocalList), each of those with where it runs: a small mark at the right for the game, one for this computer (the
+-- name comes first; the words are on the page, and under the mouse). An extension in the game and one of 无限工坊's
+-- list are one row when they are one extension (ns.LocalOf: the same id, or its addon among those the local one
+-- brings). There is no list of apps: an app is on the page of the extension it came with, under its own heading, as
+-- its card (UI.AppCard, AppPanel.lua: 交给 AI for
 -- an app with a prompt), and a row whose app runs has a dot (green; gold while it waits). An app's row is found by
 -- the extension its declaration names, else the local extension that brought it, else its addon's extension (an addon
 -- with apps and no extension is a row itself). Only an app an agent declared by itself, with no extension at all, is
 -- a row of its own, in a last group (Agent 应用) that is there only then, its page the card with a remove button.
 -- An app whose local extension 无限工坊 does not list (it gave no list, or one without it: the extension is gone, or
--- nobody added it) is on a row made from the app's own label; that page says so and its cards have the remove button
--- too, as nothing in 无限工坊's App would take such an app away. A local extension's page (and the row of one in the
--- game too) has its local options (本机选项, from 无限工坊's list) after the game's: the player changes one there and
--- 无限工坊 is told (kit.local.option, sent by the core only); a text one is 无限工坊's App's to change.
+-- nobody added it) is on the row of the game extension of that id when there is one, else on a row made from the
+-- app's own label; that page says so and its cards have the remove button too, as nothing in 无限工坊's App would take
+-- such an app away. A local extension's page (and the row of one in the game too: 游戏选项, then 本机选项) has its
+-- local options (from 无限工坊's list) after the game's: the player changes one there and 无限工坊 is told
+-- (kit.local.option, sent by the core); the value shows at once, marked until 无限工坊's next list confirms it; the
+-- text ones are 无限工坊's App's to change, a line each at the end; all of them dim while 无限工坊 is not linked.
 -- The window first opens on the first row with an app that runs (none: the core's). The core's page ends with the
 -- hidden apps that run (后台监听: a program's plumbing is not listed, but the player sees what listens and can stop
--- it). /wk <app> opens the page its card is on; /wk <app> <word or words> gives it the player's command or words; the
+-- it). WuxianKit:Window(id) opens a row by its id, a local extension's id or an app's. /wk <app> opens the page its
+-- card is on; /wk <app> <word or words> gives it the player's command or words (less and more of an app with pace
+-- answer with where its activity is now); the
 -- words /wk keeps for itself (ns.SLASH_WORDS) come first and are no app's id.
 -- UI.Canvas: the drawing pieces, for AppPanel.lua's card (one canvas drawn at a time).
 local _, ns = ...
@@ -35,10 +43,11 @@ local A = Kit:Words {
 		PILL = "应用", TEMP = "临时", BY_AGENT = "Agent 声明", REMOVE = "移除",
 		APP = "应用 · %s", TEMP_APP = "临时应用 · %s", APP_OPTIONS = "应用选项",
 		ADDS = "补充：%s", ADDS_TO = "补充到应用：%s", MANAGED = "在无限工坊 App 中管理",
-		UNLISTED = "无限工坊未列出此扩展", LOCAL_OPTIONS = "本机选项", LOCAL_TEXT = "在无限工坊 App 中修改",
-		LOCAL_EMPTY = "未设置",
-		LOCAL_ON = "由本机扩展「%s」运行", LOCAL_OFF = "本机扩展未运行", LOCAL_AGAIN = "重载界面或重新登录后自动开始",
-		LOCAL_WHY = { player = "已手动停止", expired = "运行时间已到", left = "本机扩展无响应" },
+		UNLISTED = "无限工坊未列出此扩展", GAME_OPTIONS = "游戏选项", LOCAL_OPTIONS = "本机选项",
+		LOCAL_TEXT = "以下在无限工坊 App 中修改", LOCAL_VALUE = "%s：%s", LOCAL_DEFAULT = "默认", PENDING = "待确认",
+		FACT_GAME = "游戏", FACT_LOCAL = "本机端", LOCAL_STATE = { on = "运行中", idle = "未运行", off = "已停用" },
+		LOCAL_ON = "本机端运行中", LOCAL_OFF = "本机端未运行", LOCAL_STOPPED = "已停止",
+		LOCAL_LEFT = "本机端无响应，已停止", START = "开始", LIST_MORE = "另有 %d 项",
 		WAITING = "等待中", WAIT_HINT = "就绪后自动开始",
 		LISTENERS = "后台监听", LISTEN_MORE = "%s 等 %d 项", LISTEN_UNTIL = "至 %s",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
@@ -57,11 +66,12 @@ local A = Kit:Words {
 		PILL = "App", TEMP = "Temporary", BY_AGENT = "Declared by an agent", REMOVE = "Remove",
 		APP = "App · %s", TEMP_APP = "Temporary app · %s", APP_OPTIONS = "App options",
 		ADDS = "Additions: %s", ADDS_TO = "Adds to the apps: %s", MANAGED = "Managed in the Wuxian Workshop app",
-		UNLISTED = "Wuxian Workshop does not list this extension", LOCAL_OPTIONS = "Local options",
-		LOCAL_TEXT = "Change it in the Wuxian Workshop app", LOCAL_EMPTY = "Not set",
-		LOCAL_ON = "Run by the local extension %s", LOCAL_OFF = "Local extension not running",
-		LOCAL_AGAIN = "Starts again after a UI reload or login",
-		LOCAL_WHY = { player = "Stopped by you", expired = "Time is up", left = "Local extension not responding" },
+		UNLISTED = "Wuxian Workshop does not list this extension", GAME_OPTIONS = "Game options",
+		LOCAL_OPTIONS = "Local options", LOCAL_TEXT = "Changed in the Wuxian Workshop app", LOCAL_VALUE = "%s: %s",
+		LOCAL_DEFAULT = "Default", PENDING = "Unconfirmed",
+		FACT_GAME = "Game", FACT_LOCAL = "Local part", LOCAL_STATE = { on = "Running", idle = "Not running", off = "Disabled" },
+		LOCAL_ON = "Local part running", LOCAL_OFF = "Local part not running", LOCAL_STOPPED = "Stopped",
+		LOCAL_LEFT = "Local part not responding, stopped", START = "Start", LIST_MORE = "%d more",
 		WAITING = "Waiting", WAIT_HINT = "Starts by itself once ready",
 		LISTENERS = "Background listeners", LISTEN_MORE = "%s, %d in all", LISTEN_UNTIL = "until %s",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
@@ -83,11 +93,14 @@ UI.AppWords = A
 local W, H, LEFT = 670, 520, 206
 local TITLE_W = W - LEFT - 210            -- a page's title: room after it for its two capsules
 local BODY, ROW = H - 66, 19              -- the page's height; a line's (Put: 14 and 5 between)
+local ITEM, FOOT = 22, 18                 -- a row of the list; the line under a list that does not fit
+local WANT = 15                           -- seconds a page asked for that is not there yet is waited for
 local HISTORY_SHOWN = 8
 local KIND_ORDER = { "see", "say", "do", "keep", "point" }
 local NUMBER_W = 80                       -- a number option's box
 local f                                   -- the frame, made the first time it opens
 local selected                            -- the page shown: its row's id (Rows); nil at first
+local wanted, wantedAt                    -- a page WuxianKit:Window was asked for and did not find (yet), and when
 local cv                                  -- the canvas being drawn: the window (f) or an OptionsPanel
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -126,6 +139,7 @@ local function PutCheck(x, label, on, onClick, labelWidth)
 	c.label:SetText(label)
 	c.Set(on)
 	c.onClick = onClick
+	S.Usable(c, true)
 	c:Show()
 	cv.y = cv.y + 22
 	return c
@@ -159,6 +173,7 @@ local function PutEdit(x, text, onCommit, width, key)
 	e:SetPoint("TOPLEFT", cv.body, "TOPLEFT", x, -cv.y)
 	e:SetWidth(width or (cv.width - 32 - x))
 	if e:HasFocus() and (key == nil or e.key ~= key) then EndEdit(cv, e) end
+	S.Usable(e, true)
 	e.key, e.onCommit = key, onCommit
 	if not e:HasFocus() then
 		e.kept = text
@@ -250,28 +265,29 @@ end
 -- value; set(name, value) when the player changes it. Each with its control: a check box, a text box, a number box and
 -- its unit, a row of buttons (the chosen one gold), a text box of items. indent: each title on the left, its control
 -- from there on the same row (the core's page: as its language row), its hint under the control. scope: whose options
--- they are ("ext:tune", "app:guild"), for the boxes' keys (PutEdit)
-local function Options(order, entry, set, indent, scope)
+-- they are ("ext:tune", "app:guild"), for the boxes' keys (PutEdit). off: shown, dim, and not to be changed
+local function Options(order, entry, set, indent, scope, off)
 	local x = indent or 0
+	local ink = off and C.muted or C.fg
 	for _, name in ipairs(order) do
 		local o, value = entry(name)
 		local key = scope and (scope .. ":" .. name) or nil
 		local function Set(v) set(name, v) end
 		if type(o) ~= "table" then                             -- (gone meanwhile)
 		elseif o.kind == "boolean" or o.kind == nil then
-			PutCheck(0, ns.T(o.title), value, Set)
+			S.Usable(PutCheck(0, ns.T(o.title), value, Set), not off)
 		else
 			if indent then                                     -- the title beside the control
 				local y = cv.y + 4
 				cv.y = y
-				Put(0, C.fg, ns.T(o.title), indent - 6, true)
+				Put(0, ink, ns.T(o.title), indent - 6, true)
 				cv.y = o.kind == "choice" and y - 3 or y - 4
 			else
-				Put(0, C.fg, ns.T(o.title))
+				Put(0, ink, ns.T(o.title))
 			end
 			if o.kind == "number" then
 				local y = cv.y
-				PutEdit(x, ValueText(o, value), Set, NUMBER_W, key)
+				S.Usable(PutEdit(x, ValueText(o, value), Set, NUMBER_W, key), not off)
 				if o.unit ~= nil then
 					local after = cv.y
 					cv.y = y + 4
@@ -283,11 +299,11 @@ local function Options(order, entry, set, indent, scope)
 				for _, c in ipairs(type(o.choices) == "table" and o.choices or {}) do
 					local v = c.value
 					if v == nil then v = c[1] end
-					row[#row + 1] = { ns.T(c.label or c[2] or v), v == value, function() Set(v) end }
+					row[#row + 1] = { ns.T(c.label or c[2] or v), v == value, function() Set(v) end, nil, off }
 				end
 				ButtonRow(row, x)
 			else                                                   -- text, list
-				PutEdit(x, ValueText(o, value), Set, nil, key)
+				S.Usable(PutEdit(x, ValueText(o, value), Set, nil, key), not off)
 				if o.kind == "list" and not o.hint then Put(x, C.muted, L.OPTION_LIST_HINT) end   -- its own hint says it
 			end
 		end
@@ -302,27 +318,39 @@ local function ExtOptions(ext, indent)
 		function(name, v) ns.Act("option", id, name, v) end, indent, "ext:" .. id)
 end
 
--- a local extension's options (无限工坊's list: ns.LocalList), under 本机选项: boolean, number and choice with the
--- controls above, a change the "local.option" action (shown at once; 无限工坊's next list confirms it or puts back
--- what holds); a text shown with its value, changed in 无限工坊's App only (its hint not drawn). Their texts are a
--- manifest's: escaped
-local function LocalOptions(id, list)
-	Heading(A.LOCAL_OPTIONS)
-	local byName = {}
+-- a local extension's options (无限工坊's list: ns.LocalList), under their heading (本机选项 on the row of one in the
+-- game too, 选项 on its own): boolean, number and choice with the controls above, a change the "local.option" action:
+-- the new value shows at once, marked 待确认 until 无限工坊's next list confirms it or puts back what holds (none in
+-- time: back by itself, ns.SetLocalOption). While 无限工坊 is not linked they are dim and cannot be changed, and a
+-- line says so. The texts are 无限工坊's App's to change: after the others, under one line that says so, a line each,
+-- "title: value" (none set: its default, else 默认). Their texts are a manifest's: escaped
+local function LocalOptions(id, list, heading)
+	Heading(heading)
+	local off = not Kit:AgentOnline()
+	if off then Put(0, C.gold, A.NO_LINK) end
+	local byName, texts = {}, {}
 	for _, o in ipairs(list) do byName[o.name] = o end
 	local function Entry(name)
 		local o = byName[name]
-		return UI.EscapedOption(o), o.value
+		local e = UI.EscapedOption(o)
+		if o.pending == nil then return e, o.value end
+		e.title = ("%s  |cffd8a85a%s|r"):format(e.title, A.PENDING)
+		return e, o.pending.value
 	end
 	local function Set(name, v) ns.Act("local.option", id, name, v) end
 	for _, o in ipairs(list) do
 		if o.kind == "text" then
-			Put(0, C.fg, UI.EscapedOption(o).title)
-			Put(0, C.sky, o.value ~= "" and ns.Escape(o.value) or A.LOCAL_EMPTY, nil, true)
-			Put(0, C.muted, A.LOCAL_TEXT)
+			texts[#texts + 1] = o
 		else
-			Options({ o.name }, Entry, Set, nil, "local:" .. id)
+			Options({ o.name }, Entry, Set, nil, "local:" .. id, off)
 		end
+	end
+	if #texts == 0 then return end
+	Put(0, C.muted, A.LOCAL_TEXT)
+	for _, o in ipairs(texts) do
+		local value = o.value ~= "" and o.value or o.default
+		Put(0, off and C.muted or C.fg, A.LOCAL_VALUE:format(UI.EscapedOption(o).title,
+			value ~= nil and value ~= "" and ns.Escape(value) or A.LOCAL_DEFAULT), nil, true)
 	end
 end
 
@@ -425,15 +453,16 @@ end
 
 -- Rows(): the list's groups in order ({ kind (core, sys, custom, agent), list }) and every row. A row: { id (what
 -- `selected` holds), title, version, addon, author, notes, where (game, local, both), state (on, off, disabled,
--- missing), apps (its rows of UI.Apps), running, waiting (one of its apps is), localId and localOptions (a local
--- extension's, or one in the game too: its id in 无限工坊's list and its local options), and one of: ext (a row of
--- ns.ExtensionList, with its fields), managed (a local extension: 无限工坊's App turns it on and off), unlisted (a
--- local extension 无限工坊 does not list, known by its apps' label only: they can be removed here), loose (an
--- agent's app with no extension: app, temp), or none (an addon with apps and no extension) }. Texts are ready to draw
+-- missing), apps (its rows of UI.Apps; one with unlisted: 无限工坊's list came without its local extension), running,
+-- waiting (one of its apps is), localId, localOptions and part (a local extension's, or one in the game too: its id
+-- in 无限工坊's list, its local options, its entry there), and one of: ext (a row of ns.ExtensionList, with its
+-- fields), managed (a local extension: 无限工坊's App turns it on and off), unlisted (a local extension 无限工坊 does
+-- not list, known by its apps' label only: they can be removed here), loose (an agent's app with no extension: app,
+-- temp), or none (an addon with apps and no extension) }. Texts are ready to draw
 local function Rows()
 	local groups = { { kind = "core", list = {} }, { kind = "sys", list = {} }, { kind = "custom", list = {} },
 		{ kind = "agent", list = {} } }
-	local all, byId, byAddon, byLocal = {}, {}, {}, {}
+	local all, byId, byAddon, byLocal, half = {}, {}, {}, {}, {}
 	local function Add(g, e)
 		e.apps = {}
 		table.insert(groups[g].list, e)
@@ -445,11 +474,12 @@ local function Rows()
 		byId[e.id] = e
 		if e.addon and not e.builtin then byAddon[e.addon] = byAddon[e.addon] or e end
 		Add(e.core and 1 or e.official and 2 or 3, e)
+		local x = ns.LocalOf(e.id, not e.builtin and e.addon or nil)   -- its half on this computer: one row for both
+		if x and not half[x] then half[x] = e end
 	end
 	for _, x in ipairs(ns.LocalList()) do                    -- the ones on this computer, as 无限工坊 names them
-		local row
-		for _, id in ipairs(x.game) do row = row or byId[id] end
-		if row and x.where == "both" then                   -- in the game too: its row there, marked
+		local row = half[x]
+		if row then                                           -- in the game too: its row there, marked
 			row.where, row.adds = "both", x.adds
 			row.author = row.author or (x.author and ns.Escape(x.author))
 		else
@@ -457,18 +487,23 @@ local function Rows()
 				author = x.author and ns.Escape(x.author), notes = x.notes and ns.Escape(x.notes), where = x.where,
 				state = x.on and "on" or "off", managed = true, adds = x.adds })
 		end
-		row.localId, row.localOptions = x.id, x.options
+		row.localId, row.localOptions, row.part = x.id, x.options, x
 		byLocal[x.id] = row
 	end
 	for _, a in ipairs(UI.Apps()) do
-		local agent = a.by == "agent"
-		local row = a.extension and byId[a.extension] or a.localId and byLocal[a.localId]
-			or not agent and a.addon and byAddon[a.addon] or nil
+		local outside = a.by ~= "addon"                       -- not an addon's own declaration
+		local row = a.extension and byId[a.extension] or a.localId and byLocal[a.localId] or nil
+		if not row and a.localId and byId[a.localId] then     -- no list (yet), or not in it: the game extension of that id
+			row = byId[a.localId]
+			a.unlisted = ns.LocalKnown()
+		end
+		row = row or not outside and a.addon and byAddon[a.addon] or nil
 		if row then                                           -- (found)
 		elseif a.localId then                                 -- not in 无限工坊's list (or no list): the app's own label
-			row = Add(3, { id = "local:" .. a.localId, title = a.from, where = "local", state = "on", unlisted = true })
+			row = Add(3, { id = "local:" .. a.localId, title = a.from, where = "local", state = "on", unlisted = true,
+				localId = a.localId })
 			byLocal[a.localId] = row
-		elseif not agent and a.addon then                     -- an addon with apps and no extension: the addon
+		elseif not outside and a.addon then                   -- an addon with apps and no extension: the addon
 			local ok, _, title = pcall(C_AddOns.GetAddOnInfo, a.addon)
 			row = Add(3, { id = "addon:" .. a.addon, title = ok and type(title) == "string" and title ~= "" and title
 				or ns.Escape(a.addon), addon = a.addon, version = Meta(a.addon, "Version"), author = Meta(a.addon, "Author"),
@@ -484,12 +519,17 @@ local function Rows()
 	return groups, all
 end
 
--- the row a page names: a row's own id (an extension's id, "local:<id>" ...), else the row app `page` ("app:<id>" too)
--- is on. nil: none
+-- the row a page names: a row's own id (an extension's id, "local:<id>" ...), else the row of the local extension of
+-- that id ("local:<id>" too: one in the game too is the game's row), else the row app `page` ("app:<id>" too) is on.
+-- nil: none
 local function Find(page)
 	local _, all = Rows()
 	for _, e in ipairs(all) do
 		if e.id == page then return e.id end
+	end
+	local part = page:match("^local:(.+)$") or page
+	for _, e in ipairs(all) do
+		if e.localId == part then return e.id end
 	end
 	local app = page:match("^app:(.+)$") or page
 	for _, e in ipairs(all) do
@@ -537,19 +577,44 @@ local function Apps(e)
 	for _, a in ipairs(e.apps) do
 		local id = a.id
 		Heading((a.temp and A.TEMP_APP or A.APP):format(a.title))
-		UI.AppCard(id, e.unlisted and { { A.REMOVE, false, function() ns.Act("app.forget", id) end } } or nil,
-			A.APP_OPTIONS)
+		UI.AppCard(id, (e.unlisted or a.unlisted) and { { A.REMOVE, false, function() ns.Act("app.forget", id) end } }
+			or nil, A.APP_OPTIONS)
 		local adds = Adders(a.id)
 		if adds then Put(0, C.muted, A.ADDS:format(adds)) end
 	end
 end
 
+-- the half of an extension on this computer in a word: 运行中, 未运行 (on, its program not running), 已停用
+local function PartWord(x)
+	return A.LOCAL_STATE[not x.on and "off" or x.running and "on" or "idle"]
+end
+
+-- the words that are there, one space between
+local function Words(...)
+	local out = {}
+	for i = 1, select("#", ...) do
+		local w = select(i, ...)
+		if w ~= nil and w ~= "" then out[#out + 1] = w end
+	end
+	return table.concat(out, " ")
+end
+
 local function Page(e)
 	local ext = e.ext and ns.extensions[e.id] or nil
+	local part = e.part                                     -- its entry in 无限工坊's list (a local extension, or both)
+	local both = e.ext and part ~= nil                      -- one extension, its two halves on this page
 	Title(e.title or e.id, e.official and L.GROUP.sys or L.GROUP.custom, e.official and "sys" or "custom", e.where)
 	local facts = {}
-	if e.ext or e.version then facts[#facts + 1] = L.VERSION:format(e.version or "?") end
-	if e.ext or e.managed then facts[#facts + 1] = StateText(e) end
+	if both then                                            -- "游戏 1.2.0 已启用 · 本机端 1.2.0 运行中"
+		facts[1] = Words(A.FACT_GAME, e.version, StateText(e))
+		facts[2] = Words(A.FACT_LOCAL, part.version and ns.Escape(part.version), PartWord(part))
+	elseif part then
+		if e.version then facts[#facts + 1] = L.VERSION:format(e.version) end
+		facts[#facts + 1] = PartWord(part)
+	else
+		if e.ext or e.version then facts[#facts + 1] = L.VERSION:format(e.version or "?") end
+		if e.ext then facts[#facts + 1] = StateText(e) end
+	end
 	if not e.builtin and e.addon and e.addon ~= e.title then facts[#facts + 1] = e.addon end
 	if e.author then facts[#facts + 1] = L.AUTHOR:format(e.author) end
 	if #facts > 0 then Put(0, C.muted, table.concat(facts, " · ")) end
@@ -592,10 +657,12 @@ local function Page(e)
 	end
 	Apps(e)                                                 -- the apps it came with
 	if ext and not e.core and #ext.optionOrder > 0 then     -- the player's choices for it, made here and only here
-		Heading(L.OPTIONS)
+		Heading(both and A.GAME_OPTIONS or L.OPTIONS)
 		ExtOptions(ext)
 	end
-	if e.localOptions then LocalOptions(e.localId, e.localOptions) end   -- its local part's, after the game's
+	if e.localOptions then                                  -- its local part's, after the game's
+		LocalOptions(e.localId, e.localOptions, both and A.LOCAL_OPTIONS or L.OPTIONS)
+	end
 	if e.core then                                          -- the core: what has not run yet, a stop for each
 		local open = ns.Open()
 		if #open > 0 then
@@ -669,22 +736,28 @@ end
 
 local function Frame()
 	if f then return f end
-	f = S.Panel("WuxianKitWindow", W, H, "window")
+	f = S.Panel("WuxianKitWindow", W, H, "window", true)    -- solid: the chat behind it does not show through its pages
 	-- a scrolled part's thumb: a thin bar at its right, there only while it has more than it shows
 	local function Thumb(scroll, dx)
 		local t = f:CreateTexture(nil, "OVERLAY")
-		S.Fill(t, C.goldD, 0.8)
+		S.Fill(t, C.goldD)
 		t:Hide()
 		function scroll.place()
-			local range, top = scroll.range or 0, scroll:GetVerticalScroll()
+			local range, top, view = scroll.range or 0, scroll:GetVerticalScroll(), scroll:GetHeight()
 			t:SetShown(range > 0)
 			if range <= 0 then return end
-			local h = math.max(24, math.floor(BODY * BODY / (BODY + range)))
+			local h = math.max(24, math.floor(view * view / (view + range)))
 			t:ClearAllPoints()
-			t:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", dx, -math.floor((BODY - h) * math.min(1, top / range) + 0.5))
-			t:SetSize(2, h)
+			t:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", dx, -math.floor((view - h) * math.min(1, top / range) + 0.5))
+			t:SetSize(3, h)
 		end
 		scroll.thumb = t
+	end
+	-- a scrolled part's own fill, over whatever lies between the window and its page
+	local function Solid(scroll)
+		local bg = scroll:CreateTexture(nil, "BACKGROUND")
+		bg:SetAllPoints()
+		S.Fill(bg, C.panel)
 	end
 	tinsert(UISpecialFrames, "WuxianKitWindow")             -- Esc closes it
 	f.title = S.Text(f, C.gold)
@@ -701,13 +774,17 @@ local function Frame()
 	f.side:EnableMouseWheel(true)
 	f.side:SetScript("OnMouseWheel", function(self, delta)
 		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScroll() - delta * 2 * 24, f.sideRange or 0)))
-		self.place()
+		UI.FitList()
 	end)
+	Solid(f.side)
 	Thumb(f.side, -1)
+	f.foot = S.Text(f, C.muted, true)                        -- under a list that does not fit: how many rows are below
+	f.foot:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 12)
+	f.foot:Hide()
 	f.list = CreateFrame("Frame", nil, f.side)
 	f.list:SetSize(LEFT - 10, BODY)
 	f.side:SetScrollChild(f.list)
-	f.items = {}
+	f.items, f.nItems, f.nHeads = {}, 0, 0
 	f.scroll = CreateFrame("ScrollFrame", nil, f)            -- the page, cut at the window's edge, scrolled by the wheel
 	f.scroll:SetPoint("TOPLEFT", LEFT + 14, -56)
 	f.scroll:SetSize(W - LEFT - 28, BODY)
@@ -716,6 +793,7 @@ local function Frame()
 		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScroll() - delta * 3 * ROW, f.range or 0)))
 		self.place()
 	end)
+	Solid(f.scroll)
 	Thumb(f.scroll, 7)
 	f.body = CreateFrame("Frame", nil, f.scroll)
 	f.body:SetSize(W - LEFT - 28, BODY)
@@ -752,17 +830,60 @@ local function Item(i)
 		b.label = S.Text(b, C.fg)
 		b.label:SetPoint("LEFT", 12, 0)
 		b.label:SetWordWrap(false)                          -- a long title: one line, cut with "..."
-		b.state = S.Text(b, C.muted, true)                  -- where it runs, dim, at the right
+		b.state = S.Text(b, C.muted, true)                  -- a temporary app's word, dim, at the right
 		b.state:SetPoint("RIGHT", -8, 0)
 		b.state:SetJustifyH("RIGHT")
+		b.marks = {}                                        -- where it runs: a mark for the game, one for this computer
+		for i, place in ipairs({ "game", "local" }) do
+			local m = b:CreateTexture(nil, "ARTWORK")
+			m:SetSize(6, 6)
+			m:SetPoint("RIGHT", -19 + (i - 1) * 10, 0)
+			S.Fill(m, place == "game" and C.sky or C.gold)
+			if b.CreateMaskTexture and m.AddMaskTexture then
+				local mask = b:CreateMaskTexture()
+				mask:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+				mask:SetAllPoints(m)
+				m:AddMaskTexture(mask)
+			end
+			b.marks[place] = m
+		end
 		b:SetScript("OnClick", function(self)
-			selected = self.id
+			selected, wanted = self.id, nil
 			f.scroll:SetVerticalScroll(0)
 			UI.Refresh()
+		end)
+		b:SetScript("OnEnter", function(self)               -- the marks in words (and a name cut short, whole)
+			if not (self.where and GameTooltip) then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText(("%s\n|cff9c9ea6%s|r"):format(self.label:GetText() or "",
+				L.WHERE[self.where] or self.where))
+			GameTooltip:Show()
+		end)
+		b:SetScript("OnLeave", function(self)
+			if GameTooltip and GameTooltip:GetOwner() == self then GameTooltip:Hide() end
 		end)
 		f.items[i] = b
 	end
 	return b
+end
+
+-- the list as it fits: of a list longer than its place the rows and headings cut at an edge are not shown (the wheel
+-- brings them whole), and the line under it says how many rows are below
+function UI.FitList()
+	local top, view = f.side:GetVerticalScroll(), f.side:GetHeight()
+	local below = 0
+	for i = 1, f.nItems do
+		local b = f.items[i]
+		b:SetShown(b.top >= top - 0.5 and b.top + ITEM <= top + view + 0.5)
+		if b.top + ITEM > top + view + 0.5 then below = below + 1 end
+	end
+	for i = 1, f.nHeads do
+		local h = f.heads[i]
+		h:SetShown(h.top >= top - 0.5 and h.top + 20 <= top + view + 0.5)
+	end
+	f.foot:SetShown(below > 0)
+	if below > 0 then f.foot:SetText(A.LIST_MORE:format(below)) end
+	f.side.place()
 end
 
 function UI.DrawWindow()
@@ -771,6 +892,17 @@ function UI.DrawWindow()
 	f.more:SetText(L.SCROLL)
 	f.agent:SetText(not ns.bound and "" or Kit:AgentOnline() and L.AGENT_ON or L.AGENT_OFF)   -- none without 无限工坊
 	local groups, all = Rows()
+	if wanted then                                          -- a page asked for before its row was there
+		if GetTime() - wantedAt > WANT then
+			wanted = nil
+		else
+			local want = Find(wanted)
+			if want then
+				selected, wanted, f.reveal = want, nil, true
+				f.scroll:SetVerticalScroll(0)
+			end
+		end
+	end
 	local current
 	for _, e in ipairs(all) do
 		if e.id == selected then current = e end
@@ -780,10 +912,11 @@ function UI.DrawWindow()
 			if e.running then current = current or e end
 		end
 		current = current or all[1]
-		selected = current.id
+		selected, f.reveal = current.id, true
 	end
 	f.ticks = #current.apps > 0                            -- (UI.TickApps)
 	local n, nHead, y = 0, 0, 0
+	local at                                               -- the selected row's place in the list
 	for _, g in ipairs(groups) do
 		if #g.list > 0 then
 			if g.kind ~= "core" then                          -- (the core's row: by itself, above the groups)
@@ -793,7 +926,7 @@ function UI.DrawWindow()
 				h:ClearAllPoints()
 				h:SetPoint("TOPLEFT", f.list, "TOPLEFT", 8, -y - 3)
 				h:SetText(L.GROUP[g.kind])
-				h:Show()
+				h.top = y
 				y = y + 20
 			end
 			for _, e in ipairs(g.list) do
@@ -801,17 +934,21 @@ function UI.DrawWindow()
 				local b = Item(n)
 				b:ClearAllPoints()
 				b:SetPoint("TOPLEFT", 0, -y)
-				b.id = e.id
-				local tag = g.kind == "custom" and L.WHERE[e.where] or e.temp and A.TEMP or ""
+				b.id, b.top = e.id, y
+				if e.id == selected then at = y end
+				local tag = e.temp and A.TEMP or ""
 				b.state:SetText(tag)
 				b.state:SetShown(tag ~= "")
+				b.where = g.kind == "custom" and e.where or nil     -- its marks: the name has the row but for them
+				b.marks.game:SetShown(b.where == "game" or b.where == "both")
+				b.marks["local"]:SetShown(b.where == "local" or b.where == "both")
 				b.label:SetText(e.title or e.id)
-				b.label:SetWidth(LEFT - 34 - (tag ~= "" and math.ceil(b.state:GetStringWidth()) + 6 or 0))
+				b.label:SetWidth(LEFT - 34
+					- (b.where and 24 or tag ~= "" and math.ceil(b.state:GetStringWidth()) + 6 or 0))
 				b.dot:SetShown(e.running and true or false)
 				S.Fill(b.dot, e.waiting and C.gold or C.ok)
 				S.Fill(b.bg, e.id == selected and C.goldSoft or C.panel2)
 				S.Ink(b.label, e.state == "on" and C.fg or C.muted)
-				b:Show()
 				y = y + 24
 			end
 			y = y + 8
@@ -819,11 +956,19 @@ function UI.DrawWindow()
 	end
 	for i = n + 1, #f.items do f.items[i]:Hide() end
 	for i = nHead + 1, #f.heads do f.heads[i]:Hide() end
-	f.sideRange = math.max(0, y - 8 - BODY)                -- how far the list scrolls
-	f.list:SetHeight(BODY + f.sideRange)
-	if f.side:GetVerticalScroll() > f.sideRange then f.side:SetVerticalScroll(f.sideRange) end
+	f.nItems, f.nHeads = n, nHead
+	local view = y - 8 > BODY and BODY - FOOT or BODY      -- a list that does not fit: room under it for its line
+	f.side:SetHeight(view)
+	f.sideRange = math.max(0, y - 8 - view)                -- how far the list scrolls
+	f.list:SetHeight(view + f.sideRange)
+	local top = math.min(f.side:GetVerticalScroll(), f.sideRange)
+	if f.reveal and at then                                -- a page just chosen for the player: its row in sight
+		if at < top then top = math.max(0, at - 20) elseif at + ITEM > top + view then top = at + ITEM - view end
+	end
+	f.reveal = nil
+	f.side:SetVerticalScroll(top)
 	f.side.range = f.sideRange
-	f.side.place()
+	UI.FitList()
 	Begin(f)
 	if current.loose then AppPage(current) else Page(current) end
 	f.range = math.max(0, f.y + 8 - BODY)                  -- how far the page scrolls
@@ -883,15 +1028,24 @@ function UI.Toggle()
 end
 
 -- WuxianKit:Window(page): the window, open and in front, on an extension's page ("tune", "chat" ...; "kit" the core's),
--- or on the page an app's card is on (the app's id, or "app:<id>": an extension of that name comes first); without one,
--- or with one not there, on the page it showed last (at first the first whose app runs, else the core's). For other
--- addons' buttons (WoWBridge's panel, its minimap button)
+-- on a local extension's ("voice" or "local:voice": the row of its half in the game when it has one), or on the page
+-- an app's card is on (the app's id, or "app:<id>"): an extension of that name comes first, then a local extension,
+-- then an app. Without one, on the page it showed last (at first the first whose app runs, else the core's). One that
+-- is not there: the page it showed, and false; should its row come within a few seconds (无限工坊's list after a
+-- reload), the window goes there then. For other addons' buttons (WoWBridge's panel, its minimap button, an addon's
+-- own slash command)
 function Kit:Window(page)
 	Frame()
 	local want = type(page) == "string" and Find(page) or nil
-	if want and want ~= selected then
-		selected = want
-		f.scroll:SetVerticalScroll(0)
+	wanted = nil
+	if want then
+		if want ~= selected then
+			selected = want
+			f.scroll:SetVerticalScroll(0)
+		end
+		f.reveal = true
+	elseif type(page) == "string" then
+		wanted, wantedAt = page, GetTime()
 	end
 	if not f:IsShown() then
 		S.Place(f, "window", "CENTER", 60, -20)
@@ -899,7 +1053,7 @@ function Kit:Window(page)
 	end
 	f:Raise()
 	UI.DrawWindow()
-	return true
+	return want ~= nil or type(page) ~= "string"
 end
 
 function UI.Refresh()
@@ -960,8 +1114,15 @@ local function AppCommand(id, rest)
 	local name = A.NAME:format(UI.AppTitle(id))
 	local c = UI.AppControl(id, rest:match("^(%S+)"))
 	if c then
-		if Kit:AppControl(id, c.cmd) then return ns.Say(A.SENT:format(name, c.label)) end
-		return ns.Say(A.NOT_RUNNING:format(name))
+		local ok, told = Kit:AppControl(id, c.cmd)
+		if not ok then return ns.Say(A.NOT_RUNNING:format(name)) end
+		if type(told) == "table" and told.activity then     -- less, more of an app with pace: where its activity is now
+			local aw = ns.apps.W
+			local words = { quiet = aw.A_QUIET, normal = aw.A_NORMAL, lively = aw.A_LIVELY }
+			if told.edge then return ns.Say(aw.ACTIVITY_EDGE[told.activity] or words[told.activity]) end
+			return ns.Say(aw.ACTIVITY_STEP:format(words[told.was] or told.was, words[told.activity] or told.activity))
+		end
+		return ns.Say(A.SENT:format(name, c.label))
 	end
 	if Kit:AppSay(id, rest) then return ns.Say(A.SAID_TO:format(name)) end
 	local words = UI.AppWordList(id)

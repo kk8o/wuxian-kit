@@ -187,7 +187,7 @@ end
 function ns.SendWake(topic, data)
 	if not ns.Forward(topic, data) then return false end
 	told = data
-	Kit:Emit(topic, data)
+	ns.EmitCore(topic, data)
 	told = nil
 	return true
 end
@@ -199,7 +199,7 @@ if WB then
 			local count = 0
 			for _, n in pairs(dropped) do count = count + n end
 			droppedAt = GetTime()
-			Kit:Emit("kit.dropped", { count = count, topics = dropped })
+			ns.EmitCore("kit.dropped", { count = count, topics = dropped })
 			dropped = {}
 		end
 	end)
@@ -226,5 +226,5 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:SetScript("OnEvent", function(self)
 	self:UnregisterAllEvents()
-	Kit:Emit("kit.ready", { version = Kit.VERSION, extensions = ns.ExtensionList(), revision = ns.ManifestReady() })
+	ns.EmitCore("kit.ready", { version = Kit.VERSION, extensions = ns.ExtensionList(), revision = ns.ManifestReady() })
 end)

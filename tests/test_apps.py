@@ -63,6 +63,7 @@ class AppCase(unittest.TestCase):
         if guid:
             s.lua.execute(f"__guid = {guid!r}".encode())
         s.lua.execute(FAKES)
+        s.lua.execute(b"local ns = ... __ns = ns", s.ns)                 # (the core's private table, as __ns)
         s.login()
         s.run(1)
         self.addCleanup(lambda: self.assertEqual(s.errors(), []))
@@ -494,13 +495,13 @@ class Wakes(AppCase):
         self.opens(s, "{ app = 'v', title = 'Voice', controls = { 'mute', 'stop' }, say = true, "
                                       "hear = { 'bus:demo.*' }, digest = { every = false } }")
         s.lua.execute(b"WuxianKit:Emit('demo.a', 1)")
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'mute')"), True)
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('v', 'mute'))"), True)
         w = self.wakes(s, "v")
         self.assertEqual(len(w), 1)                                       # at once, with what was gathered
         self.assertEqual((w[0]["reason"], [i["source"] for i in w[0]["items"]], w[0]["items"][1]["cmd"]),
                          ("urgent", ["bus", "control"], "mute"))
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'test')"), False)   # not one of its controls
-        self.assertIs(s.lua.eval("WuxianKit:AppControl('v', '静音')".encode()), True)   # its word
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('v', 'test'))"), False)   # not one of its controls
+        self.assertIs(s.lua.eval("(WuxianKit:AppControl('v', '静音'))".encode()), True)   # its word
         self.assertIs(s.lua.eval(b"WuxianKit:AppSay('v', '  where now?  ')"), True)
         self.assertEqual(self.wakes(s, "v")[-1]["items"], [{"source": "player", "text": "where now?",
                                                             "id": self.wakes(s, "v")[-1]["items"][0]["id"],
@@ -508,10 +509,10 @@ class Wakes(AppCase):
         self.assertIs(s.lua.eval(b"WuxianKit:AppSay('v', '   ')"), False)
         self.assertEqual([c["cmd"] for c in py(s.ns.AppControls(b"v"))], ["mute", "stop"])
         self.assertEqual(py(s.ns.AppControls(b"v"))[0]["label"], "Mute")
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'stop')"), True)
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('v', 'stop'))"), True)
         self.assertEqual(self.wakes(s, "v")[-1]["items"][0]["cmd"], "stop")    # told, then stopped
         self.assertEqual(self.events(s, "kit.app")[-1], {"app": "v", "on": False, "why": "player"})
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'mute')"), False)  # not running
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('v', 'mute'))"), False)  # not running
         self.opens(s, "{ app = 'w', controls = { 'test' } }")
         self.assertIs(s.lua.eval(b"WuxianKit:AppSay('w', 'hi')"), False)        # no say
         s.lua.execute(b"WuxianKit:AppControl('w', 'test')")
@@ -525,11 +526,11 @@ class Wakes(AppCase):
                                       "hear = { 'bus:demo.*' } }")
         self.assertEqual([(c["cmd"], c["label"]) for c in py(s.ns.AppControls(b"v"))],
                          [("test", "试音"), ("brief", "任务播报"), ("stop", "停止")])
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'brief')"), True)
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('v', 'brief'))"), True)
         self.assertEqual(self.wakes(s, "v")[-1]["items"][-1]["cmd"], "brief")
-        self.assertIs(s.lua.eval("WuxianKit:AppControl('v', '任务播报')".encode()), True)   # its label
+        self.assertIs(s.lua.eval("(WuxianKit:AppControl('v', '任务播报'))".encode()), True)   # its label
         self.assertEqual(self.wakes(s, "v")[-1]["items"][-1]["cmd"], "brief")
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('v', 'dance')"), False)
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('v', 'dance'))"), False)
         status = self.agent(s, "kit.app.status", "{ app = 'v' }")
         self.assertEqual(status["controls"], ["test", "brief", "stop"])
 
@@ -544,15 +545,15 @@ class Wakes(AppCase):
         self.agent(s, "kit.app.open", "{ app = 'legs' }")
         said = lambda: self.wakes(s, "legs")[-1]["items"][-1]["cmd"]
         for word, cmd in (("go", "go"), ("Walk", "go"), ("Faster", "run"), ("GO", "go"), ("Run", "run")):
-            self.assertIs(s.lua.eval(f"WuxianKit:AppControl('legs', '{word}')".encode()), True, word)
+            self.assertIs(s.lua.eval(f"(WuxianKit:AppControl('legs', '{word}'))".encode()), True, word)
             self.assertEqual(said(), cmd, word)
         s.ns.SetLanguage(b"zhCN")                                         # run's label now reads as go's cmd
         self.assertEqual([(c[b"cmd"], s.ns.T(c[b"label"])) for c in s.ns.AppControls(b"legs").values()],
                          [(b"go", "走".encode()), (b"run", b"go"), (b"stop", "停止".encode())])
         for word, cmd in (("go", "go"), ("run", "run"), ("走", "go")):
-            self.assertIs(s.lua.eval(f"WuxianKit:AppControl('legs', '{word}')".encode()), True, word)
+            self.assertIs(s.lua.eval(f"(WuxianKit:AppControl('legs', '{word}'))".encode()), True, word)
             self.assertEqual(said(), cmd, word)
-        self.assertIs(s.lua.eval(b"WuxianKit:AppControl('legs', 'STOP')"), True)   # the core's word, whatever its case
+        self.assertIs(s.lua.eval(b"(WuxianKit:AppControl('legs', 'STOP'))"), True)   # the core's word, whatever its case
         self.assertEqual(said(), "stop")
 
     def test_control_labels_in_chinese(self):
@@ -566,7 +567,7 @@ class Wakes(AppCase):
         self.opens(s, "{ app = 'g', hear = { 'chat:guild', 'chat:whisper' } }")
         self.opens(s, "{ app = 'p', hear = { 'chat:*' } }")
         self.opens(s, "{ app = 'b', hear = { 'bus:x' } }")
-        emit = ("WuxianKit:Emit('kit.proposal', {{ id = {id}, state = {state!r}, source = {source!r}, steps = {{ "
+        emit = ("__ns.EmitCore('kit.proposal', {{ id = {id}, state = {state!r}, source = {source!r}, steps = {{ "
                 "{{ cap = 'chat.send', args = {{ channel = 'guild', text = 'a' }} }}, "
                 "{{ cap = 'chat.send', args = {{ channel = 'party', text = 'b' }} }}, "
                 "{{ cap = 'tune.cvar.set', args = {{ name = 'x', value = 1 }} }} }} }})")

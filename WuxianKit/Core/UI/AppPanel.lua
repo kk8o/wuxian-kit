@@ -1,20 +1,23 @@
 -- The app card (0.6): WuxianKit:AppPanel(id, parent, width) draws app `id` in another addon's window, the same card the
--- window shows on its extension's page (UI.AppCard, on the canvas being drawn): its state, one line of the first that holds (no
--- 无限工坊 link, its extension off, its check()'s reason, running but waiting for what it hears to be there, running:
--- the agent here until, last heard from, said today; else ready), its main button, stop, its controls (each drawn and
--- told apart by its cmd: UI.AppControlList), and its options (the core's 活跃度 / 免打扰时段 when it has pace)
--- with the window's controls. Returns a frame (its height set by its content) with :Refresh(), or nil when there is no
--- such app. Cards and the window redraw on kit.app, kit.option, kit.changed and app.<id> (the window also when
+-- window shows on its extension's page (UI.AppCard, on the canvas being drawn): its state, one line of the first that
+-- holds (no 无限工坊 link, its extension off, its check()'s reason, running but waiting for what it hears to be there,
+-- running: the agent here until, last heard from, said today; else ready), its main button, stop, its controls (each
+-- drawn and told apart by its cmd: UI.AppControlList; less and more not drawn for an app with pace: its 活跃度 is
+-- right there), and its options (the core's 活跃度 / 免打扰时段 when it has pace) with the window's controls.
+-- Returns a frame (its height set by its content) with :Refresh(), or nil when there is no such app. Cards and the window redraw on kit.app, kit.option, kit.changed and app.<id> (the window also when
 -- 无限工坊 gives its list of local extensions), and every few seconds while they show. The zhCN font has no arrows, squares or check marks: the state is told by the text's colour.
 -- See ARCHITECTURE.md section 10.
 -- The main button, while it does not run: an app with a prompt has 交给 AI (the copy box with its start line: any AI
 -- client with 无限工坊's MCP tools starts from it, Claude Code too); one without has none. A temporary app (an agent's,
 -- kept in memory only) has no 交给 AI; the window's page marks it. Nor has an app its local extension's program drives
--- (driver local): its state says that program runs it (由本机扩展「…」运行), or that it does not (how its last run
--- ended, when that is the player's to know); stop and its controls as any other's.
+-- (driver local; 本机端 to the player, never "Agent"): its state says that program runs it (本机端运行中), that it
+-- does not (本机端未运行), that the player stopped it (已停止, with 开始: theirs to start again while that program
+-- runs) or that its lease ran out (本机端无响应，已停止); under it the newest report that program gave (its text, in
+-- the colour of its state); stop and its controls as any other's.
 -- The ns functions it reads are Core/Apps/Api.lua's: ns.AppList (rows with on, temp, hidden, waiting, local), ns.App,
--- ns.AppStatus (with waiting, hear), ns.AppStop, ns.AppOptionList, ns.SetAppOption, ns.AppControls, ns.ForgetApp(id,
--- wipe), ns.CONTROL_WORDS; and Kit:AppControl. One that is not there, or a field a row lacks, counts as none.
+-- ns.AppStatus (with waiting, hear), ns.AppStop, ns.AppStart, ns.AppStartable, ns.AppOptionList, ns.SetAppOption,
+-- ns.AppControls, ns.ForgetApp(id, wipe), ns.CONTROL_WORDS, and Report.lua's ns.AppReport; and Kit:AppControl. One
+-- that is not there, or a field a row lacks, counts as none.
 local _, ns = ...
 local Kit, L, UI = ns.Kit, ns.L, ns.UI
 local C = UI.Skin.C
@@ -44,15 +47,16 @@ end
 
 -- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, extension (the one its declaration
 -- names), on, ends, present, prompt, start, temp, localId and from (the local extension that brought it: its id, its
--- title), driver ("local": that extension's program drives it; nil: an agent), waiting (why it runs but hears nothing
--- yet, as the runtime says it) }
+-- title), driver ("local": that extension's program drives it; nil: an agent), pace (its activity, of an app with
+-- pace), waiting (why it runs but hears nothing yet, as the runtime says it) }. by: addon, agent, or local (driver
+-- local); all but an addon's own are texts from outside, escaped
 function UI.Apps()
 	local out = {}
 	local list = Call(ns.AppList)
 	for _, a in ipairs(type(list) == "table" and list or {}) do
 		if type(a) == "table" and type(a.id) == "string" and not a.hidden then   -- (plumbing: not drawn)
 			local title = a.title
-			if a.by == "agent" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
+			if a.by ~= "addon" then title = title ~= nil and ns.Escape(title) or nil else title = ns.T(title) end
 			local waiting = a.on and a.waiting or nil
 			if waiting == "" then waiting = nil end
 			local from = type(a["local"]) == "table" and type(a["local"].id) == "string" and a["local"] or nil
@@ -61,7 +65,7 @@ function UI.Apps()
 				on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
 				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true,
 				localId = from and from.id or nil, from = from and ns.Escape(ns.Text(from.title or from.id)) or nil,
-				driver = a.driver == "local" and "local" or nil, waiting = waiting }
+				driver = a.driver == "local" and "local" or nil, pace = a.pace, waiting = waiting }
 		end
 	end
 	return out
@@ -190,7 +194,7 @@ local function Blocked(app, st, by)
 	end
 	if why ~= nil and why ~= false and why ~= "" then
 		why = ns.T(why)
-		return by == "agent" and ns.Escape(why) or ns.Text(why)
+		return by ~= "addon" and ns.Escape(why) or ns.Text(why)
 	end
 end
 
@@ -203,19 +207,30 @@ local function Waiting(why)
 	return A.WAITING .. " · " .. ns.Escape(ns.Cut(why, 60))
 end
 
--- the state of an app its local extension's program drives (not an agent: no presence, no answers): run by it, or
--- not running (how its last run ended, when the player can do something of it)
-local function LocalState(st, from)
-	if st.on then return A.LOCAL_ON:format(from), C.ok end
-	local why = A.LOCAL_WHY[st.why]
-	if not why then return A.LOCAL_OFF, C.muted end
-	return why, C.muted, st.why == "player" and A.LOCAL_AGAIN or nil
+-- the state of app id, one its local extension's program drives (not an agent: no presence, no answers): that
+-- program runs it; the player stopped it, and can start it again while that program runs (开始; else the line under
+-- it says the program does not run); its lease ran out; that program does not run; or it runs and is about to open
+-- the app (等待中)
+local function LocalState(st, id)
+	if st.on then return A.LOCAL_ON, C.ok end
+	local can, why
+	if type(ns.AppStartable) == "function" then
+		local ok, a, b = pcall(ns.AppStartable, id)
+		if ok then can, why = a, b else geterrorhandler()(a) end
+	end
+	if st.why == "player" then
+		return A.LOCAL_STOPPED, C.muted, not can and why == "local" and A.LOCAL_OFF or nil,
+			{ A.START, can and true or false, function() ns.Act("app.start", id) end, 60, not can }
+	end
+	if st.why == "left" then return A.LOCAL_LEFT, C.gold end
+	if can then return A.WAITING, C.muted end
+	return A.LOCAL_OFF, C.muted
 end
 
--- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready.
--- waiting: the row's, for a status that does not say; from: the title of the local extension whose program drives it
--- (driver local), or nil
-local function State(app, st, by, waiting, from)
+-- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn, least, off }); and whether
+-- it is ready. waiting: the row's, for a status that does not say; driven: the app's id when its local extension's
+-- program drives it (driver local), or nil
+local function State(app, st, by, waiting, driven)
 	if not Kit:AgentOnline() then return A.NO_LINK, C.gold, A.NO_LINK_HINT end
 	local why, ext, extId = Blocked(app, st, by)
 	if extId then
@@ -227,7 +242,7 @@ local function State(app, st, by, waiting, from)
 		if st.waiting ~= nil then waiting = st.waiting end
 		local waits = Waiting(waiting)                          -- on, but it hears nothing yet: not said to be listening
 		if waits then return waits, C.gold, A.WAIT_HINT end
-		if from then return LocalState(st, from) end
+		if driven then return LocalState(st, driven) end
 		local now, parts = time(), {}
 		if st.present == false then
 			parts[1] = A.LEFT
@@ -247,7 +262,7 @@ local function State(app, st, by, waiting, from)
 		parts[3] = A.SAID:format(tonumber(st.said) or 0)
 		return table.concat(parts, " · "), st.present == false and C.gold or C.ok
 	end
-	if from then return LocalState(st, from) end
+	if driven then return LocalState(st, driven) end
 	return A.READY, C.sky, nil, nil, true
 end
 
@@ -304,20 +319,23 @@ local function Hand(title, start)
 	Kit:Copy(start, { title = title, how = A.HAND_HOW })
 end
 
+-- a report's text in the colour of its state: failed red, retry amber, done gold, run as any text
+local REPORT_INK = { failed = C.bad, retry = C.amber, done = C.gold }
+
 -- app id's card on the canvas being drawn (the window's page, or a panel); extra: more buttons for the row
 -- ({ label, primary, fn }); heading: what its options are under (选项)
 function UI.AppCard(id, extra, heading)
 	local app, entry, st, by = Facts(id)
 	if not app then return end
 	local driven = (st.driver or entry.driver) == "local"     -- its local extension's program drives it: no 交给 AI
-	local from
-	if driven then
-		local label = type(st["local"]) == "table" and st["local"] or nil
-		from = entry.from or ns.Escape(ns.Text(label and (label.title or label.id) or id))
-	end
-	local text, color, hint, button, ready = State(app, st, by, entry.waiting, from)
+	local text, color, hint, button, ready = State(app, st, by, entry.waiting, driven and id or nil)
 	CV.Put(0, color, text)
 	if hint then CV.Put(0, C.muted, hint) end
+	local report = driven and Call(ns.AppReport, id) or nil   -- what that program said last of its work
+	if type(report) == "table" and type(report.text) == "string" and report.text ~= "" then
+		CV.Put(0, REPORT_INK[report.state] or C.fg, ns.Escape(report.text))
+	end
+	local paced = (st.pace or entry.pace) ~= nil              -- its 活跃度 is among its options: no less and more
 	local row = {}
 	local start = st.start or entry.start
 	if type(start) ~= "string" or start == "" then start = nil end
@@ -329,7 +347,7 @@ function UI.AppCard(id, extra, heading)
 	if st.on then
 		row[#row + 1] = { L.STOP, false, function() ns.Act("app.stop", id) end, 70 }
 		for _, c in ipairs(UI.AppControlList(id)) do
-			if c.cmd ~= "stop" then
+			if c.cmd ~= "stop" and not (paced and (c.cmd == "less" or c.cmd == "more")) then
 				local cmd = c.cmd
 				row[#row + 1] = { c.label, false, function() ns.Act("app.control", id, cmd) end, 60 }
 			end
@@ -342,7 +360,7 @@ function UI.AppCard(id, extra, heading)
 	end
 	local list = Call(ns.AppOptionList, id)
 	if type(list) == "table" and next(list) ~= nil then
-		local agent = by == "agent"
+		local agent = by ~= "addon"                           -- (texts from outside: escaped)
 		CV.Heading(heading or L.OPTIONS)
 		CV.Options(OptionOrder(app, list), function(name)
 			local e = list[name]
@@ -391,6 +409,11 @@ ns.AddAction("app.stop", function(id)
 	UI.Refresh()
 	return true
 end)
+ns.AddAction("app.start", function(id)                  -- 开始: one a program drives, stopped by the player
+	local ok = Call(ns.AppStart, id)
+	UI.Refresh()
+	return ok and true or false
+end)
 ns.AddAction("app.control", function(id, cmd)
 	local ok = Kit:AppControl(id, cmd)
 	UI.Refresh()
@@ -419,7 +442,7 @@ end
 
 for _, topic in ipairs({ "kit.app", "kit.option", "kit.changed", "app.*" }) do Kit:On(topic, Soon) end
 ns.OnChange(function(what)
-	if what == "app" or what == "apps" or what == "local" then Soon() end
+	if what == "app" or what == "apps" or what == "local" or what == "report" then Soon() end
 end)
 
 C_Timer.NewTicker(TICK, function()
