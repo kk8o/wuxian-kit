@@ -16,6 +16,7 @@ try:
         raise ImportError("WUXIAN_WORKSHOP does not name 无限工坊's source")
     sys.path[:0] = [str(WORKSHOP), str(WORKSHOP / "src")]
     from tests.support.wowmock import Session, lupa                  # the workshop's tests package
+    from tests.support import pours                                  # 0.10.0: a long answer only pours
     from wuxianworkshop.daemon.api import ApiError, parse_run
     from wuxianworkshop.daemon.journal import Journal
     from wuxianworkshop.daemon.service import Service
@@ -54,6 +55,7 @@ class Agent(unittest.TestCase):
                     return job, Service.run_result(parse_run(text))
             self.fail(f"no RUN result for data call {job}")
         svc.data, svc.data_calls = data, comp.data_calls
+        pours.wire(self, svc, comp, s)                                    # the rest of a long answer
         comp.new_process("P1-100")
         s.login()
         s.run(8)
