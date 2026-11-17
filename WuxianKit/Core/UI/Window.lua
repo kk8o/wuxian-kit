@@ -339,8 +339,9 @@ end
 
 -- what an extension can do: a line of titles for each kind (a title said once)
 local function Capabilities(ext)
+	if ext and ext.active and #ext.capOrder == 0 then return end   -- on, and nothing an agent can call: no heading
 	Heading(L.CAPABILITIES)
-	if not ext or #ext.capOrder == 0 or not ext.active then return Put(0, C.muted, L.NO_CAPABILITIES) end
+	if not ext or not ext.active then return Put(0, C.muted, L.NO_CAPABILITIES) end
 	local byKind, seen = {}, {}
 	for _, name in ipairs(ext.capOrder) do
 		local c = ext.caps[name]

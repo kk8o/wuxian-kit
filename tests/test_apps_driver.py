@@ -261,7 +261,7 @@ class LocalOptions(Base):
         w = self.window(s, "cocreate")
         body = texts(w[b"body"])
         self.assertLess(body.index("Options"), body.index("Local options"))
-        self.assertLess(body.index("Local options"), body.index("Capabilities"))   # the game's options, then these
+        self.assertNotIn("Capabilities", body)        # on, and nothing to call: no heading (not "Shown when enabled")
         checks = [c[b"label"][b"text"].decode() for c in shown(w[b"checks"])]
         self.assertEqual(checks[-2:], ["Show my name", "Sync by itself"])
         click(shown(w[b"checks"])[-1])
