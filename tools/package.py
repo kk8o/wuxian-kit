@@ -17,7 +17,7 @@ What an entry asks for:
             the .toc's "## X-Wuxian-Kit", else the version of the WuxianKit in this repo (the one it was tried with).
 
   python tools\package.py [--addon WuxianKit_Guides] [--out <folder>] [--notes-zh "..."] [--notes-en "..."]
-                           [--min-app 0.9.13] [--min-kit 0.6.0] [--replace]
+                           [--min-app 0.10.0] [--min-kit 0.6.0] [--replace]
 """
 import argparse
 import datetime
@@ -32,7 +32,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 ADDON = REPO / "WuxianKit"
 OUT = REPO / "dist"
-MIN_APP = "0.9.13"                         # the oldest 无限工坊 this WuxianKit works with (wuxian listen, the adds)
+MIN_APP = "0.10.0"                         # the oldest 无限工坊 this WuxianKit works with (it opens the local apps, kit.app.report)
 SKIP_NAMES = ("__pycache__",)              # a folder or file of this name, anywhere in the addon
 SKIP_ENDS = (".bak", ".pyc")               # a folder or file whose name ends so
 

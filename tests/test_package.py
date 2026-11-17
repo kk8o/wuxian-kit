@@ -74,8 +74,8 @@ class Skip(unittest.TestCase):
 
 class Needs(unittest.TestCase):
     def test_the_workshop_this_kit_is_written_for(self):
-        """the default is the workshop the skills ask for (wuxian listen came with 0.9.13), not an older one"""
-        self.assertEqual(package.MIN_APP, "0.9.13")
+        """the default is the workshop the skills ask for (0.7.0 is written for 0.10.0: it opens the local apps and relays their reports), not an older one"""
+        self.assertEqual(package.MIN_APP, "0.10.0")
         skill = (package.ADDON / "skills" / "kit-app.md").read_text(encoding="utf-8")
         self.assertIn("wuxian listen", skill)
         self.assertIn("--min-app " + package.MIN_APP, package.__doc__)
@@ -105,17 +105,17 @@ class Catalog(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             entries, said = self.run_main(out)
             kit = entries["wuxiankit"]
-            self.assertEqual(kit["min_app"], "0.9.13")                 # nothing given: not an older workshop
+            self.assertEqual(kit["min_app"], "0.10.0")                 # nothing given: not an older workshop
             self.assertNotIn("min_kit", kit)
-            self.assertIn("needs 无限工坊 0.9.13 ->", said)
+            self.assertIn("needs 无限工坊 0.10.0 ->", said)
             self.assertTrue((Path(out) / kit["file"]).exists())
 
             entries, said = self.run_main(out, "--addon", "WuxianKit_Guides")
             guides = next(e for e in entries.values() if e["folder"] == "WuxianKit_Guides")
             toc = package.toc_fields(REPO / "WuxianKit_Guides" / "WuxianKit_Guides.toc")
             self.assertEqual(guides["min_kit"], toc.get("X-Wuxian-Kit") or kit["version"])
-            self.assertEqual(guides["min_app"], "0.9.13")
-            self.assertIn(f"needs 无限工坊 0.9.13, WuxianKit {guides['min_kit']} ->", said)
+            self.assertEqual(guides["min_app"], "0.10.0")
+            self.assertIn(f"needs 无限工坊 0.10.0, WuxianKit {guides['min_kit']} ->", said)
             self.assertIn("wuxiankit", entries)                        # the kit's entry stays beside it
 
             entries, _ = self.run_main(out, "--addon", "WuxianKit_Guides", "--min-kit", "0.7.0", "--min-app", "0.9.14")
