@@ -433,6 +433,8 @@ demo:Facet("demo", {
 | `id` | 条目的 `id` | 核心发的条目号，Agent 的游标 |
 | | 聊天消息的 `id`（`WuxianKit.Chat`） | 消息编号；在应用的条目里叫 `ref` |
 | | 应用、扩展、提案的 `id` | 各自的标识，互不相干 |
+| `link` | 应用声明的字段 `link` | 链路档位：`live` 运行时无限工坊与游戏的链路一直连着，`standby`（默认）按需 |
+| | 链接记号、`WuxianKit:Link`、消息的 `links` | 游戏里的物品、法术等链接（第 12 节） |
 | `wake` | 唤醒 | 事件 `app.<id>`：核心攒好的一批条目 |
 | | 节奏一档里的 `wake` | 这一档里哪些 `why` 立即唤醒 |
 | | 本机扩展清单 `adds.<应用>.wake` | 每次唤醒要调的那个能力（结果进 `notes`） |
@@ -482,11 +484,12 @@ WuxianKit:App("officers", {
 | `digest` | `false` / 不写：每个条目到了就发（`reason = "item"`）；一张表 `{ gather, every, idle, most }`：攒成唤醒（见「唤醒」） |
 | `pace` | `true` 或三档的表 `{ quiet = {...}, normal = {...}, lively = {...} }`（每档 `{ gather, every, idle, most, wake = { why... } }`）：攒成唤醒，节奏跟玩家的选项走；`true` 用核心的三档（见下）。有 `pace` 时不看 `digest` |
 | `urgent` | 不用 `pace` 时，哪些条目立即唤醒：`why` 或 `kind` 的列表；Lua 声明也可以是函数 `urgent(item)`。有 `pace` 时只看当前档的 `wake`（同样按 `why` 或 `kind`） |
-| `controls` | 玩家能下的指令（卡片上的按钮、`/wk <应用> <词>`）：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑，或应用自己的 `{ cmd, label }`（cmd 小写字母、数字、`_`；label 一个词、不超过 24 字节，按钮上显示它）；合计不超过 12 个；`stop` 由核心执行（停止应用），其余只转告应用 |
+| `controls` | 玩家能下的指令（卡片上的按钮、`/wk <应用> <词>`）：`mute`、`unmute`、`less`、`more`、`test`、`pause`、`resume`、`stop` 里挑，或应用自己的 `{ cmd, label }`（cmd 小写字母、数字、`_`；label 一个词、不超过 24 字节，按钮上显示它）；合计不超过 12 个；`stop`、`less`、`more` 由核心执行：`stop` 停止应用；有 `pace` 的应用，`less`、`more` 先把活跃度按 quiet → normal → lively 挪一档（同玩家改选项：马上按新节奏走，发 `kit.option`），再把指令转告应用，条目是 `{ cmd, activity（现在的）, was（原来的）, edge? }`，已在那一头时活跃度不变、带 `edge = true`；没有 `pace` 的应用，`less`、`more` 只转告。其余只转告应用 |
 | `hidden` | `true`：程序的内部管道（如无限工坊的反射），不是给玩家的应用。只在临时应用的声明（`kit.app.open` 的 `temp`）里收，记住的声明带它报错。没有卡片，开始、停止时不在聊天框提示；运行时在「扩展框架」页底部的「后台监听」里列一行（标题、停止按钮），`kit.apps` 照样列出 |
 | `local` | `{ id, title }`：无限工坊替本机扩展声明应用时带上（Agent 不用填）。只是标注，没有特权：应用的卡片在那个本机扩展的页面上，移除扩展在无限工坊 App 里做，卡片没有「移除」；无限工坊的名单里没有这个扩展时，页面写「无限工坊未列出此扩展」，卡片带「移除」。带它的应用不占 Agent 的 8 个，另算，最多 16 个 |
 | `say` | `true`：玩家可以用 `/wk <id> <一句话>` 对应用说话 |
 | `lease` | 秒（默认 600，至少 60；`0` 不设）：这么久没有心跳就算离开，应用停止（`why = "left"`）。心跳只有 Agent 的 `kit.app.open`、`kit.app.status`、`kit.app.state`、`kit.app.recent` |
+| `link` | 链路档位（0.6.1）：`"live"`：运行时要无限工坊与游戏的链路一直连着（反射、即时语音这类要马上反应的）；`"standby"` 或不写（默认）：按需，有东西要传时才连，传完就收。别的值报错。只记 `live`（写 `standby` 与不写是同一份声明）；`kit.app` 的 `on = true`、`kit.apps` 的行、`kit.app.status` 和清单的 `apps` 带 `link = "live"`。由无限工坊执行（App 设置的「链路」是「跟随应用」时） |
 | `minutes` | 最长运行多久（默认 120，最多 720）。`kit.app.open` 的 `minutes`、`lease` 只管那一次运行，优先于声明的 |
 | `options` | 玩家给应用设的选项，`name → { kind, title, default, hint, choices, min, max, step, unit, order }`，种类同扩展选项；按 `order`（再按名字）排，核心的两个在最前；Agent 给的最多 8 个 |
 | `prompt` | 技能名：有了它就有启动语 `start`（见下），卡片上有「交给 AI」 |
@@ -529,7 +532,7 @@ WuxianKit:App("officers", {
 | `bus` | `topic`、`data` |
 | 别的来源 | 来源给的字段（第 5 节） |
 | `addon` | `data`（`app:Push(data)`） |
-| `control` | `cmd` |
+| `control` | `cmd`；有 `pace` 的应用的 `less`、`more` 另有 `activity`、`was`、`edge?`（见字段 `controls`） |
 | `player` | `text`（玩家在游戏里对应用说的话） |
 
 `control` 与 `player` 条目总是立即唤醒（不等 `gather`）。
@@ -547,7 +550,7 @@ WuxianKit:App("officers", {
   - `state` 是 `{ [状态面] = 快照 }`，唤醒时读，声明没有 `see` 就不带；某个状态面现在没有（`read` 返回 nil）就没有那一项。
   - `notes`：不是 kit 加的。无限工坊的本机扩展在这台电脑上给唤醒加的附注，`{ [扩展 id] = 结果 }`，失败时那一项是 `{ error, reason }`（见「本机扩展的应用」）。
   - 发不出去（无限工坊没连着）时条目留在缓冲里，稍后重发，`seq` 不动；缓冲最多 `most` 的 4 倍，再多的最老条目只留在环里，算进下次唤醒的 `skipped`。
-- `kit.app`：`{ app, on, ends?, why?, waiting? }`，应用开始、停止，以及它等的东西变了（`on = true`，`waiting` 是原因；等到了再发一次不带 `waiting` 的）时发出；`why`：`stopped`（Agent 停的）、`player`、`expired`（到时）、`left`（租期过了）、`extension`（所属扩展，或所听来源、所看状态面的扩展停用；等的来源、状态面一直没登记；或插件的 `check` 说不行）、`replaced`（同 id 的声明换了一种：记住的与临时的互换，或插件声明顶掉一个临时应用）、`forgotten`（声明被撤回）。
+- `kit.app`：`{ app, on, ends?, why?, waiting?, link?, pace? }`，应用开始、停止，以及它等的东西变了（`on = true`，`waiting` 是原因；等到了再发一次不带 `waiting` 的）时发出；`on = true` 的另带 `link = "live"`（声明是 live 时）和 `pace`（有 `pace` 时：这次运行现在的活跃度；之后改了由 `kit.option` 说），停止的不带；`why`：`stopped`（Agent 停的）、`player`、`expired`（到时）、`left`（租期过了）、`extension`（所属扩展，或所听来源、所看状态面的扩展停用；等的来源、状态面一直没登记；或插件的 `check` 说不行）、`replaced`（同 id 的声明换了一种：记住的与临时的互换，或插件声明顶掉一个临时应用）、`forgotten`（声明被撤回）。
 
 ### 能力（核心扩展 kit）
 
@@ -560,10 +563,10 @@ WuxianKit:App("officers", {
 - `kit.app.stop { app }`（存储）：停止。
 - `kit.app.forget { app }`（存储）：撤回 Agent 声明的应用：停止（`why = "forgotten"`）、删声明；玩家给它设的选项留着，再声明时接回。插件声明的报错。玩家在窗口里「移除」更彻底：声明、选项、记录全删。
 - `kit.app.describe { app }`（读取）：`{ app, by, temp, decl }`，`decl` 是规范化后的声明（默认值填好）；把它原样再 `declare` 一次，`changed` 为 false。无限工坊对账时用它。
-- `kit.app.status { app }`（读取）：`{ app, title, by, temp, on, ends, started, next, sent?, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, see, controls, say, blocked?, waiting?, extension?, why?, start? }`；`next` 是最新的条目号；`sent` 只在运行中有，是这次运行最后一个发出去的唤醒的 `next`（还没发过：运行开始那一刻的 `next`）。条目一到就进回看的环，之后才攒成唤醒，所以 `next` 会跑在 `sent` 前面：加入一个在跑的应用，起点取 `sent`；`lease` 没设为 0；`blocked` 是现在不能开始的原因，`waiting` 是在运行但还在等什么；`extension` 只在声明了所属扩展时出现（false = 停用）；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：更新 `seen` 的只有 Agent 的 `kit.app.open`、`kit.app.status`、`kit.app.state`、`kit.app.recent`；`declare`、`stop`、`forget`、`describe`、`kit.apps` 不算。
+- `kit.app.status { app }`（读取）：`{ app, title, by, temp, on, ends, started, next, sent?, heard, wakes, lastWake, seen, present, lease, pace?, quiet?, said, hear, see, controls, say, link?, blocked?, waiting?, extension?, why?, start? }`；`next` 是最新的条目号；`sent` 只在运行中有，是这次运行最后一个发出去的唤醒的 `next`（还没发过：运行开始那一刻的 `next`）。条目一到就进回看的环，之后才攒成唤醒，所以 `next` 会跑在 `sent` 前面：加入一个在跑的应用，起点取 `sent`；`lease` 没设为 0；`blocked` 是现在不能开始的原因，`waiting` 是在运行但还在等什么；`extension` 只在声明了所属扩展时出现（false = 停用）；`link` 只在声明是 `live` 时出现；停着时 `why` 是上一次怎么停的。`said` 是今天 Agent 来源、执行完的 `chat.send` 里发到应用所听频道的条数。它也是心跳：更新 `seen` 的只有 Agent 的 `kit.app.open`、`kit.app.status`、`kit.app.state`、`kit.app.recent`；`declare`、`stop`、`forget`、`describe`、`kit.apps` 不算。
 - `kit.app.state { app }`（读取）：`{ app, at, state }`，现在读一次应用所看的状态面（`at` 是读的时间），形状同唤醒的 `state`。它也是心跳。Agent 在两次唤醒之间要最新的现状时用它。
 - `kit.app.recent { app, since?, limit? }`（读取）：回看最近 100 个条目：`{ items, next }`，`items` 是条目号大于 `since` 的最近 `limit` 个（默认 50，最多 100），从旧到新，重载后仍在；`next` 是环里最新的条目号（环空时是传入的 `since`）。它也是心跳。
-- `kit.apps`（读取）：`[{ id, title, by = addon|agent, temp, hidden?, local?, addon?, see, on, ends, present, prompt?, start?, extension?, blocked?, waiting? }]`；`blocked` 只在停着时给。它不是心跳，不续应用的租期，所以工坊 App 的页面读它而不读 `kit.app.status`。
+- `kit.apps`（读取）：`[{ id, title, by = addon|agent, temp, hidden?, local?, addon?, see, on, ends, present, prompt?, start?, extension?, blocked?, waiting?, pace?, link? }]`；`blocked` 只在停着时给；`pace` 只在有 `pace` 时给，运行中是这次运行的活跃度，停着是玩家的选项（同 `kit.app.status`）；`link` 只在声明是 `live` 时给。它不是心跳，不续应用的租期，所以工坊 App 的页面读它而不读 `kit.app.status`。
 
 开始、等、停都由一个对账函数定（`Core/Apps/Run.lua`）：声明变了、扩展开关、来源或状态面登记、登录，都只问它「这个应用现在该怎样」，答案三种：运行；等（`waiting`）；停（`why`）。
 - `kit.options { app }`：应用的选项（同扩展；显示顺序 `activity`、`quiet` 在前，其余按名字）。改了应用的选项，总线事件 `kit.option` 是 `{ app, name, value }`。
@@ -625,7 +628,7 @@ WuxianKit:App("officers", {
 
 Lua：`WuxianKit:App(id, decl)` 返回应用对象（`app:Get(name)`、`app:Running()`、`app:Push(data)`）；`WuxianKit:AppControl(id, cmd)`、`WuxianKit:AppSay(id, text)`（玩家的指令与话；`/wk <id> <词或话>`、卡片按钮都走它们）；`WuxianKit:AppPanel(id, parent, width)`：在插件自己的窗口里画应用卡片（状态、主按钮、停止、指令按钮、选项），和 `/wk` 窗口里的卡片是同一张，返回带 `:Refresh()` 的框体。
 
-清单：`Kit:Manifest()` 的 `apps`：`[{ id, title, by, temp, addon?, extension?, docs?, topic = "app.<id>", hear, see, prompt?, start? }]`，修订号包含它；游戏不在线时无限工坊也从保留的清单拿到启动语和应用的技能。
+清单：`Kit:Manifest()` 的 `apps`：`[{ id, title, by, temp, addon?, extension?, docs?, topic = "app.<id>", hear, see, prompt?, start?, link? }]`，修订号包含它；游戏不在线时无限工坊也从保留的清单拿到启动语和应用的技能。
 
 权限不变：应用只「听」来源给的、「看」状态面给的东西，说话、改游戏照旧走发送和更改类的提案与类别。Agent 给的文字限长、原样存，显示时转义。
 
@@ -894,3 +897,16 @@ ext:On("ADDON_LOADED", function(self) if self.active then Offer() end end)
 | 状态面 `today`、`kill` 的 `streak` | 陪玩自己数今天的进度和连杀 |
 | 状态面 `group` | 应用调 `sense.group` 或不知道队伍 |
 | 原来的「指引」改名「界面指引」 | 与「任务指引」同名易混 |
+
+## 16. 版本 0.6.1
+
+0.6.1 是两处小改，都来自语音搭子（无限工坊本机扩展带的应用）接上无限工坊 0.9.14 的按需链路之后。
+
+**链路档位跟着应用走。**0.9.14 起无限工坊与游戏的链路默认按需：有东西要传才连，传完就收，省下一直连着的开销。语音搭子要马上反应（反射、即时语音），按需时每次先等连上，玩家只好在设置里改成常开，应用停了也还常开。哪个应用要一直连着，是应用自己知道的事：写进声明的 `link`，无限工坊在它运行时常开、停了收回，玩家不用管。
+
+**话量只有一个旋钮。**原来「少说」「多说」只转告应用，应用各记一套自己的话量；卡片上还有核心的活跃度，玩家调了一个，另一个不动，唤醒的节奏也不跟着变。现在有 `pace` 的应用由核心执行这两个指令：直接挪活跃度一档，节奏马上跟上，条目和唤醒的 `pace` 都是同一个值，应用只按它说话。
+
+| 改动 | 原来 |
+|---|---|
+| 声明的 `link`（`live` / `standby`）；`kit.app` 的 `on = true`、`kit.apps` 的行、`kit.app.status` 带 `link`，`kit.app` 与行带 `pace` | 玩家在无限工坊的设置里手动切常开 |
+| 有 `pace` 的应用，`less`、`more` 由核心改活跃度，条目 `{ cmd, activity, was, edge? }` | 只转告 `{ cmd }`，话量由应用自己记 |

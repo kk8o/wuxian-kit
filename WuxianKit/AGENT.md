@@ -112,8 +112,9 @@ Read them with the workshop's `events` tool, for example
 - `kit.proposal`: a proposal changed state (`wk_wait` reads these for you).
 - `kit.changed`: extensions or capabilities changed; your wk_ tools change with them.
 - `kit.ready`: WuxianKit started (a login or a UI reload; proposals that had not run are gone).
-- `kit.app`: an app started or stopped, or what it waits for changed (`{app, on, ends?, why?, waiting?}`; `why` says
-  how it stopped), see Apps below.
+- `kit.app`: an app started or stopped, or what it waits for changed (`{app, on, ends?, why?, waiting?, link?,
+  pace?}`; `why` says how it stopped; while on, `link` is `"live"` for an app declared so and `pace` its activity
+  now), see Apps below.
 - `kit.extension`: an extension went on or off.
 - `kit.option`: the player changed an option: an extension's (`{extension, name, value}`) or an app's
   (`{app, name, value}`).
@@ -208,8 +209,11 @@ The declaration's fields:
   its own.
 - `controls`: the player's commands, buttons on the app's card and `/wk <app> <word>`: from mute, unmute, less, more,
   test, pause, resume, stop, or the app's own `{"cmd": "brief", "label": "任务播报"}` (cmd: lowercase letters, digits,
-  `_`; label: one word, at most 24 bytes; at most 12 controls in all). `say: true`: the player can talk to you with
-  `/wk <app> <words>`.
+  `_`; label: one word, at most 24 bytes; at most 12 controls in all). The kit carries out `stop`, and `less` and
+  `more` of an app with `pace` (the activity a step); you are told of each. `say: true`: the player can talk to you
+  with `/wk <app> <words>`.
+- `link: "live"`: while the app runs, 无限工坊 keeps its link to the game open (for an app that must answer at once:
+  reactions, a voice). Leave it out (`"standby"`, the default) otherwise.
 - `lease`: seconds without a heartbeat of yours (below) before the app stops (default 600, at least 60, 0 none).
   `minutes`: how long it may run (default 120, at most 720). `wk_kit_app_open` may give either for one run.
 - `options` (at most 8): settings the player makes for you, `name -> {kind, title, default, hint, choices, min, max,
@@ -274,8 +278,10 @@ never the `id`; it comes in another field.
   `{topic, data}`.
 - Another addon's source: the fields its extension's guide gives. `addon`: `{data}` from the app's addon.
 - `control`: `{cmd}`, the player's command (it wakes you at once). Act on it: `mute` means stay silent until
-  `unmute`, `less` and `more` change how often you speak. `stop` also stops the app. One of the app's own comes
-  as its `cmd`.
+  `unmute`. `less` and `more` of an app with `pace` are done by the kit: the activity moved a step and the item is
+  `{cmd, activity, was, edge?}` (`edge: true`: it was at that end and stayed); speak as `activity` says. For an app
+  without `pace`, `less` and `more` change how often you speak. `stop` also stops the app. One of the app's own
+  comes as its `cmd`.
 - `player`: `{text}`, what the player said to you (at once).
 
 ### Heartbeat, lease and stopping

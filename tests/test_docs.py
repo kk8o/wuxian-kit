@@ -106,6 +106,20 @@ class Docs(unittest.TestCase):
             self.assertIn(name, arch)
             self.assertTrue((KIT / "Core" / "Apps" / name).exists(), name)
 
+    def test_link_and_less_more(self):
+        """0.6.1: the field link and the core's less and more, told where each text tells the declaration and the
+        control item"""
+        arch, guide, skill = text("ARCHITECTURE.md"), text("AGENT.md"), text("skills", "kit-app.md")
+        apps = section(arch, "10. 应用（0.6）")
+        self.assertRegex(apps, r"(?m)^\| `link` \| ")
+        self.assertIn("`stop`、`less`、`more` 由核心执行", apps)
+        self.assertIn("`{ app, on, ends?, why?, waiting?, link?, pace? }`", apps)
+        self.assertTrue(section(arch, "16. 版本 0.6.1"))
+        for doc, name in ((guide, "AGENT.md"), (skill, "kit-app.md")):
+            self.assertIn("`link", doc, name)
+            self.assertIn("{cmd, activity, was, edge?}", doc, name)
+        self.assertIn("`edge: true`", section(skill, "The wake"))
+
     def test_the_words_with_two_meanings(self):
         arch = text("ARCHITECTURE.md")
         m = re.search(r"^### 词汇表[^\n]*\n(.*?)(?=^#{2,3} )", arch, re.M | re.S)
@@ -116,9 +130,9 @@ class Docs(unittest.TestCase):
             cells = [c.strip() for c in r.strip("|").split("|")]
             last = cells[0].strip("`") or last
             words[last] = words.get(last, 0) + 1
-        for word in ("notes", "see", "say", "source", "state", "options", "local"):
+        for word in ("notes", "see", "say", "source", "state", "options", "local", "link"):
             self.assertIn(word, words)
-        for word in ("notes", "see", "say", "source", "state", "options"):
+        for word in ("notes", "see", "say", "source", "state", "options", "link"):
             self.assertGreaterEqual(words[word], 2, word)       # a word is here because it means two things
 
 

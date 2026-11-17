@@ -50,6 +50,11 @@ local function Marked(row, app, mark)
 	return row
 end
 
+-- the activity of an app with pace: its run's while it runs, else the player's option (nil without pace)
+local function Activity(app, s)
+	if app.decl.pace then return s and s.pace or app:Get("activity") end
+end
+
 local function Status(app)
 	local d, s, now = app.decl, Run(app), time()
 	local out = Marked({ app = app.id, title = Title(app), by = app.by, on = s ~= nil, said = Said(app),
@@ -75,7 +80,7 @@ local function Status(app)
 		out.extension = (ext ~= nil and ext.active == true)
 	end
 	if d.pace then
-		out.pace = s and s.pace or app:Get("activity")
+		out.pace = Activity(app, s)
 		if s then out.quiet = s.quiet and true or false else out.quiet = ns.InQuiet(app:Get("quiet")) end
 	end
 	return out
@@ -110,7 +115,7 @@ function ns.AppList()
 			out[#out + 1] = Marked({ id = id, title = Title(app), by = app.by, addon = app.addon, on = s ~= nil,
 				ends = s and s.ends or nil, present = Present(s, now), start = StartLine(app),
 				blocked = not s and Blocked(app) or nil, waiting = s and app.waiting or nil, temp = app.temp == true,
-				see = #app.decl.see > 0 and Copy(app.decl.see) or nil }, app, "list")
+				see = #app.decl.see > 0 and Copy(app.decl.see) or nil, pace = Activity(app, s) }, app, "list")
 		end
 	end
 	return out
@@ -311,7 +316,8 @@ kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 		.. "needs that is not registered yet, such as another addon's source after a reload; nothing is heard until it "
 		.. "is, and it stops, why \"extension\", if that takes more than half a minute), why (while off: how its last "
 		.. "run ended), pace? (the player's activity), quiet? (in quiet hours), said (today's chat.send of yours that ran "
-		.. "into channels it hears), hear, see, controls, say, hidden?, local?, next (the newest item id: "
+		.. "into channels it hears), hear, see, controls, say, link? (live: 无限工坊 keeps the link open while it runs), "
+		.. "hidden?, local?, next (the newest item id: "
 		.. "kit.app.recent's since), sent? (while on: the next of the last wake sent, or where the run began; items "
 		.. "newer than it are gathered and come with a wake, so one who joins a run starts from sent and reads "
 		.. "kit.app.recent only up to it), blocked? (why it cannot start, while off), start? (with a prompt: the "
@@ -347,15 +353,18 @@ kit:See("apps", { title = "kit.apps",
 		.. "temp), addon?, on, ends, present, prompt? (its skill), start? (the start line: one sentence that tells an AI "
 		.. "client to read the skill with wk_docs), extension? (the extension it belongs to), blocked? (why it cannot "
 		.. "start, while off), waiting? (while on: what it needs that is not registered yet), see? (the states it sees), "
-		.. "temp (a temporary app), hidden? (a temporary app's plumbing: listed while it runs), local? ({id, title}: the "
-		.. "local extension of 无限工坊 it comes with)}]. Not a heartbeat: it does not keep an app alive",
+		.. "pace? (with pace: the activity now, quiet|normal|lively), link? (live: 无限工坊 keeps the link open while it "
+		.. "runs), temp (a temporary app), hidden? (a temporary app's plumbing: listed while it runs), local? ({id, "
+		.. "title}: the local extension of 无限工坊 it comes with)}]. Not a heartbeat: it does not keep an app alive",
 	run = function() return ns.AppList() end })
 
 kit:Event("app", { doc = "an app started, stopped, or what it waits for changed: {app, on, ends (while on), waiting "
-	.. "(on, and something it needs is not registered yet: nothing is heard until it is; without: it hears), why (a "
-	.. "stop: stopped by kit.app.stop, player, expired, left (its lease), extension (one it needs is off or missing, or "
-	.. "its check says no), forgotten (kit.app.forget), replaced)}", data = { app = "string", on = "boolean",
-	ends = "number?", why = "string?", waiting = "string?" } })
+	.. "(on, and something it needs is not registered yet: nothing is heard until it is; without: it hears), link (on, "
+	.. "of an app declared link live: keep the link open while it runs), pace (on, of an app with pace: the activity "
+	.. "now; kit.option tells a change), why (a stop: stopped by kit.app.stop, player, expired, left (its lease), "
+	.. "extension (one it needs is off or missing, or its check says no), forgotten (kit.app.forget), replaced)}",
+	data = { app = "string", on = "boolean", ends = "number?", why = "string?", waiting = "string?", link = "string?",
+		pace = "string?" } })
 
 ------------------------------------------------------------------------------------------------------------------------
 -- what counts for an app

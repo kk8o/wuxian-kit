@@ -600,7 +600,8 @@ class Manifest(AppCase):
         self.assertEqual(m["apps"], [salon])
         events = next(e for e in m["extensions"] if e["id"] == "kit")["events"]
         self.assertEqual(next(e for e in events if e["topic"] == "kit.app")["data"],
-                         {"app": "string", "on": "boolean", "ends": "number?", "why": "string?", "waiting": "string?"})
+                         {"app": "string", "on": "boolean", "ends": "number?", "why": "string?", "waiting": "string?",
+                          "link": "string?", "pace": "string?"})
         self.assertNotIn("kit.app.launch", [e["topic"] for e in events])
         self.assertNotIn("kit.feed", [e["topic"] for e in events])
         caps = [c["id"] for c in next(e for e in m["extensions"] if e["id"] == "kit")["capabilities"]]

@@ -16,7 +16,8 @@
 --   app:Running()                        its run while it runs ({ ends, started, ... }), else nil
 --   app:Push(data) -> boolean            an item of its own ({ source = "addon", data }) while it runs
 --   WuxianKit:AppControl(id, cmd) -> boolean   the player's command (one of the app's controls, by its cmd, a word of
---                                        ns.CONTROL_WORDS or its own label; "stop" stops it too)
+--                                        ns.CONTROL_WORDS or its own label; "stop" stops it too; "less" and "more"
+--                                        move the activity of an app with pace a step first)
 --   WuxianKit:AppSay(id, text) -> boolean      the player's words to the app (decl.say)
 --   WuxianKit:AppPanel(id, parent, width)      (UI/AppPanel.lua) the app's card in another addon's window
 --
@@ -27,7 +28,7 @@
 -- "forgotten", its declaration gone, the player's options kept). See: kit.app.describe { app } ({ app, by, temp, decl }:
 -- the declaration as normalized; declared again it changes nothing), kit.app.status { app } (also the heartbeat),
 -- kit.app.state { app }, kit.app.recent { app, since, limit }, kit.apps. Events: app.<id> (the app's wakes), kit.app
--- ({ app, on, why?, ends?, waiting? } when one starts, stops, or waits for what it needs).
+-- ({ app, on, why?, ends?, waiting?, link?, pace? } when one starts, stops, or waits for what it needs).
 --
 -- One table says what a declaration is: FIELDS, a row a field ({ name, type, doc, check, default, status, list, addon,
 -- build }). kit.app.declare's arguments and doc, the check, the defaults, the declaration as data (what is compared,
@@ -38,8 +39,8 @@
 -- or the UI reloads.
 --
 -- For the window:
---   ns.AppList()                  the apps as kit.apps answers (each row with on, temp, hidden, waiting, local; a
---                                 hidden app only while it runs)
+--   ns.AppList()                  the apps as kit.apps answers (each row with on, temp, hidden, waiting, local, pace,
+--                                 link; a hidden app only while it runs)
 --   ns.App(id)                    the app object, or nil
 --   ns.AppStatus(id)              as kit.app.status answers (without marking it heard from)
 --   ns.AppStop(id, why)           stops it ("player" from the window)
@@ -606,7 +607,10 @@ Field { name = "urgent", type = "table?",
 Field { name = "controls", type = "table?", status = true,
 	doc = ("the player's commands, buttons on its card and /wk <app> <word>: %s; or one of the app's own, {cmd, label} "
 		.. "(label: one word, at most %d bytes, not a word of the core's nor another's label or cmd); at most %d, each "
-		.. "told as a control item {cmd}"):format(table.concat(CONTROL_ORDER, ", "), LABEL_MAX, CONTROLS_MOST),
+		.. "told as a control item {cmd}. The core carries out stop (the app stops), and less and more of an app with "
+		.. "pace: the activity a step (quiet, normal, lively) before the item, which is then {cmd, activity (now), was, "
+		.. "edge? (true: it was at that end, unchanged)}"):format(table.concat(CONTROL_ORDER, ", "), LABEL_MAX,
+		CONTROLS_MOST),
 	check = Controls, default = {},
 	build = function(n, v)
 		n.controls, n.labels = {}, {}
@@ -627,6 +631,14 @@ Field { name = "lease", type = "number?",
 		:format(LEASE, ns.Lease(1), LEASE_MOST),
 	check = function(v) return LeaseOf(v, "lease") or 0 end, default = LEASE,
 	build = function(n, v) n.lease = v > 0 and v or nil end }
+
+Field { name = "link", type = "string?", status = true, list = true,
+	doc = "live: while it runs 无限工坊 keeps its link to the game open (reactions, a voice that answers at once); "
+		.. "standby (the default): the link opens when there is something to carry and closes after",
+	check = function(v)
+		if v ~= "live" and v ~= "standby" then Fail("link is live or standby (the default)") end
+		return v == "live" and "live" or nil                 -- (standby is no mark at all)
+	end }
 
 Field { name = "minutes", type = "number?",
 	doc = ("how long a run lasts, default %d, at most %d"):format(MINUTES, MINUTES_MOST),
@@ -1012,7 +1024,7 @@ end)
 ------------------------------------------------------------------------------------------------------------------------
 -- shared with the other files (A.loggedIn is set above)
 
-A.W, A.LEASE, A.MOST, A.ID_MAX = W, LEASE, MOST, ID_MAX
+A.W, A.LEASE, A.MOST, A.ID_MAX, A.ACTIVITIES = W, LEASE, MOST, ID_MAX, ACTIVITIES
 A.FIELDS, A.DECLARE_ARGS, A.FieldDocs = FIELDS, DECLARE_ARGS, FieldDocs
 A.Copy, A.Plain, A.Set, A.Me, A.Fail = Copy, Plain, Set, Me, Fail
 A.Split, A.Trim = Split, Trim

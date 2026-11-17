@@ -9,7 +9,8 @@
 local addonName, ns = ...
 local Kit = ns.Kit
 local A = ns.apps
-local W, LEASE, Fail, Set, Me, Split, Trim = A.W, A.LEASE, A.Fail, A.Set, A.Me, A.Split, A.Trim
+local W, LEASE, ACTIVITIES, Fail, Set, Me, Split, Trim = A.W, A.LEASE, A.ACTIVITIES, A.Fail, A.Set, A.Me, A.Split,
+	A.Trim
 local apps, order, Record, Owned, Run, Title, Paced, Digesting = A.apps, A.order, A.Record, A.Owned, A.Run, A.Title,
 	A.Paced, A.Digesting
 local Deliver = A.Deliver
@@ -145,6 +146,13 @@ end
 
 local ticker
 local Tick
+
+-- kit.app on = true: the run's end, what it waits for (nil: it hears), and what 无限工坊 reads off it: link (live:
+-- keep the link open while it runs) and pace (the activity now, of an app with pace)
+local function On(app, s, waiting)
+	Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends, waiting = waiting, link = app.decl.link,
+		pace = Paced(app) and (s.pace or app:Get("activity")) or nil })
+end
 
 local function Ticking()
 	if not ticker then ticker = C_Timer.NewTicker(1, Tick) end
@@ -289,7 +297,7 @@ local function Reconcile(app, light)
 		Unsubscribe(app)
 		if app.waiting ~= why then
 			app.waiting = why
-			Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends, waiting = why })
+			On(app, s, why)
 		end
 		Ticking()
 		return
@@ -302,7 +310,7 @@ local function Reconcile(app, light)
 		Retune(app, s)
 	end
 	Watch(app)
-	if waited then Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends }) end
+	if waited then On(app, s) end
 	Ticking()
 end
 
@@ -371,7 +379,7 @@ local function Start(app, minutes, lease, agent)
 	local waiting = app.waiting
 	Reconcile(app, true)
 	if Owned(app) == s and app.waiting == waiting then   -- (a change of waiting: Reconcile said so)
-		Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends, waiting = waiting })
+		On(app, s, waiting)
 	end
 	return s
 end
@@ -395,11 +403,29 @@ local function ControlOf(app, word)
 	return word
 end
 
+local STEP = { less = -1, more = 1 }
+
+-- less and more of an app with pace: its activity a step (quiet, normal, lively) as the player's option, retuned and
+-- told (kit.option), before the item goes, so that the item says where it is now and the wake goes at the new pace.
+-- At an end it stays: edge
+local function Stepped(app, item)
+	local was = app:Get("activity")
+	local at = 2
+	for i, name in ipairs(ACTIVITIES) do
+		if name == was then at = i end
+	end
+	local to = ACTIVITIES[at + STEP[item.cmd]]
+	if to then ns.SetAppOption(app.id, "activity", to) else item.edge = true end
+	item.activity, item.was = to or was, was
+end
+
 function Kit:AppControl(id, cmd)
 	local app = apps[id]
 	cmd = app and ControlOf(app, cmd) or cmd
 	if not app or not Set(app.decl.controls)[cmd] or not Run(app) then return false end
-	Deliver(app, "control", { cmd = cmd }, true)
+	local item = { cmd = cmd }
+	if STEP[cmd] and Paced(app) then Stepped(app, item) end
+	Deliver(app, "control", item, true)
 	if cmd == "stop" then Stop(app, "player") end
 	return true
 end
