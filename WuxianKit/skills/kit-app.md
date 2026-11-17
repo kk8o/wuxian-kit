@@ -44,8 +44,8 @@ Make the AI app {{app}}. What it should do: {{goal}}
      (the app stops), and `less` and `more` of an app with `pace` (its activity a step: see The wake, `control`);
      the app only answers them. `say: true` lets the player talk to it with `/wk <id> <words>`.
    - `link`: `"live"` when the app must answer at once while it runs (reactions, a voice): 无限工坊 keeps its link to
-     the game open while the app runs. Leave it out (or `"standby"`, the default) for the rest: the link opens when
-     there is something to carry.
+     the game open while the app runs. Leave it out for the rest (it has no other value): the link opens when there
+     is something to carry.
    - `lease`: seconds without a heartbeat before it counts as gone and stops (default 600, at least 60, 0 for none).
      The heartbeat is a call of `wk_kit_app_open`, `wk_kit_app_status`, `wk_kit_app_state` or `wk_kit_app_recent`
      for the app, and no other tool (`wuxian listen` sends it while it waits). `minutes`: its longest run (default
@@ -88,11 +88,16 @@ Make the AI app {{app}}. What it should do: {{goal}}
      or removed, 无限工坊 withdraws the app (it stops with `forgotten`); the options the player set stay and come
      back when the extension is on again. These apps do not count against your 8.
    - An app the extension's own program drives, with no agent (sync when a snapshot comes, say): `"driver": "local"`
-     in the manifest's `apps` (the kit takes it only with the `local` label 无限工坊 adds; it needs kit 0.6.1), and no
-     `prompt` or skill. The program opens the app and handles its wakes (the workshop's SDK); the card has no 交给 AI
-     and says the local extension runs it, with stop and the controls as ever.
-   - The extension's options show on its page in the /wk window too, under 本机选项 (local options): the player
-     changes a boolean, number or choice there and 无限工坊 applies it as from its App; a text is changed in the App.
+     in the manifest's `apps` (the kit takes it only with the `local` label 无限工坊 adds; it needs kit 0.7.0), no
+     `prompt` or skill, and no `minutes`: its run has no end. 无限工坊 keeps the app open while the program runs,
+     keeps its lease and hands the program its wakes (the workshop's SDK: `@ext.app`); the card has no 交给 AI and
+     says 本机端运行中 or 本机端未运行, with stop and the controls as ever (the player who stopped it starts it again
+     with 开始). What the program tells the player of its work goes through one channel, the SDK's `ext.report`
+     (`kit.app.report`): the card shows the newest report's text, and the extension's addon in the game hears them
+     with `ext:OnReport(app, fn)`; that addon asks `ext:Local()` whether its program runs.
+   - The extension's options show on its page in the /wk window too (本机选项, local options, on the row of an
+     extension that has an addon in the game too): the player changes a boolean, number or choice there and 无限工坊
+     applies it as from its App; a text is changed in the App.
    - To see what the game has: `wk_kit_app_describe` with `{"app": "<id>"}` answers the declaration as it is kept
      (every field, defaults filled in), for any app. `wk_kit_app_forget` with `{"app": "<id>"}` withdraws by hand an
      app an agent declared (one left behind, say); never an addon's.
@@ -208,8 +213,6 @@ the event `app.<id>`. Its data:
     without `pace` the item is `{cmd}` only, and how much to say is the app's own.
   - Texts are cut to 500 bytes and tables to 6 levels, in the wake and in the record alike. An item still larger
     than about 1700 bytes has its texts cut shorter, then loses the tables in it; `cut: true` in it says so.
-    (With 无限工坊 before 0.9.13 a wake shows a table at an item's fifth or sixth level as the text `"<table>"`:
-    `wk_kit_app_recent` has it.)
 - `after`, `next`: the wake covers every item of this app with `after < id <= next`. `after` is the `next` of the
   wake before it (the first wake of a run: the newest item id when the run began, 0 if there was none). So wakes
   join end to end: a wake whose `after` is above the last `next` you read means you missed some. `wuxian listen`

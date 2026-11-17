@@ -1015,7 +1015,8 @@ class Session:
             saved["WuxianKitDB"] = dump(self.g("WuxianKitDB"))
         kw.setdefault("fixtures", self.fixtures)
         kw.setdefault("disabled", self.disabled)
-        return Session(self.test, saved=saved, t0=self.now() + 5, **kw)
+        kw.setdefault("t0", self.now() + 5)
+        return Session(self.test, saved=saved, **kw)
 
     def chat(self):
         return "\n".join(self.lines)

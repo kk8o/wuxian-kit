@@ -502,7 +502,7 @@ class Present(Case):
 
 
 class Said(Case):
-    EMIT = ("WuxianKit:Emit('kit.proposal', {{ id = {id}, state = 'done', source = 'agent', steps = {{ "
+    EMIT = ("__ns.EmitCore('kit.proposal', {{ id = {id}, state = 'done', source = 'agent', steps = {{ "
             "{{ cap = 'chat.send', args = {{ channel = 'guild', text = 'a' }} }} }} }})")
 
     def test_a_proposal_counts_once_a_day(self):

@@ -372,7 +372,7 @@ local function Announce()
 	local revision = Kit:Manifest().revision
 	if revision ~= announced then
 		announced = revision
-		Kit:Emit("kit.changed", { revision = revision })
+		ns.EmitCore("kit.changed", { revision = revision })
 	end
 end
 

@@ -13,6 +13,7 @@ local W, LEASE, ACTIVITIES, Fail, Set, Me, Split, Trim = A.W, A.LEASE, A.ACTIVIT
 	A.Trim
 local apps, order, Record, Owned, Run, Title, Paced, Digesting = A.apps, A.order, A.Record, A.Owned, A.Run, A.Title,
 	A.Paced, A.Digesting
+local Driven, Over, Ends = A.Driven, A.Over, A.Ends
 local Deliver = A.Deliver
 
 local SAY_MAX = 255
@@ -147,10 +148,10 @@ end
 local ticker
 local Tick
 
--- kit.app on = true: the run's end, what it waits for (nil: it hears), and what 无限工坊 reads off it: link (live:
--- keep the link open while it runs) and pace (the activity now, of an app with pace)
+-- kit.app on = true: the run's end (none for one a program drives), what it waits for (nil: it hears), and what
+-- 无限工坊 reads off it: link (live: keep the link open while it runs) and pace (the activity now, of an app with pace)
 local function On(app, s, waiting)
-	Kit:Emit("kit.app", { app = app.id, on = true, ends = s.ends, waiting = waiting, link = app.decl.link,
+	ns.EmitCore("kit.app", { app = app.id, on = true, ends = Ends(app, s), waiting = waiting, link = app.decl.link,
 		pace = Paced(app) and (s.pace or app:Get("activity")) or nil })
 end
 
@@ -177,8 +178,9 @@ local STOP_WORDS = { stopped = "STOPPED", player = "STOPPED", forgotten = "STOPP
 	expired = "EXPIRED", left = "LEFT" }
 
 -- stops this character's run (why: stopped, player, expired, left, extension, forgotten, replaced); quiet: no chat
--- line; detail: what it needed, for the player (why extension). A temporary app goes with its run (unless it is
--- replaced: a new run of it follows)
+-- line; detail: what it needed, for the player (why extension). An app its local extension's program drives starts
+-- and stops with that program, so the chat says nothing of it (its card does), but for a lease that ran out. A
+-- temporary app goes with its run (unless it is replaced: a new run of it follows)
 local function Stop(app, why, quiet, detail)
 	local c = A.Char(app)
 	local s = c and c.run
@@ -187,15 +189,17 @@ local function Stop(app, why, quiet, detail)
 	c.last = { why = why }
 	Unsubscribe(app)
 	app.waiting, app.waitFrom = nil, nil
-	if not quiet and not app.decl.hidden and STOP_WORDS[why] then
+	if not quiet and not app.decl.hidden then
 		local title = ns.Escape(Title(app))
-		if detail then
+		if Driven(app) then
+			if why == "left" then ns.Say(W.LEFT_LOCAL:format(title)) end
+		elseif detail and STOP_WORDS[why] then
 			ns.Say(W.STOPPED_WHY:format(title, ns.Escape(detail)))
-		else
+		elseif STOP_WORDS[why] then
 			ns.Say(W[STOP_WORDS[why]]:format(title))
 		end
 	end
-	Kit:Emit("kit.app", { app = app.id, on = false, why = why })
+	ns.EmitCore("kit.app", { app = app.id, on = false, why = why })
 	if app.temp and why ~= "replaced" then Drop(app) end
 	return true
 end
@@ -256,6 +260,7 @@ local function Blocked(app)
 end
 
 local loginAt = 0
+local atLogin = false                    -- the runs kept from before are being looked at (the login)
 
 -- the one entry: what the app's run of this character's should be now, and made so.
 --   run   everything it needs is there: subscribed as its declaration says now, its facets watched
@@ -275,12 +280,12 @@ local function Reconcile(app, light)
 		app.waiting, app.waitFrom = nil, nil
 		return
 	end
-	if (tonumber(s.ends) or 0) <= now then
+	if Over(app, s, now) then
 		Stop(app, "expired")
 		return
 	end
 	if Lapsed(s, now) then
-		Stop(app, "left")
+		Stop(app, "left", atLogin and Driven(app))           -- (a program's run kept from the last session: no line)
 		return
 	end
 	local verdict, why, check = Verdict(app, light and not app.waiting)
@@ -352,29 +357,32 @@ function Tick()
 	end
 end
 
--- starts the app's run; one running goes on with the new time and lease (kit.app on = true again, no stop). The
--- caller (kit.app.open) reconciled it and asked Blocked first
+-- starts the app's run; one running goes on with the new time and lease (kit.app on = true again, no stop). One its
+-- local extension's program drives has no end (minutes is not asked) and no chat line. The caller (kit.app.open, the
+-- player's 开始) reconciled it and asked Blocked first
 local function Start(app, minutes, lease, agent)
 	local rec = Record(app)
 	if not rec or not Me() then Fail("app %s cannot start before the player is in the world", app.id) end
 	local now = time()
 	local s = Owned(app)
-	if s and (tonumber(s.ends) or 0) <= now then
+	if s and Over(app, s, now) then
 		Stop(app, "expired")
 		s = nil
 	end
 	if apps[app.id] ~= app then Fail("app %s is gone", app.id) end   -- (a temporary app went with its run)
+	local ends
+	if not Driven(app) then ends = now + math.floor(minutes * 60) end
 	if s then
-		s.ends, s.lease = now + math.floor(minutes * 60), lease or nil
+		s.ends, s.lease = ends, lease or nil
 		if agent then s.seen = now end
 		Retune(app, s)
 	else
 		-- sent: the run's cursor, the next of its last wake that went; before the first, the newest item there was
-		s = { started = now, ends = now + math.floor(minutes * 60), lease = lease or nil, heard = 0, wakes = 0,
+		s = { started = now, ends = ends, lease = lease or nil, heard = 0, wakes = 0,
 			buffer = {}, options = { digest = {} }, seen = agent and now or nil, sent = A.Recent(app, nil, 1).next }
 		A.Char(app).run = s
 		Retune(app, s)
-		if not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", s.ends))) end
+		if ends and not app.decl.hidden then ns.Say(W.STARTED:format(ns.Escape(Title(app)), date("%H:%M", ends))) end
 	end
 	local waiting = app.waiting
 	Reconcile(app, true)
@@ -419,6 +427,7 @@ local function Stepped(app, item)
 	item.activity, item.was = to or was, was
 end
 
+-- true and what the app was told ({ cmd }; less and more of an app with pace: activity, was, edge too), or false
 function Kit:AppControl(id, cmd)
 	local app = apps[id]
 	cmd = app and ControlOf(app, cmd) or cmd
@@ -427,7 +436,7 @@ function Kit:AppControl(id, cmd)
 	if STEP[cmd] and Paced(app) then Stepped(app, item) end
 	Deliver(app, "control", item, true)
 	if cmd == "stop" then Stop(app, "player") end
-	return true
+	return true, { cmd = cmd, activity = item.activity, was = item.was, edge = item.edge }
 end
 
 function Kit:AppSay(id, text)
@@ -458,7 +467,9 @@ end)
 -- the runs kept from before a reload (or the last time this character was here) go on, wait or end
 ns.When("login", function()
 	A.loggedIn, loginAt = true, time()
+	atLogin = true
 	All()
+	atLogin = false
 end)
 
 ------------------------------------------------------------------------------------------------------------------------

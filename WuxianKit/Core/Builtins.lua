@@ -8,9 +8,11 @@
 --                                changes them)
 --   kit.me                (See)  the player's name, what AI apps call them (the core's option nickname), their aliases
 --   kit.undo              (Do)   undo a proposal that ran
---   kit.local.set         (Keep) 无限工坊's list of the extensions added to this computer that have a local part, for
---                                the window to show them beside the game's (ns.LocalList), with their local options;
---                                the player changes one on its page: the event kit.local.option (ns.SetLocalOption)
+--   kit.local.set         (Keep) 无限工坊's list of the extensions added to this computer that have a local part
+--                                (本机端), for the window to show them beside the game's (ns.LocalList), with whether
+--                                each runs and their local options; the player changes one on its page: the event
+--                                kit.local.option (ns.SetLocalOption). ext:Local() reads a game extension's own part
+--                                of it, and the event kit.local says when that changed
 --   bus                   (Source) what addons emit on the bus, for apps to hear (bus:<topic or prefix.*>)
 --   me                    (Facet)  the player now (WuxianKit:Me()), for apps to see (see = { "me" }: state.me)
 -- (The apps' capabilities, kit.app.* and kit.apps, are in Core/Apps/Api.lua.)
@@ -37,14 +39,16 @@ kit:See("extensions", { title = L"LIST_EXTENSIONS",
 	run = function() return ns.ExtensionList() end })
 
 ------------------------------------------------------------------------------------------------------------------------
--- the local extensions: what 无限工坊 says is added to this computer (an extension with a local part: a program,
--- documents, apps it declares). The game knows nothing of them by itself, so 无限工坊 gives the whole list, at every
--- kit.ready and when one is added, removed, turned on or off; kept in memory only (a reload: given again). The window
--- lists them with the game's extensions (UI/Window.lua); nothing else reads them
+-- the local extensions: what 无限工坊 says is added to this computer (an extension with a local part, 本机端: a
+-- program, documents, apps it declares). The game knows nothing of them by itself, so 无限工坊 gives the whole list, at
+-- every kit.ready and when one is added, removed, turned on or off, starts or stops; kept in memory only (a reload:
+-- given again; until then nothing is known: ns.LocalKnown). The window lists them with the game's extensions
+-- (UI/Window.lua), a game extension reads its own (ext:Local()), and Apps/Report.lua asks which addons one brings
 
-local LOCAL_MOST, LOCAL_IDS = 32, 16     -- extensions kept; ids kept in one's game and adds
+local LOCAL_MOST, LOCAL_IDS = 32, 16     -- extensions kept; ids kept in one's adds, folders in its addons
 local OPTIONS_MOST, CHOICES_MOST = 16, 12 -- of one extension's local options; of one option's choices
-local roster = {}
+local CONFIRM = 10                       -- seconds a value the player set waits for 无限工坊's list before it goes back
+local roster, known = {}, false
 
 local function Short(v, most)
 	if type(v) ~= "string" then return nil end
@@ -57,6 +61,17 @@ local function Ids(v)
 	for _, id in ipairs(type(v) == "table" and v or {}) do
 		if #out < LOCAL_IDS and type(id) == "string" and #id <= 40 and id:match("^[a-z][a-z0-9_]*$") then
 			out[#out + 1] = id
+		end
+	end
+	return out
+end
+
+-- addon folders as given: names of at most 64 bytes, no path in them
+local function Folders(v)
+	local out = {}
+	for _, name in ipairs(type(v) == "table" and v or {}) do
+		if #out < LOCAL_IDS and type(name) == "string" and name ~= "" and #name <= 64 and not name:find("[%c/\\]") then
+			out[#out + 1] = name
 		end
 	end
 	return out
@@ -81,6 +96,7 @@ local function LocalOption(v)
 	end
 	local o = { name = name, kind = kind, title = Short(v.title, 60) or name, hint = Short(v.hint, 120),
 		value = kind == "text" and ns.Cut(v.value, 200) or v.value, default = v.default }
+	if kind == "text" and o.default ~= nil then o.default = ns.Cut(o.default, 200) end
 	if kind == "number" then
 		for _, k in ipairs({ "min", "max", "step" }) do
 			if v[k] ~= nil and not ns.Finite(v[k]) then return nil end
@@ -115,29 +131,105 @@ local function LocalOptions(v)
 	return #out > 0 and out or nil
 end
 
--- the list as it is kept: { id, title, version, author, notes, where ("local", or "both": also in the game), on,
--- game (the ids of its extensions in the game), adds (the ids of the apps it adds to), options? (its local options in
--- order, each { name, kind, title, value, default?, hint?, choices? ({ value, label }), min?, max?, step?, unit? }) },
--- texts as given (escape them to draw them)
+-- the list as it is kept: { id, title, version, author, notes, where ("local", or "both": it has addons in the game
+-- too), on (enabled and approved), running (its program runs), addons (the folders of the addons it brings), adds (the
+-- ids of the apps it adds to), options? (its local options in order, each { name, kind, title, value, default?, hint?,
+-- choices? ({ value, label }), min?, max?, step?, unit?, pending? ({ value }: what the player set here, not confirmed
+-- yet) }) }, texts as given (escape them to draw them)
 function ns.LocalList() return roster end
 
--- the player set local extension id's option name on its page (boolean, number or choice; a text is 无限工坊's App's):
--- the value as the option takes it shows at once and goes to 无限工坊 as kit.local.option { extension, name, value },
--- which applies it and gives the list again: that list confirms it, or puts back what holds. true and the value, or
--- false (no such option, a text, or a number that is none)
-function ns.SetLocalOption(id, name, value)
-	local o
+-- whether 无限工坊 gave its list in this UI session (before it does, nothing is known of the local parts)
+function ns.LocalKnown() return known end
+
+-- the list's entry of local extension id, or nil
+function ns.LocalEntry(id)
 	for _, x in ipairs(roster) do
-		for _, opt in ipairs(x.id == id and x.options or {}) do
-			if opt.name == name then o = opt end
-		end
+		if x.id == id then return x end
 	end
-	if not o or o.kind == "text" or (o.kind == "number" and not ns.Finite(tonumber(value))) then return false end
-	value = ns.OptionValue({ kind = o.kind, min = o.min, max = o.max, step = o.step or 1, choices = o.choices or {},
+end
+
+-- whether local extension x brings the addon of that folder (folders compare without case, as the client's do)
+local function Brings(x, addon)
+	if type(addon) ~= "string" or addon == "" then return false end
+	addon = addon:lower()
+	for _, name in ipairs(x.addons) do
+		if name:lower() == addon then return true end
+	end
+	return false
+end
+
+-- the local part of a game extension (id, and the addon that registers it): the list's entry of the same id, else
+-- the one that brings its addon; nil when none (or no list yet). The one rule that makes the two halves one
+-- extension: the window's rows, ext:Local() and ext:OnReport all ask here
+function ns.LocalOf(id, addon)
+	local x = ns.LocalEntry(id)
+	if x then return x end
+	for _, e in ipairs(roster) do
+		if Brings(e, addon) then return e end
+	end
+end
+
+-- ext:Local(): the extension's part on this computer as 无限工坊 lists it: { known (false: no list yet in this UI
+-- session, the rest says nothing), listed (the list has it), on (enabled and approved), running (its program runs),
+-- version, options = { name = value } (its local options, as 无限工坊 holds them) }. The bus event kit.local
+-- { extension = <this extension's id> } says when the answer changed (for an extension that asked here, or is listed)
+local asked = {}                         -- the game extensions that called ext:Local()
+
+local function LocalState(ext)
+	local x = known and ns.LocalOf(ext.id, ext.addon) or nil
+	local options = {}
+	for _, o in ipairs(x and x.options or {}) do options[o.name] = o.value end
+	return { known = known, listed = x ~= nil, on = x ~= nil and x.on, running = x ~= nil and x.running,
+		version = x and x.version or nil, options = options }
+end
+
+function ns.Extension:Local()
+	asked[self.id] = true
+	return LocalState(self)
+end
+
+-- a state as one text, to tell two apart
+local function Mark(st)
+	local parts = { tostring(st.known), tostring(st.listed), tostring(st.on), tostring(st.running), tostring(st.version) }
+	local names = {}
+	for name in pairs(st.options) do names[#names + 1] = name end
+	table.sort(names)
+	for _, name in ipairs(names) do parts[#parts + 1] = name .. "=" .. tostring(st.options[name]) end
+	return table.concat(parts, "\1")
+end
+
+-- the option name of local extension id, or nil
+local function OptionOf(id, name)
+	local x = ns.LocalEntry(id)
+	for _, o in ipairs(x and x.options or {}) do
+		if o.name == name then return o end
+	end
+end
+
+-- the player set local extension id's option name on its page (boolean, number or choice; a text is 无限工坊's App's):
+-- the value as the option takes it shows at once, marked as not confirmed (o.pending), and goes to 无限工坊 as
+-- kit.local.option { extension, name, value }, which applies it and gives the list again: that list confirms it, or
+-- puts back what holds; none within CONFIRM seconds: back to what 无限工坊 gave. true and the value, or false (no such
+-- option, a text, a number that is none, or 无限工坊 not linked: nobody would take it)
+function ns.SetLocalOption(id, name, value)
+	local o = OptionOf(id, name)
+	if not o or o.kind == "text" or (o.kind == "number" and not ns.Finite(tonumber(value))) or not Kit:AgentOnline() then
+		return false
+	end
+	value = ns.OptionValue({ kind = o.kind, min = o.min, max = o.max, step = o.step, choices = o.choices or {},
 		default = o.value }, value)
-	if value ~= o.value then
-		o.value = value
+	local shown = o.value
+	if o.pending then shown = o.pending.value end
+	if value ~= shown then
+		local pending = { value = value }
+		o.pending = pending
 		ns.EmitCore("kit.local.option", { extension = id, name = name, value = value })
+		C_Timer.After(CONFIRM, function()
+			if o.pending == pending and OptionOf(id, name) == o then   -- no list came: 无限工坊 did not take it
+				o.pending = nil
+				ns.Changed("local")
+			end
+		end)
 		ns.Changed("local")
 	end
 	return true, value
@@ -146,12 +238,13 @@ end
 kit:Keep("local.set", { title = "kit.local.set", args = { extensions = "table" },
 	doc = "无限工坊 calls this, not an agent: the extensions added to this computer that have a local part, the whole "
 		.. "list each time (it takes the place of the one before; kept until the UI reloads). Each {id, title, version?, "
-		.. "author?, notes?, where (local, or both: in the game too), on (enabled), game? (the ids of its extensions in "
-		.. "the game), adds? (the ids of the apps it adds to), options? (its local options in order: [{name, kind "
-		.. "boolean|number|choice|text, title, value, default?, hint?, choices? [{value, label}], min?, max?, step?, "
-		.. "unit?}]; an option that is not so is skipped)}; one that is not so is left out. The window lists them with the "
-		.. "game's extensions; the player changes a local option there (not a text): the event kit.local.option. "
-		.. "Answers {count}",
+		.. "author?, notes?, where (local, or both: it has addons in the game too), on (enabled and approved), running "
+		.. "(its program runs), addons? (the folders of the addons it brings: a game extension of one of them, or of its "
+		.. "id, is the same extension), adds? (the ids of the apps it adds to), options? (its local options in order: "
+		.. "[{name, kind boolean|number|choice|text, title, value, default?, hint?, choices? [{value, label}], min?, max?, "
+		.. "step?, unit?}]; an option that is not so is skipped)}; one that is not so is left out. The window lists them "
+		.. "with the game's extensions; the player changes a local option there (not a text): the event "
+		.. "kit.local.option. Answers {count}",
 	run = function(_, a)
 		local out, seen = {}, {}
 		for _, v in ipairs(a.extensions) do
@@ -161,11 +254,22 @@ kit:Keep("local.set", { title = "kit.local.set", args = { extensions = "table" }
 				seen[id] = true
 				out[#out + 1] = { id = id, title = Short(v.title, 60) or id, version = Short(v.version, 24),
 					author = Short(v.author, 40), notes = Short(v.notes, 200),
-					where = v.where == "both" and "both" or "local", on = v.on ~= false,
-					game = Ids(v.game), adds = Ids(v.adds), options = LocalOptions(v.options) }
+					where = v.where == "both" and "both" or "local", on = v.on ~= false, running = v.running == true,
+					addons = Folders(v.addons), adds = Ids(v.adds), options = LocalOptions(v.options) }
 			end
 		end
-		roster = out
+		local before = {}                                   -- what each game extension's ext:Local() answered
+		for _, id in ipairs(ns.order) do
+			local st = LocalState(ns.extensions[id])
+			before[id] = { mark = Mark(st), listed = st.listed }
+		end
+		roster, known = out, true
+		for _, id in ipairs(ns.order) do
+			local st = LocalState(ns.extensions[id])
+			if Mark(st) ~= before[id].mark and (asked[id] or st.listed or before[id].listed) then
+				ns.EmitCore("kit.local", { extension = id })
+			end
+		end
 		ns.Changed("local")
 		return { count = #out }
 	end })
@@ -289,7 +393,11 @@ kit:Event("ready", { doc = "WuxianKit is up, after a login or a reload", data = 
 kit:Event("option", { doc = "the player changed an option: an extension's ({extension, name, value}) or an app's "
 	.. "({app, name, value}): one of extension and app, never both (kit.options reads them all)",
 	data = { extension = "string?", app = "string?", name = "string", value = "any" } })
--- only the core sends it (ns.EmitCore; WuxianKit:Emit refuses the topic): 无限工坊 takes it as the player's own change
+kit:Event("local", { doc = "for addons, not an agent: what ext:Local() answers for a game extension changed (无限工坊 "
+	.. "gave its list of local extensions: its local part listed or gone, on or off, its program started or stopped, "
+	.. "its version, a local option): {extension (the game extension's id)}",
+	data = { extension = "string" } })
+-- the core sends it (ns.EmitCore; WuxianKit:Emit refuses kit.*): 无限工坊 takes it as the player's own change
 kit:Event("local.option", { doc = "for 无限工坊, not an agent: the player changed a local extension's option on its "
 	.. "page of the /wk window (boolean, number or choice): {extension, name, value}; 无限工坊 applies it and calls "
 	.. "kit.local.set again (only WuxianKit sends this event)",
