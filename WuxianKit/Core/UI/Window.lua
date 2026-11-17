@@ -17,7 +17,9 @@
 -- a row of its own, in a last group (Agent 应用) that is there only then, its page the card with a remove button.
 -- An app whose local extension 无限工坊 does not list (it gave no list, or one without it: the extension is gone, or
 -- nobody added it) is on a row made from the app's own label; that page says so and its cards have the remove button
--- too, as nothing in 无限工坊's App would take such an app away.
+-- too, as nothing in 无限工坊's App would take such an app away. A local extension's page (and the row of one in the
+-- game too) has its local options (本机选项, from 无限工坊's list) after the game's: the player changes one there and
+-- 无限工坊 is told (kit.local.option, sent by the core only); a text one is 无限工坊's App's to change.
 -- The window first opens on the first row with an app that runs (none: the core's). The core's page ends with the
 -- hidden apps that run (后台监听: a program's plumbing is not listed, but the player sees what listens and can stop
 -- it). /wk <app> opens the page its card is on; /wk <app> <word or words> gives it the player's command or words; the
@@ -33,7 +35,10 @@ local A = Kit:Words {
 		PILL = "应用", TEMP = "临时", BY_AGENT = "Agent 声明", REMOVE = "移除",
 		APP = "应用 · %s", TEMP_APP = "临时应用 · %s", APP_OPTIONS = "应用选项",
 		ADDS = "补充：%s", ADDS_TO = "补充到应用：%s", MANAGED = "在无限工坊 App 中管理",
-		UNLISTED = "无限工坊未列出此扩展",
+		UNLISTED = "无限工坊未列出此扩展", LOCAL_OPTIONS = "本机选项", LOCAL_TEXT = "在无限工坊 App 中修改",
+		LOCAL_EMPTY = "未设置",
+		LOCAL_ON = "由本机扩展「%s」运行", LOCAL_OFF = "本机扩展未运行", LOCAL_AGAIN = "重载界面或重新登录后自动开始",
+		LOCAL_WHY = { player = "已手动停止", expired = "运行时间已到", left = "本机扩展无响应" },
 		WAITING = "等待中", WAIT_HINT = "就绪后自动开始",
 		LISTENERS = "后台监听", LISTEN_MORE = "%s 等 %d 项", LISTEN_UNTIL = "至 %s",
 		NO_LINK = "无限工坊未连接", NO_LINK_HINT = "打开无限工坊 App，游戏保持在前台或窗口模式",
@@ -52,7 +57,11 @@ local A = Kit:Words {
 		PILL = "App", TEMP = "Temporary", BY_AGENT = "Declared by an agent", REMOVE = "Remove",
 		APP = "App · %s", TEMP_APP = "Temporary app · %s", APP_OPTIONS = "App options",
 		ADDS = "Additions: %s", ADDS_TO = "Adds to the apps: %s", MANAGED = "Managed in the Wuxian Workshop app",
-		UNLISTED = "Wuxian Workshop does not list this extension",
+		UNLISTED = "Wuxian Workshop does not list this extension", LOCAL_OPTIONS = "Local options",
+		LOCAL_TEXT = "Change it in the Wuxian Workshop app", LOCAL_EMPTY = "Not set",
+		LOCAL_ON = "Run by the local extension %s", LOCAL_OFF = "Local extension not running",
+		LOCAL_AGAIN = "Starts again after a UI reload or login",
+		LOCAL_WHY = { player = "Stopped by you", expired = "Time is up", left = "Local extension not responding" },
 		WAITING = "Waiting", WAIT_HINT = "Starts by itself once ready",
 		LISTENERS = "Background listeners", LISTEN_MORE = "%s, %d in all", LISTEN_UNTIL = "until %s",
 		NO_LINK = "Wuxian Workshop not connected", NO_LINK_HINT = "Open the Wuxian Workshop app; keep the game in front or windowed",
@@ -293,6 +302,30 @@ local function ExtOptions(ext, indent)
 		function(name, v) ns.Act("option", id, name, v) end, indent, "ext:" .. id)
 end
 
+-- a local extension's options (无限工坊's list: ns.LocalList), under 本机选项: boolean, number and choice with the
+-- controls above, a change the "local.option" action (shown at once; 无限工坊's next list confirms it or puts back
+-- what holds); a text shown with its value, changed in 无限工坊's App only (its hint not drawn). Their texts are a
+-- manifest's: escaped
+local function LocalOptions(id, list)
+	Heading(A.LOCAL_OPTIONS)
+	local byName = {}
+	for _, o in ipairs(list) do byName[o.name] = o end
+	local function Entry(name)
+		local o = byName[name]
+		return UI.EscapedOption(o), o.value
+	end
+	local function Set(name, v) ns.Act("local.option", id, name, v) end
+	for _, o in ipairs(list) do
+		if o.kind == "text" then
+			Put(0, C.fg, UI.EscapedOption(o).title)
+			Put(0, C.sky, o.value ~= "" and ns.Escape(o.value) or A.LOCAL_EMPTY, nil, true)
+			Put(0, C.muted, A.LOCAL_TEXT)
+		else
+			Options({ o.name }, Entry, Set, nil, "local:" .. id)
+		end
+	end
+end
+
 UI.Canvas = { Begin = Begin, Finish = Finish, Put = Put, PutButton = PutButton, ButtonRow = ButtonRow, Fit = Fit,
 	Heading = Heading, Options = Options, Current = function() return cv end }
 
@@ -391,7 +424,8 @@ end
 
 -- Rows(): the list's groups in order ({ kind (core, sys, custom, agent), list }) and every row. A row: { id (what
 -- `selected` holds), title, version, addon, author, notes, where (game, local, both), state (on, off, disabled,
--- missing), apps (its rows of UI.Apps), running, waiting (one of its apps is), and one of: ext (a row of
+-- missing), apps (its rows of UI.Apps), running, waiting (one of its apps is), localId and localOptions (a local
+-- extension's, or one in the game too: its id in 无限工坊's list and its local options), and one of: ext (a row of
 -- ns.ExtensionList, with its fields), managed (a local extension: 无限工坊's App turns it on and off), unlisted (a
 -- local extension 无限工坊 does not list, known by its apps' label only: they can be removed here), loose (an
 -- agent's app with no extension: app, temp), or none (an addon with apps and no extension) }. Texts are ready to draw
@@ -422,6 +456,7 @@ local function Rows()
 				author = x.author and ns.Escape(x.author), notes = x.notes and ns.Escape(x.notes), where = x.where,
 				state = x.on and "on" or "off", managed = true, adds = x.adds })
 		end
+		row.localId, row.localOptions = x.id, x.options
 		byLocal[x.id] = row
 	end
 	for _, a in ipairs(UI.Apps()) do
@@ -559,6 +594,7 @@ local function Page(e)
 		Heading(L.OPTIONS)
 		ExtOptions(ext)
 	end
+	if e.localOptions then LocalOptions(e.localId, e.localOptions) end   -- its local part's, after the game's
 	if e.core then                                          -- the core: what has not run yet, a stop for each
 		local open = ns.Open()
 		if #open > 0 then
@@ -894,6 +930,11 @@ end)
 ns.AddAction("option", function(id, name, value)
 	local ext = ns.extensions[id]
 	local ok = ext ~= nil and ns.SetOption(ext, name, value)
+	UI.Refresh()
+	return ok
+end)
+ns.AddAction("local.option", function(id, name, value)
+	local ok = ns.SetLocalOption(id, name, value)
 	UI.Refresh()
 	return ok
 end)

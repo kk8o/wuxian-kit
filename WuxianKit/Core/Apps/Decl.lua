@@ -35,12 +35,13 @@
 -- kept and described) and what the status and the lists copy all come from it: a new field is one row.
 -- hidden is a temporary app's only (plumbing: no card, no chat lines; listed while it runs); local = { id, title } is
 -- a label (the local extension of 无限工坊 an app comes with): such apps do not count among the AGENT_MOST an agent
--- keeps, at most LOCAL_MOST of them. A temporary app is in memory only, at most TEMP_MOST at once, gone once it stops
--- or the UI reloads.
+-- keeps, at most LOCAL_MOST of them; only such an app may have driver = "local" (that extension's own program drives
+-- it, not an agent: it has no start line). A temporary app is in memory only, at most TEMP_MOST at once, gone once it
+-- stops or the UI reloads.
 --
 -- For the window:
 --   ns.AppList()                  the apps as kit.apps answers (each row with on, temp, hidden, waiting, local, pace,
---                                 link; a hidden app only while it runs)
+--                                 link, driver; a hidden app only while it runs)
 --   ns.App(id)                    the app object, or nil
 --   ns.AppStatus(id)              as kit.app.status answers (without marking it heard from)
 --   ns.AppStop(id, why)           stops it ("player" from the window)
@@ -692,6 +693,17 @@ Field { name = "local", type = "table?", status = true, list = true,
 				.. "digits, _, at most %d bytes)", ID_MAX)
 		end
 		return { id = v.id, title = Text(v.title, "local.title", TITLE_MAX, true) or v.id }
+	end }
+
+Field { name = "driver", type = "string?", status = true, list = true,
+	doc = "who drives it: agent (the default), an agent following its skill; local, the program of the local "
+		.. "extension it comes with (only with local, set by 无限工坊): no start line, no 交给 AI on its card",
+	check = function(v, c)
+		if v ~= "agent" and v ~= "local" then Fail("driver is agent (the default) or local") end
+		if v == "local" and not c.data["local"] then
+			Fail("driver local is for an app 无限工坊 declares for a local extension (with local {id, title})")
+		end
+		return v == "local" and "local" or nil               -- (agent is no mark at all)
 	end }
 
 Field { name = "addon", addon = true, check = Name }

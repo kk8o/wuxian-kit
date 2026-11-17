@@ -87,6 +87,12 @@ Make the AI app {{app}}. What it should do: {{goal}}
      line, and its card shows 交给 AI and says which local extension it comes from. When the extension is turned off
      or removed, 无限工坊 withdraws the app (it stops with `forgotten`); the options the player set stay and come
      back when the extension is on again. These apps do not count against your 8.
+   - An app the extension's own program drives, with no agent (sync when a snapshot comes, say): `"driver": "local"`
+     in the manifest's `apps` (the kit takes it only with the `local` label 无限工坊 adds; it needs kit 0.6.1), and no
+     `prompt` or skill. The program opens the app and handles its wakes (the workshop's SDK); the card has no 交给 AI
+     and says the local extension runs it, with stop and the controls as ever.
+   - The extension's options show on its page in the /wk window too, under 本机选项 (local options): the player
+     changes a boolean, number or choice there and 无限工坊 applies it as from its App; a text is changed in the App.
    - To see what the game has: `wk_kit_app_describe` with `{"app": "<id>"}` answers the declaration as it is kept
      (every field, defaults filled in), for any app. `wk_kit_app_forget` with `{"app": "<id>"}` withdraws by hand an
      app an agent declared (one left behind, say); never an addon's.

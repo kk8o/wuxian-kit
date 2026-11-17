@@ -410,14 +410,27 @@ end
 -- an event's topic and a capability's id are at most NAME_MAX bytes: what WoWBridge carries, and the same without it
 ns.NAME_MAX = 64
 
-function Kit:Emit(topic, data)
-	if type(topic) ~= "string" or topic == "" or #topic > ns.NAME_MAX then
-		error(("WuxianKit:Emit(topic, data): topic is a string of at most %d bytes"):format(ns.NAME_MAX), 2)
-	end
+-- topics only the core sends (ns.EmitCore): 无限工坊 acts on them as the player's own doing, so no addon may
+local CORE_ONLY = { ["kit.local.option"] = true }
+
+local function Bus(topic, data)
 	for _, l in pairs(listeners) do
 		if Hears(l.topic, topic) then Safe(l.fn, topic, data) end
 	end
 	if ns.Forward then pcall(ns.Forward, topic, data) end   -- the agent's copy (Bridge.lua) never breaks the bus
+end
+
+function Kit:Emit(topic, data)
+	if type(topic) ~= "string" or topic == "" or #topic > ns.NAME_MAX then
+		error(("WuxianKit:Emit(topic, data): topic is a string of at most %d bytes"):format(ns.NAME_MAX), 2)
+	end
+	if CORE_ONLY[topic] then error(("WuxianKit:Emit(topic, data): only WuxianKit itself sends %s"):format(topic), 2) end
+	Bus(topic, data)
+end
+
+-- a bus event of the core's own, one of CORE_ONLY too (the player changed a local extension's option: UI/Window.lua)
+function ns.EmitCore(topic, data)
+	Bus(topic, data)
 end
 
 -- whether 无限工坊 is linked now: WuxianKit took a WoWBridge handle (ns.bound, Bridge.lua) and the link is online. A

@@ -303,6 +303,7 @@ local function Normalize(o, value)
 	if kind == "list" then return List(value) end
 	return value and true or false
 end
+ns.OptionValue = Normalize                -- (a local extension's options, as 无限工坊 gives them: Builtins.lua)
 
 local function Same(a, b)
 	if type(a) ~= "table" or type(b) ~= "table" then return a == b end

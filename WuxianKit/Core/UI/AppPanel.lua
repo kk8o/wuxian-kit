@@ -9,7 +9,9 @@
 -- See ARCHITECTURE.md section 10.
 -- The main button, while it does not run: an app with a prompt has 交给 AI (the copy box with its start line: any AI
 -- client with 无限工坊's MCP tools starts from it, Claude Code too); one without has none. A temporary app (an agent's,
--- kept in memory only) has no 交给 AI; the window's page marks it.
+-- kept in memory only) has no 交给 AI; the window's page marks it. Nor has an app its local extension's program drives
+-- (driver local): its state says that program runs it (由本机扩展「…」运行), or that it does not (how its last run
+-- ended, when that is the player's to know); stop and its controls as any other's.
 -- The ns functions it reads are Core/Apps/Api.lua's: ns.AppList (rows with on, temp, hidden, waiting, local), ns.App,
 -- ns.AppStatus (with waiting, hear), ns.AppStop, ns.AppOptionList, ns.SetAppOption, ns.AppControls, ns.ForgetApp(id,
 -- wipe), ns.CONTROL_WORDS; and Kit:AppControl. One that is not there, or a field a row lacks, counts as none.
@@ -42,7 +44,8 @@ end
 
 -- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, extension (the one its declaration
 -- names), on, ends, present, prompt, start, temp, localId and from (the local extension that brought it: its id, its
--- title), waiting (why it runs but hears nothing yet, as the runtime says it) }
+-- title), driver ("local": that extension's program drives it; nil: an agent), waiting (why it runs but hears nothing
+-- yet, as the runtime says it) }
 function UI.Apps()
 	local out = {}
 	local list = Call(ns.AppList)
@@ -58,7 +61,7 @@ function UI.Apps()
 				on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
 				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true,
 				localId = from and from.id or nil, from = from and ns.Escape(ns.Text(from.title or from.id)) or nil,
-				waiting = waiting }
+				driver = a.driver == "local" and "local" or nil, waiting = waiting }
 		end
 	end
 	return out
@@ -200,9 +203,19 @@ local function Waiting(why)
 	return A.WAITING .. " · " .. ns.Escape(ns.Cut(why, 60))
 end
 
+-- the state of an app its local extension's program drives (not an agent: no presence, no answers): run by it, or
+-- not running (how its last run ended, when the player can do something of it)
+local function LocalState(st, from)
+	if st.on then return A.LOCAL_ON:format(from), C.ok end
+	local why = A.LOCAL_WHY[st.why]
+	if not why then return A.LOCAL_OFF, C.muted end
+	return why, C.muted, st.why == "player" and A.LOCAL_AGAIN or nil
+end
+
 -- the line of the state: text, colour, a hint under it, a button ({ label, primary, fn }); and whether it is ready.
--- waiting: the row's, for a status that does not say
-local function State(app, st, by, waiting)
+-- waiting: the row's, for a status that does not say; from: the title of the local extension whose program drives it
+-- (driver local), or nil
+local function State(app, st, by, waiting, from)
 	if not Kit:AgentOnline() then return A.NO_LINK, C.gold, A.NO_LINK_HINT end
 	local why, ext, extId = Blocked(app, st, by)
 	if extId then
@@ -214,6 +227,7 @@ local function State(app, st, by, waiting)
 		if st.waiting ~= nil then waiting = st.waiting end
 		local waits = Waiting(waiting)                          -- on, but it hears nothing yet: not said to be listening
 		if waits then return waits, C.gold, A.WAIT_HINT end
+		if from then return LocalState(st, from) end
 		local now, parts = time(), {}
 		if st.present == false then
 			parts[1] = A.LEFT
@@ -233,6 +247,7 @@ local function State(app, st, by, waiting)
 		parts[3] = A.SAID:format(tonumber(st.said) or 0)
 		return table.concat(parts, " · "), st.present == false and C.gold or C.ok
 	end
+	if from then return LocalState(st, from) end
 	return A.READY, C.sky, nil, nil, true
 end
 
@@ -282,6 +297,8 @@ local function Escaped(e)
 	return o
 end
 
+UI.EscapedOption = Escaped                              -- (a local extension's options: Window.lua)
+
 -- the copy box with the start line, the app's title above it
 local function Hand(title, start)
 	Kit:Copy(start, { title = title, how = A.HAND_HOW })
@@ -292,14 +309,20 @@ end
 function UI.AppCard(id, extra, heading)
 	local app, entry, st, by = Facts(id)
 	if not app then return end
-	local text, color, hint, button, ready = State(app, st, by, entry.waiting)
+	local driven = (st.driver or entry.driver) == "local"     -- its local extension's program drives it: no 交给 AI
+	local from
+	if driven then
+		local label = type(st["local"]) == "table" and st["local"] or nil
+		from = entry.from or ns.Escape(ns.Text(label and (label.title or label.id) or id))
+	end
+	local text, color, hint, button, ready = State(app, st, by, entry.waiting, from)
 	CV.Put(0, color, text)
 	if hint then CV.Put(0, C.muted, hint) end
 	local row = {}
 	local start = st.start or entry.start
 	if type(start) ~= "string" or start == "" then start = nil end
 	if button then row[#row + 1] = button end
-	if not st.on and start and not (entry.temp or st.temp == true) then
+	if not st.on and start and not driven and not (entry.temp or st.temp == true) then
 		local title = entry.title or ns.Escape(id)
 		row[#row + 1] = { A.HAND, ready, function() Hand(title, start) end, 70 }
 	end

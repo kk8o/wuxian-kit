@@ -19,10 +19,10 @@ local Retune, Drop, Stop, Present, Blocked, Start, Reconcile = A.Retune, A.Drop,
 	A.Start, A.Reconcile
 
 -- the start line (启动语): one sentence for any AI client with 无限工坊's MCP tools, in the language in force, that
--- points it at the app's skill; nil for an app without a prompt
+-- points it at the app's skill; nil for an app without a prompt, and for one its local extension's program drives
 local function StartLine(app)
 	local prompt = app.decl.prompt
-	if type(prompt) ~= "string" or prompt == "" then return nil end
+	if type(prompt) ~= "string" or prompt == "" or app.decl.driver == "local" then return nil end
 	return W.START:format(ns.Text(Title(app)), prompt)
 end
 
@@ -317,6 +317,7 @@ kit:See("app.status", { title = "kit.app.status", args = { app = "string" },
 		.. "is, and it stops, why \"extension\", if that takes more than half a minute), why (while off: how its last "
 		.. "run ended), pace? (the player's activity), quiet? (in quiet hours), said (today's chat.send of yours that ran "
 		.. "into channels it hears), hear, see, controls, say, link? (live: 无限工坊 keeps the link open while it runs), "
+		.. "driver? (local: its local extension's program drives it), "
 		.. "hidden?, local?, next (the newest item id: "
 		.. "kit.app.recent's since), sent? (while on: the next of the last wake sent, or where the run began; items "
 		.. "newer than it are gathered and come with a wake, so one who joins a run starts from sent and reads "
@@ -354,8 +355,9 @@ kit:See("apps", { title = "kit.apps",
 		.. "client to read the skill with wk_docs), extension? (the extension it belongs to), blocked? (why it cannot "
 		.. "start, while off), waiting? (while on: what it needs that is not registered yet), see? (the states it sees), "
 		.. "pace? (with pace: the activity now, quiet|normal|lively), link? (live: 无限工坊 keeps the link open while it "
-		.. "runs), temp (a temporary app), hidden? (a temporary app's plumbing: listed while it runs), local? ({id, "
-		.. "title}: the local extension of 无限工坊 it comes with)}]. Not a heartbeat: it does not keep an app alive",
+		.. "runs), driver? (local: its local extension's program drives it, not an agent), temp (a temporary app), "
+		.. "hidden? (a temporary app's plumbing: listed while it runs), local? ({id, title}: the local extension of "
+		.. "无限工坊 it comes with)}]. Not a heartbeat: it does not keep an app alive",
 	run = function() return ns.AppList() end })
 
 kit:Event("app", { doc = "an app started, stopped, or what it waits for changed: {app, on, ends (while on), waiting "

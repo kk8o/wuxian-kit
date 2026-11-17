@@ -1,4 +1,5 @@
-"""Declarations (the layered kit): docs in the declaration, no driver or launch (an agent drives every app),
+"""Declarations (the layered kit): docs in the declaration, no launch, driver only agent (the default, no mark) or
+local (test_apps_driver.py),
 kit.app.declare (the whole declaration, kept without starting, no heartbeat; 无限工坊 declares a local extension's apps
 so), and temporary apps (kit.app.open's temp, a table: the whole declaration of this run's; not kept, at most 4, not
 one of the 8, gone once stopped or reloaded)."""
@@ -39,25 +40,26 @@ class Declared(unittest.TestCase):
     def listed(self, s, app):
         return next((a for a in self.agent(s, "kit.apps") if a["id"] == app), None)
 
-    def test_docs_and_no_driver(self):
+    def test_docs_and_no_old_driver(self):
         s = self.start()
         self.agent(s, "kit.app.declare", "{ app = 'p', prompt = 'p-skill' }")
         st = self.agent(s, "kit.app.open", "{ app = 'p' }")
         self.assertEqual(st["start"].count("p-skill"), 1)
-        for gone in ("driver", "launch", "launching"):                          # an agent drives every app
+        for gone in ("driver", "launch", "launching"):                          # an agent drives it: no mark
             self.assertNotIn(gone, st)
             self.assertNotIn(gone, self.listed(s, "p"))
         self.assertIn("no argument driver", self.fails(s, "kit.app.open", "{ app = 'x', driver = 'prompt' }"))
-        self.assertIn("no argument driver", self.fails(s, "kit.app.declare", "{ app = 'x', driver = 'program' }"))
+        self.assertIn("driver is agent (the default) or local",                # the old driver's values are gone
+                      self.fails(s, "kit.app.declare", "{ app = 'x', driver = 'program' }"))
         self.assertIn("no argument launch", self.fails(s, "kit.app.declare", "{ app = 'x', launch = true }"))
         self.assertIsNone(self.listed(s, "x"))
         self.assertIn("no argument docs", self.fails(s, "kit.app.declare", "{ app = 'x', docs = 'Apps/X' }"))   # addons only
         self.assertIn("the declaration: no field docs",
                       self.fails(s, "kit.app.open", "{ app = 'x', temp = { docs = 'Apps/X' } }"))
-        s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', docs = '\\\\Apps\\\\Ad\\\\', driver = 'program' })")
+        s.lua.execute(b"WuxianKit:App('ad', { title = 'AD', addon = 'WxAd', docs = '\\\\Apps\\\\Ad\\\\', driver = 'agent' })")
         ad = next(a for a in py(s.lua.eval(b"WuxianKit:Manifest()"))["apps"] if a["id"] == "ad")
         self.assertEqual((ad["docs"], ad["temp"]), ("WxAd/Apps/Ad", False))
-        self.assertNotIn("driver", ad)                                         # an addon's Lua: an unknown field, unread
+        self.assertNotIn("driver", ad)                                         # agent: the default, no mark
         self.assertNotIn("launch", ad)
         s.lua.execute(SALON)                                                   # no docs of its own: none listed
         self.assertNotIn("docs", next(a for a in py(s.lua.eval(b"WuxianKit:Manifest()"))["apps"] if a["id"] == "salon"))

@@ -120,6 +120,22 @@ class Docs(unittest.TestCase):
             self.assertIn("{cmd, activity, was, edge?}", doc, name)
         self.assertIn("`edge: true`", section(skill, "The wake"))
 
+    def test_driver_and_local_options(self):
+        """0.6.1: the field driver and the local options of kit.local.set, with the event only the core sends"""
+        arch, guide, skill = text("ARCHITECTURE.md"), text("AGENT.md"), text("skills", "kit-app.md")
+        apps = section(arch, "10. 应用（0.6）")
+        self.assertRegex(apps, r"(?m)^\| `driver` \| ")
+        for words in ("由本机扩展「<local.title>」运行", "本机扩展未运行", "本机选项", "在无限工坊 App 中修改",
+                      "`kit.local.option { extension, name, value }`", "`ns.EmitCore`", "driver?"):
+            self.assertIn(words, apps, words)
+        v061 = section(arch, "16. 版本 0.6.1")
+        for words in ("`driver`", "`kit.local.option", "本机选项"):
+            self.assertIn(words, v061, words)
+        self.assertIn('`driver: "local"`', guide)
+        self.assertIn("`kit.local.option`", guide)
+        self.assertIn('"driver": "local"', skill)
+        self.assertIn("本机选项", skill)
+
     def test_the_words_with_two_meanings(self):
         arch = text("ARCHITECTURE.md")
         m = re.search(r"^### 词汇表[^\n]*\n(.*?)(?=^#{2,3} )", arch, re.M | re.S)

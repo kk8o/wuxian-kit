@@ -203,7 +203,7 @@ class Basics(AppCase):
                 ("{ app = 'a', hear = { 'game:nope' } }", "game:nope: a game source is a topic"),
                 ("{ app = 'a', hear = { 'radio:x' } }", "radio:x: no source radio (the sources: bus, chat, game, route)"),
                 ("{ app = 'a', hear = { 'guild' } }", "guild: a hear entry is <source>:<what>"),
-                ("{ app = 'a', driver = 'prompt', prompt = 'a' }", "no argument driver"),
+                ("{ app = 'a', driver = 'prompt', prompt = 'a' }", "driver is agent (the default) or local"),
                 ("{ app = 'a', hear = 'chat:guild' }", "is a table"),
                 ("{ app = 'a', controls = { 'dance' } }", "controls: dance is not one of"),
                 ("{ app = 'a', controls = { { cmd = 'mute', label = 'M' } } }", "controls[1].cmd: a word of the app's own"),
