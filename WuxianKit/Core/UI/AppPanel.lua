@@ -46,7 +46,7 @@ end
 -- what the window and the slash command read of the apps
 
 -- ns.AppList() as drawn: { id, title (shown as is: an agent's escaped), by, addon, extension (the one its declaration
--- names), on, ends, present, prompt, start, temp, localId and from (the local extension that brought it: its id, its
+-- names), on, start, temp, localId and from (the local extension that brought it: its id, its
 -- title), driver ("local": that extension's program drives it; nil: an agent), pace (its activity, of an app with
 -- pace), waiting (why it runs but hears nothing yet, as the runtime says it) }. by: addon, agent, or local (driver
 -- local); all but an addon's own are texts from outside, escaped
@@ -62,7 +62,7 @@ function UI.Apps()
 			local from = type(a["local"]) == "table" and type(a["local"].id) == "string" and a["local"] or nil
 			out[#out + 1] = { id = a.id, title = title ~= nil and title ~= "" and ns.Text(title) or a.id, by = a.by,
 				addon = a.addon, extension = type(a.extension) == "string" and a.extension or nil,
-				on = a.on and true or false, ends = a.ends, present = a.present, prompt = a.prompt,
+				on = a.on and true or false,
 				start = type(a.start) == "string" and a.start ~= "" and a.start or nil, temp = a.temp == true,
 				localId = from and from.id or nil, from = from and ns.Escape(ns.Text(from.title or from.id)) or nil,
 				driver = a.driver == "local" and "local" or nil, pace = a.pace, waiting = waiting }
@@ -442,7 +442,7 @@ end
 
 for _, topic in ipairs({ "kit.app", "kit.option", "kit.changed", "app.*" }) do Kit:On(topic, Soon) end
 ns.OnChange(function(what)
-	if what == "app" or what == "apps" or what == "local" or what == "report" then Soon() end
+	if what == "app" or what == "local" or what == "report" then Soon() end
 end)
 
 C_Timer.NewTicker(TICK, function()

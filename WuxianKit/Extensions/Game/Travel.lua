@@ -3,7 +3,7 @@
 -- also while nobody listens: been there is been there. That costs two rare events (ZONE_CHANGED_NEW_AREA,
 -- PLAYER_ENTERING_WORLD); the rest runs only while the topic does. A zone first been to goes to the day's tally
 -- (G.Tally "zones").
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local G = ns.game
 local Read = G.Read

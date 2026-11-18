@@ -83,7 +83,7 @@
 -- same name, set at the end of the file that defines it and read into a local at the top of the files loaded after it.
 -- A file loaded before calls it as A.Name(...) when it runs (here: A.Host, A.Stop, A.Drop, A.Reconcile). A.loggedIn is
 -- the one field that changes: always read as A.loggedIn. What only one file uses stays local there.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = ns.Kit
 ns.apps = ns.apps or {}
 local A = ns.apps
@@ -142,7 +142,6 @@ local PRESETS = {
 	normal = { gather = 5, every = 60, idle = 1200, most = 30, wake = { "mention", "followup", "question" } },
 	lively = { gather = 3, every = 20, idle = 480, most = 30, wake = { "mention", "followup", "question", "burst" } },
 }
-ns.APP_PRESETS = PRESETS
 
 ns.CONTROL_WORDS = {
 	mute = "mute", unmute = "unmute", less = "less", more = "more", test = "test", pause = "pause", resume = "resume",

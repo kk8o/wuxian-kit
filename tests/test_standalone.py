@@ -63,7 +63,7 @@ class Standalone(unittest.TestCase):
         self.works(s)
         s.run(1)
         self.assertIn(b"kit.proposal", list(s.g("__heard").values()))   # the bus goes on
-        self.assertIs(s.lua.eval(b"WuxianKit:AgentOnline()"), False)     # no Online(), no insides to read
+        self.assertIs(s.lua.eval(b"WuxianKit:AgentOnline()"), False)     # (a WoWBridge with no Online())
         self.assertEqual(self.window_line(s), "Not linked to Wuxian Workshop")
 
     def test_online_from_wowbridge(self):

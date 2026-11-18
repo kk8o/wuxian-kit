@@ -4,7 +4,7 @@
 -- goal (a new step: key game|<id>|turnin); the next waypoint (C_QuestLog.GetNextWaypoint) is the place of its first goal
 -- not done. Each read leaves out what the client does not give. Its events are registered only while it is the provider
 -- read (Start .. Stop).
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local R = ns.route
 local L, Read, Num = R.Words, R.Read, R.Num

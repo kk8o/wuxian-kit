@@ -46,7 +46,7 @@
 -- step.
 --
 -- For Native.lua (the core's private table, ns.route = R): R.ext, R.Words (L), R.Read, R.Num, R.MapName, R.Round1.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 
 local L = Kit:Words {

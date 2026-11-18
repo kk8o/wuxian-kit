@@ -79,14 +79,6 @@ function ns.ScopeOf(cap, args)
 	return cap.id
 end
 
-function ns.ScopeLabel(id)
-	for _, eid in ipairs(ns.order) do
-		local label = ns.extensions[eid].scopes[id]
-		if label then return label end
-	end
-	return id
-end
-
 ------------------------------------------------------------------------------------------------------------------------
 -- Setting(name, spec): a value the game keeps, named by `key` (the args that name one: { name = "string" }) and set to
 -- `value` (a spec, "any" by default; an optional one, "string?": no value removes it). From get(self, key) and

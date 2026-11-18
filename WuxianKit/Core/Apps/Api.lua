@@ -8,7 +8,7 @@
 -- ns.SetAppOption (the window's, over Decl.lua's Bound); the said count (kit.proposal), beside the status that reads
 -- it. ns.ForgetApp is in Decl.lua, with the fields (FIELDS) the arguments, the docs, the status and the lists here are
 -- made from.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = ns.Kit
 local A = ns.apps
 local W, MOST, ID_MAX, FIELDS, DECLARE_ARGS, FieldDocs = A.W, A.MOST, A.ID_MAX, A.FIELDS, A.DECLARE_ARGS, A.FieldDocs

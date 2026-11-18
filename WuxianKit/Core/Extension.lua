@@ -105,7 +105,7 @@ function ns.Enable(ext)
 	end
 	for _, t in ipairs(ext.timers) do Start(ext, t) end
 	if ext.setup then ns.Safe(ext.setup, ext) end
-	ns.FacetsLive(ext, true)                          -- (its facets that apps look at: on)
+	ns.FacetsLive(ext)                                -- (its facets that apps look at: on)
 	ns.Changed("extension", ext)
 	ns.EmitCore("kit.extension", { id = ext.id, on = true })
 end
@@ -119,7 +119,7 @@ function ns.Disable(ext)
 		if t.ticker then t.ticker:Cancel() end
 		t.ticker = nil
 	end
-	ns.FacetsLive(ext, false)                         -- (its facets' off, before its teardown)
+	ns.FacetsLive(ext)                                -- (its facets' off, before its teardown)
 	if ext.teardown then ns.Safe(ext.teardown, ext) end
 	ns.Changed("extension", ext)
 	ns.EmitCore("kit.extension", { id = ext.id, on = false })
@@ -559,7 +559,6 @@ end
 local facets, facetOrder = {}, {}
 ns.facets, ns.facetOrder = facets, facetOrder
 local FACET_MAX, FACET_TEXT, FACET_DEPTH = 600, 200, 4
-ns.FACET_MAX = FACET_MAX
 
 -- on or off as whether anyone looks and the extension is on (one taken back: off)
 local function Live(facet)

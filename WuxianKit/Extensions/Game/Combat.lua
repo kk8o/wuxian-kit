@@ -13,7 +13,7 @@
 -- too, across fights. Kills and deaths go to the day's tally (G.Tally).
 -- UNIT_COMBAT, UNIT_HEALTH and NAME_PLATE_UNIT_REMOVED are registered only during a fight that started while combat ran;
 -- UNIT_AURA only out of combat while aura runs. Never COMBAT_LOG_EVENT_UNFILTERED.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local G = ns.game
 local Read, Num, Yes = G.Read, G.Num, G.Yes

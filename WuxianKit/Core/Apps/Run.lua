@@ -6,7 +6,7 @@
 -- words.
 -- Here by choice: Present, beside the lease's rule (only Api.lua calls it); ns.QuietWindow and ns.InQuiet, with
 -- Retune. The count of what was said today (kit.proposal) is in Api.lua, beside the status that reads it.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = ns.Kit
 local A = ns.apps
 local W, LEASE, ACTIVITIES, Fail, Set, Me, Split, Trim = A.W, A.LEASE, A.ACTIVITIES, A.Fail, A.Set, A.Me, A.Split,

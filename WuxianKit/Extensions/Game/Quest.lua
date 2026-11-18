@@ -2,7 +2,7 @@
 -- companion's Progress.lua). The quest log is read when the topic turns on (the baseline) and after each
 -- QUEST_LOG_UPDATE (once for several at the same moment); a quest new to the log, or whose objectives changed in number,
 -- only goes into the baseline.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local G = ns.game
 local Read, Num = G.Read, G.Num

@@ -33,7 +33,7 @@
 --                                      its topic runs; nothing while nobody keeps the tally
 --   G.Read(fn, ...)                    a client API's value: nil on an error or a secret value
 --   G.Num(v), G.Yes(v)                 a plain number or nil; a plain truth as true / false
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 
 local TOPICS = { "combat", "aura", "growth", "quest", "travel", "guild" }

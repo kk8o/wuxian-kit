@@ -1,7 +1,7 @@
 -- 游戏动态 · Growth: the topic growth (xp, level, talent, spell.new). Ported from 无限陪玩 (the companion's
 -- Progress.lua). The xp, level and talent baselines are taken when the topic turns on, so the first change after it is
 -- measured against then. Every xp gained (across one level up too) and every level go to the day's tally (G.Tally).
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local G = ns.game
 local Read, Num = G.Read, G.Num

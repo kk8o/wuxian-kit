@@ -441,15 +441,10 @@ function ns.EmitCore(topic, data)
 	Bus(topic, data)
 end
 
--- whether 无限工坊 is linked now: WuxianKit took a WoWBridge handle (ns.bound, Bridge.lua) and the link is online. A
--- WoWBridge with Online() says so itself; an older one is read with care (its insides may change)
+-- whether 无限工坊 is linked now: WuxianKit took a WoWBridge handle (ns.bound, Bridge.lua) and WoWBridge's own
+-- Online() says so (one that has none, or whose Online raises, is not)
 function Kit:AgentOnline()
 	if not ns.bound then return false end
-	local ok, online = pcall(function()
-		if type(WoWBridge) == "table" and type(WoWBridge.Online) == "function" then return WoWBridge.Online() end
-		local wb = type(WoWBridgeNS) == "table" and WoWBridgeNS.WoWBridge
-		local link = type(wb) == "table" and wb.Link
-		return type(link) == "table" and type(link.State) == "function" and link.State() == "online"
-	end)
+	local ok, online = pcall(function() return WoWBridge.Online() end)
 	return ok and online == true
 end

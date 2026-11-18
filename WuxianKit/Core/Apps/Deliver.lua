@@ -7,7 +7,7 @@
 -- since (Digest.lua has the rest: a wake that does not go is sent again).
 -- Here by choice: Urgent and State, beside the host that uses them (State is kit.app.state's too). The player's
 -- commands and words (WuxianKit:AppControl, WuxianKit:AppSay) deliver items but are in Run.lua.
-local addonName, ns = ...
+local _, ns = ...
 local Kit = ns.Kit
 local A = ns.apps
 local Char, App, Owned, Run, Digesting = A.Char, A.App, A.Owned, A.Run, A.Digesting

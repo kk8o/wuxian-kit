@@ -6,7 +6,7 @@
 --   - level-ups: each roster (GUILD_ROSTER_UPDATE) is compared with the one before; only a tenth level or the top
 --     level is told (every level would be noise); the first roster after the topic turns on is only kept. While the
 --     topic runs a roster is asked for every 60 s (and once when it turns on).
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local G = ns.game
 local Read, Num = G.Read, G.Num

@@ -11,7 +11,7 @@
 --   T.On(), T.Off()          watched / not any more (the facet's on and off)
 --   T.watching               true while watched
 --   T.Register()             the facet, through game:Facet
-local addonName, ns = ...
+local _, ns = ...
 local Kit = WuxianKit
 local G = ns.game
 local game = G.ext
