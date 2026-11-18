@@ -1,4 +1,4 @@
--- Apps, what the agent and the window read and call (see Decl.lua for the apps, the contract, and for how the four
+-- Apps, what the agent and the window read and call (see Decl.lua for the apps, the contract, and for how the five
 -- files share names): the start line, the status, the ns functions the window uses (ns.App, ns.AppList,
 -- ns.AppManifest, ns.AppStatus, ns.AppStop, ns.AppStart, ns.AppStartable, ns.AppOptionList, ns.SetAppOption,
 -- ns.AppControls), the core's capabilities (Keep: kit.app.declare / open / stop / forget; See: kit.app.describe /

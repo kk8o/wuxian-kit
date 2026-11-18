@@ -14,7 +14,7 @@ GONE = (
     (r"""["']?temp["']?\s*[:=]\s*true""", "temp is the declaration of a temporary app, a table"),
     (r"`(annotate|extends)`|\b(annotate|extends)\s*[:=]", "a local extension adds to an app with the manifest's adds"),
     (r"they win on this machine", "a local section is information, not permission: the skill's own rules win"),
-    (r"\bApps\.lua\b", "Core/Apps.lua is now Core/Apps/Decl.lua, Deliver.lua, Run.lua and Api.lua"),
+    (r"\bApps\.lua\b", "Core/Apps.lua is now Core/Apps/Decl.lua, Deliver.lua, Run.lua, Api.lua and Report.lua"),
     (r"`ignored`", "kit.app.open takes no fields of a declaration, so it lists none as ignored"),
     (r"本机扩展(未运行|无响应|没在运行)|由本机扩展「", "the player reads 本机端, and 未运行"),
     (r"0\.6\.1(?! 没有发布)", "0.6.1 was never released: what it brought is 0.7's"),

@@ -1,4 +1,4 @@
--- Apps, items (see Decl.lua for the apps and for how the four files share names): which items wake at once (Urgent),
+-- Apps, items (see Decl.lua for the apps and for how the five files share names): which items wake at once (Urgent),
 -- what a wake carries (State, the digest host's Wrap and Send for Digest.lua), the ring of an app's last items, an
 -- item of a source into an app (Deliver: copied, stamped, enriched, kept, gathered or sent), and app:Push.
 -- An item is the core's from Deliver on: a copy of what the source gave (data only, ns.Digest.Small), never the

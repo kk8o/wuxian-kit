@@ -39,7 +39,7 @@ class Link(Case):
 
     def test_refused(self):
         s = self.start()
-        for value in ("'standby'", "'always'", "'LIVE'", "''"):           # (standby was 0.6.1's word for none)
+        for value in ("'standby'", "'always'", "'LIVE'", "''"):           # (not given is the only other)
             err = self.fails(s, "kit.app.declare", f"{{ app = 'x', link = {value} }}")
             self.assertIn('link is "live", or not given', err, value)
         for value in ("true", "1", "{}"):

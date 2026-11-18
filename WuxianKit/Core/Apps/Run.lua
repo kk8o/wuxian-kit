@@ -1,4 +1,4 @@
--- Apps, runs (see Decl.lua for the apps and for how the four files share names): quiet hours and the pace (Retune),
+-- Apps, runs (see Decl.lua for the apps and for how the five files share names): quiet hours and the pace (Retune),
 -- what a run hears and sees (its sources subscribed, its facets watched), the one rule of the lease (Silence), and
 -- Reconcile: the one place that decides whether an app runs, waits or stops. Whatever may change that (a declaration,
 -- an extension switched, a source or a facet registered, login, kit.app.open, each second of the ticker) only calls

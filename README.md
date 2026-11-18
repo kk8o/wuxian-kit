@@ -74,7 +74,7 @@ pip install lupa
 python -m unittest discover -s tests -t tests
 ```
 
-`tests/test_agent.py` 经无限工坊的开发组件做端到端测试，需要无限工坊的源码和它的 Python 环境：环境变量 `WUXIAN_WORKSHOP` 指向源码，并用无限工坊的 Python 运行测试；否则跳过。
+`tests/test_agent.py`、`tests/test_agent_local.py` 经无限工坊的开发组件做端到端测试，需要无限工坊的源码和它的 Python 环境：环境变量 `WUXIAN_WORKSHOP` 指向源码，并用无限工坊的 Python 运行测试；否则跳过。
 
 - `python tools/install.py [--game <游戏目录>]`：装进游戏，替换整个插件文件夹。新增或移动了文件要完整重启游戏，只改 .lua 时重载即可。
 - `python tools/package.py [--out <目录>] [--notes-zh "…"] [--notes-en "…"]`：生成 `WuxianKit-<版本>.zip`，并把条目写进该目录的 `extensions.json`（默认 `dist/`）。条目取自 .toc 和测试客户端里的清单。版本号只在 .toc 里改；发布过的版本不再更换文件。

@@ -446,7 +446,7 @@ function ns.Commands() return commands end
 -- whole kit's: another extension's of the same name is an error. The same extension's again (a hot reload) replaces it:
 -- a new source object, the old one keeps its spec, so a token the old on gave goes to the old off (the apps subscribe
 -- again when told). ext:Source(name, nil) takes it back (source.gone). spec:
---   title, doc         doc: what <name>:<what> hears and what an item is (kit.app.open's doc and the manifest show it)
+--   title, doc         doc: what <name>:<what> hears and what an item is (kit.app.declare's doc and the manifest show it)
 --   values             the known values of what (a list, or a function that gives one), for the docs
 --   check(what)        nil when <name>:<what> is an entry it takes, else why not (in the agent's words)
 --   covers(a, b)       whether <name>:a hears all that <name>:b does (chat:* covers chat:guild): an app hears b once
@@ -543,7 +543,7 @@ end
 -- same facet: those looking at it still do, each counted once; when it is looked at, the old spec's off is called (it
 -- pairs the old on), then the new one's on. ext:Facet(name, nil) takes it back (its off when looked at, facet.gone).
 -- spec:
---   title, doc         doc: what the state is (kit.app.open's doc and the manifest show it)
+--   title, doc         doc: what the state is (kit.app.declare's doc and the manifest show it)
 --   fields             optional: field -> type text ({ level = "number", zone = "string?" }), for the docs
 --   read(self) -> table|nil   the state now, a small table (nil: none now); one that comes to more than FACET_MAX bytes
 --                      as a wake carries it is cut (texts shorten, lists lose their last entries, nested tables go) and

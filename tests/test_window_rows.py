@@ -55,7 +55,7 @@ class LocalRows(Rows):
         answer = self.call(s, "kit.local.set", """{ extensions = {
 			{ id = 'facts', title = 'Codex facts', version = '1.2', author = 'Tim', notes = 'Quick\\nanswers',
 				where = 'local', on = true, running = true, adds = { 'voice', 'Bad Id', 7 },
-				addons = { 'WxFacts', 'a/b', '', 7 }, game = { 'gone' } },
+				addons = { 'WxFacts', 'a/b', '', 7 } },
 			{ id = 'sound', title = 'Sound |cffff0000x|r', where = 'elsewhere', on = false },
 			{ id = 'facts', title = 'Again' }, { id = 'Bad Id', title = 'Bad' }, { title = 'No id' }, 'text',
 		} }""")
@@ -63,7 +63,7 @@ class LocalRows(Rows):
         kept = py(s.lua.eval(b"__ns.LocalList()"))
         self.assertEqual(kept[0], {"id": "facts", "title": "Codex facts", "version": "1.2", "author": "Tim",
                                    "notes": "Quick answers", "where": "local", "on": True, "running": True,
-                                   "addons": ["WxFacts"], "adds": ["voice"]})    # (game: 0.6.1's, not read)
+                                   "addons": ["WxFacts"], "adds": ["voice"]})
         self.assertEqual((kept[1]["title"], kept[1]["where"], kept[1]["on"], kept[1]["running"]),
                          ("Sound |cffff0000x|r", "local", False, False))
         s.run(0.1)                                                              # the window: drawn again by itself
