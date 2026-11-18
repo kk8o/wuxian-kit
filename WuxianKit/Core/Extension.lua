@@ -262,6 +262,7 @@ end
 -- options
 
 local KINDS = { boolean = true, text = true, number = true, choice = true, list = true }
+ns.OPTION_KINDS = KINDS                   -- (an app's options are of the same kinds: Apps/Decl.lua)
 local LIST_MOST, ITEM_MOST = 20, 32
 
 -- s cut to at most n bytes, never inside a character (UTF-8)

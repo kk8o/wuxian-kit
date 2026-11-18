@@ -133,7 +133,7 @@ local CONTROL_ORDER = { "mute", "unmute", "less", "more", "test", "pause", "resu
 local CONTROLS_MOST = 12                                -- the core's and an app's own ({cmd, label}) together
 local CONTROLS = {}
 for _, c in ipairs(CONTROL_ORDER) do CONTROLS[c] = true end
-local OPTION_KINDS = { boolean = true, text = true, number = true, choice = true, list = true }
+local OPTION_KINDS = ns.OPTION_KINDS                    -- (Extension.lua's: an app's options are an extension's)
 local ACTIVITIES = { "quiet", "normal", "lively" }
 
 -- the core's three paces (pace = true): the digest of each and the whys that wake at once

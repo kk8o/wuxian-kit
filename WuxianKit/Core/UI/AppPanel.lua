@@ -112,13 +112,14 @@ end
 -- drawn, and typed, by its cmd, so no label ever names two controls and none of its own passes for stop
 function UI.AppControlList(id)
 	local out, cmds, times = {}, {}, {}
+	local words = ns.apps.W.CONTROL                         -- the core's controls in words (Apps/Decl.lua's: one table)
 	local list = Call(ns.AppControls, id)
 	for _, c in ipairs(type(list) == "table" and list or {}) do
 		local cmd = type(c) == "table" and (c.cmd or c[1]) or c
 		if type(cmd) == "string" then
 			local label = type(c) == "table" and (c.label or c[2]) or nil
 			if label ~= nil then label = ns.Text(ns.T(label)) end
-			local own = not A.CONTROL[cmd]
+			local own = not words[cmd]
 			out[#out + 1] = { cmd = cmd, label = label, own = own or nil }
 			cmds[cmd:lower()] = true
 			if own and label then times[label:lower()] = (times[label:lower()] or 0) + 1 end
@@ -129,7 +130,7 @@ function UI.AppControlList(id)
 		local label = c.label
 		local low = label and label:lower()
 		if not c.own then
-			c.label = A.CONTROL[c.cmd]
+			c.label = words[c.cmd]
 		elseif not label or label == "" or core[low] or core[label] or times[low] > 1
 			or (cmds[low] and low ~= c.cmd:lower()) then
 			c.label = ns.Escape(c.cmd)

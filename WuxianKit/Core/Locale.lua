@@ -56,8 +56,6 @@ ns.WORDS = {
 		-- patterns
 		CHANGE = "%s：%s → %s",
 		UNCHANGED = "%s：%s（不变）",
-		ON = "开启",
-		OFF = "关闭",
 		STOP = "停止",
 		-- 0.5: options, copy box, budgets
 		OPTION_LIST_HINT = "用逗号分开",
@@ -73,7 +71,6 @@ ns.WORDS = {
 		EXT_ON = "已启用：%s",
 		EXT_OFF = "已停用：%s（界面上的改动在重载后清除）",
 		EXT_LOAD_FAILED = "无法加载 %s：%s",
-		EXTENSIONS = "扩展",
 		STATE = { on = "已启用", off = "已停用", disabled = "已在插件列表中禁用", missing = "无法加载：%s" },
 		GROUP = { sys = "内置", custom = "已添加", agent = "Agent 应用" },
 		WHERE = { game = "游戏", ["local"] = "本机", both = "游戏 · 本机" },
@@ -173,8 +170,6 @@ ns.WORDS = {
 		NOT_OPEN = "Proposal #%d is not pending",
 		CHANGE = "%s: %s → %s",
 		UNCHANGED = "%s: %s (unchanged)",
-		ON = "On",
-		OFF = "Off",
 		STOP = "Stop",
 		-- 0.5: options, copy box, budgets
 		OPTION_LIST_HINT = "Separate with commas",
@@ -189,7 +184,6 @@ ns.WORDS = {
 		EXT_ON = "Enabled: %s",
 		EXT_OFF = "Disabled: %s (its UI changes clear after a reload)",
 		EXT_LOAD_FAILED = "Cannot load %s: %s",
-		EXTENSIONS = "Extensions",
 		STATE = { on = "Enabled", off = "Disabled", disabled = "Disabled in the addon list", missing = "Cannot load: %s" },
 		GROUP = { sys = "Built-in", custom = "Added", agent = "Agent apps" },
 		WHERE = { game = "Game", ["local"] = "Local", both = "Game · Local" },
