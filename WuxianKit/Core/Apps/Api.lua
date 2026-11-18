@@ -2,8 +2,8 @@
 -- files share names): the start line, the status, the ns functions the window uses (ns.App, ns.AppList,
 -- ns.AppManifest, ns.AppStatus, ns.AppStop, ns.AppStart, ns.AppStartable, ns.AppOptionList, ns.SetAppOption,
 -- ns.AppControls), the core's capabilities (Keep: kit.app.declare / open / stop / forget; See: kit.app.describe /
--- status / state / recent and kit.apps; kit.app.report is in Report.lua), the event kit.app, and the count of what the
--- agent said today.
+-- status / state / recent and kit.apps; kit.app.report is in Report.lua), the event kit.app, the count of what the
+-- agent said today, and the apps that run as WoWBridge's panel lists them (Panel, over Bridge.lua's ns.Overview).
 -- Here by choice: StartLine and DocsPath (only the lists and the status use them); ns.AppOptionList and
 -- ns.SetAppOption (the window's, over Decl.lua's Bound); the said count (kit.proposal), beside the status that reads
 -- it. ns.ForgetApp is in Decl.lua, with the fields (FIELDS) the arguments, the docs, the status and the lists here are
@@ -33,6 +33,71 @@ local function DocsPath(app)
 	local docs, addon = app.decl.docs, app.decl.addon
 	if docs and addon then return addon .. "/" .. docs end
 end
+
+------------------------------------------------------------------------------------------------------------------------
+-- WoWBridge's panel (its overview, 正在使用; ns.Overview, there from WoWBridge 0.10.0): the apps that run, a line each,
+-- the first PANEL_MOST by when they started. A line is the app's title, who drives the run (PANEL_BY) and a click that
+-- opens the window on the page its card is on. Hidden apps (plumbing) are not the player's: no line. The lines go
+-- whole whenever they may have changed (Panel: a run started, stopped or went on, an app declared or removed, the
+-- language, the login) and only when they did; first when this file loads (the handle is bound: no lines yet)
+
+local PANEL_MOST, PANEL_TEXT = 6, 60                    -- WoWBridge takes six lines, a text of 60 bytes
+local panelKey                                          -- the lines WoWBridge has, as a text
+
+-- who drives a run, for the player: its local extension's program (local), an agent (it was heard from this run, or
+-- the app is one an agent declared), or the addon that declared the app and started it by itself (addon)
+local function DrivenBy(app, s)
+	if Driven(app) then return "local" end
+	return (s.seen ~= nil or app.by ~= "addon") and "agent" or "addon"
+end
+
+-- the app's title for the panel: plain text as it was given (WoWBridge escapes what it draws: one place does it),
+-- within PANEL_TEXT bytes (cut on a character)
+local function PanelText(app)
+	local text = ns.Text(Title(app))
+	if text == "" then text = app.id end
+	if #text <= PANEL_TEXT then return text end
+	local n = PANEL_TEXT - 3                                -- (room for the mark)
+	while n > 0 and text:byte(n + 1) >= 128 and text:byte(n + 1) < 192 do n = n - 1 end
+	text = text:sub(1, n)
+	return text .. "…"
+end
+
+local function PanelLines()
+	local runs = {}
+	for _, id in ipairs(A.loggedIn and order or {}) do      -- (a run is this character's: none before the login)
+		local app = apps[id]
+		local s = not app.decl.hidden and Run(app)
+		if s then runs[#runs + 1] = { app = app, s = s, at = tonumber(s.started) or 0 } end
+	end
+	table.sort(runs, function(a, b)                         -- (started the same second: by id, the same after a reload)
+		if a.at ~= b.at then return a.at < b.at end
+		return a.app.id < b.app.id
+	end)
+	local rows, key = {}, {}
+	for n = 1, math.min(#runs, PANEL_MOST) do
+		local app, id = runs[n].app, runs[n].app.id
+		local text, note = PanelText(app), ns.L.PANEL_BY[DrivenBy(app, runs[n].s)]
+		rows[n] = { text = text, note = note, click = function() Kit:Window("app:" .. id) end }
+		key[n] = id .. "\n" .. text .. "\n" .. note
+	end
+	return rows, table.concat(key, "\n\n")
+end
+
+-- the lines to WoWBridge when they are not the ones it has (ones it did not take are given again next time)
+local function Panel()
+	if not ns.Overview then return end
+	local rows, key = PanelLines()
+	if key ~= panelKey and ns.Overview(rows) then panelKey = key end
+end
+
+Kit:On("kit.app", function() Panel() end)
+Kit:On("kit.ready", function() Panel() end)
+ns.OnChange(function(what)
+	if what == "app" or what == "language" then Panel() end
+end)
+ns.When("login", function() Panel() end)                 -- (after Run.lua's: the runs kept from before are judged)
+Panel()
 
 ------------------------------------------------------------------------------------------------------------------------
 -- what the agent and the window read
@@ -91,7 +156,11 @@ end
 local function Touch(app, opts)
 	if type(opts) == "table" and opts.source == "agent" then
 		local s = Run(app)
-		if s then s.seen = time() end
+		if s then
+			local first = s.seen == nil
+			s.seen = time()
+			if first then Panel() end                         -- (a run its addon started: an agent drives it now)
+		end
 	end
 end
 

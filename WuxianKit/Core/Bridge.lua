@@ -20,6 +20,9 @@
 --                              ns.EVENT_DEPTH)
 --   ns.Forward(topic, data)    a bus event to the agent; for app.*: whether it went (true without WoWBridge)
 --   ns.SendWake(topic, data)   an app's wake to the agent, then to the bus; false (and told to nobody) when it did not go
+--   ns.Overview(rows)          the core's lines in WoWBridge's panel (its overview, 正在使用; Apps/Api.lua gives the
+--                              apps that run), the whole of them each time: true when WoWBridge took them. There
+--                              only with a WoWBridge whose handle has Overview (0.10.0): nil with an older one or none
 local addonName, ns = ...
 local Kit = ns.Kit
 
@@ -190,6 +193,13 @@ function ns.SendWake(topic, data)
 	ns.EmitCore(topic, data)
 	told = nil
 	return true
+end
+
+-- { { text, note, click } }, at most six (handle:Overview's shape: WoWBridge raises on another, so it is protected)
+if WB and type(WB.Overview) == "function" then
+	function ns.Overview(rows)
+		return (pcall(WB.Overview, WB, rows))
+	end
 end
 
 if WB then

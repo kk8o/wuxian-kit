@@ -99,6 +99,8 @@ ns.WORDS = {
 		UNDONE_MARK = "已撤销",
 		AGENT_ON = "无限工坊已连接",
 		AGENT_OFF = "无限工坊未连接",
+		-- an app that runs, in WoWBridge's panel: who drives it
+		PANEL_BY = { ["local"] = "本机端", agent = "Agent", addon = "插件" },
 		LANGUAGE = "语言",
 		LANG_AUTO = "自动",
 		LANG_AUTO_LONG = "自动（跟随客户端）",
@@ -214,6 +216,7 @@ ns.WORDS = {
 		UNDONE_MARK = "undone",
 		AGENT_ON = "Linked to Wuxian Workshop",
 		AGENT_OFF = "Not linked to Wuxian Workshop",
+		PANEL_BY = { ["local"] = "Local", agent = "Agent", addon = "Addon" },
 		LANGUAGE = "Language",
 		LANG_AUTO = "Auto",
 		LANG_AUTO_LONG = "Auto (client language)",

@@ -9,14 +9,16 @@ from kitmock import Session, lupa
 
 
 def bridge(version, online=None, expose="__exposed[#__exposed + 1] = name __fns[name] = fn", emit="return true",
-           depth=None):
+           depth=None, overview=None):
     """a WoWBridge stub (a Lua literal): its VERSION, Online() answering the global __online (None: no Online), and what
-    its handle's Expose and Emit do; Bind counts in __binds. depth: its EVENT_DEPTH (None: one that says none)"""
+    its handle's Expose and Emit do; Bind counts in __binds. depth: its EVENT_DEPTH (None: one that says none).
+    overview: what its handle's Overview(rows) does (0.10.0's; None: a handle without it, as before)"""
     on = "Online = function() return __online end," if online else ""
     if depth is not None:
         on += f" EVENT_DEPTH = {depth},"
+    panel = f"Overview = function(self, rows) {overview} end, " if overview is not None else ""
     return (f"(function() __binds, __exposed, __emitted, __fns = 0, {{}}, {{}}, {{}} return {{ VERSION = {version!r}, {on} "
-            f"Bind = function(addon) __binds = __binds + 1 return {{ "
+            f"Bind = function(addon) __binds = __binds + 1 return {{ {panel}"
             f"Expose = function(self, name, fn, doc) {expose} end, "
             f"Emit = function(self, topic, data) __emitted[#__emitted + 1] = topic {emit} end }} end }} end)()").encode()
 
