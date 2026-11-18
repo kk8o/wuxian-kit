@@ -82,7 +82,7 @@ class Digest(unittest.TestCase):
         self.assertEqual((recent["items"][0]["id"], recent["next"]), (a + 4, a + 4))
 
     def test_ids_go_on_from_the_rings(self):
-        saved = {"WuxianKitDB": b"{ apps = { old = { recent = { who = 'Player-1-00000001', n = 900, items = {} } } } }"}
+        saved = {"WuxianKitDB": b"{ apps = { old = { chars = { ['Player-1-00000001'] = { recent = { n = 900, items = {} } } } } } }"}
         s = self.start(saved=saved)
         self.assertEqual(s.lua.eval(b"WuxianKit:NewId()"), 901)
 

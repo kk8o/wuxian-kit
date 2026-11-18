@@ -835,28 +835,6 @@ local function Char(app)
 	return c
 end
 
--- a record as a kit before 0.6's release kept it (run, recent, last with who at the top): each goes under its character
-local function Migrate(rec)
-	for _, k in ipairs({ "run", "recent", "last" }) do
-		local v = rec[k]
-		if type(v) == "table" and type(v.who) == "string" then
-			if type(rec.chars) ~= "table" then rec.chars = {} end
-			local c = rec.chars[v.who]
-			if type(c) ~= "table" then
-				c = {}
-				rec.chars[v.who] = c
-			end
-			if c[k] == nil then
-				v.who = nil
-				c[k] = v
-			end
-		end
-		rec[k] = nil
-	end
-	rec.said = nil
-	if type(rec.chars) ~= "table" then rec.chars = nil end
-end
-
 -- its run of this character's, ended or not
 local function Owned(app)
 	local c = Char(app)
@@ -1039,7 +1017,6 @@ ns.When("load", function()
 		if type(rec) ~= "table" then
 			store[id] = nil
 		else
-			Migrate(rec)
 			for _, c in pairs(rec.chars or {}) do
 				if type(c) == "table" and type(c.recent) == "table" then ns.BumpId(c.recent.n) end
 			end
