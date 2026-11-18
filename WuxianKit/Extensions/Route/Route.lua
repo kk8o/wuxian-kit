@@ -150,7 +150,6 @@ local function Place(p)
 	if out.map and not out.zone then out.zone = R.MapName(out.map) end
 	return next(out) and out or nil
 end
-R.Place = Place
 
 local function Goal(g)
 	if type(g) ~= "table" then return nil end

@@ -350,8 +350,8 @@ local function LocalOptions(id, list, heading)
 	end
 end
 
-UI.Canvas = { Begin = Begin, Finish = Finish, Put = Put, PutButton = PutButton, ButtonRow = ButtonRow, Fit = Fit,
-	Heading = Heading, Options = Options, Current = function() return cv end }
+UI.Canvas = { Begin = Begin, Finish = Finish, Put = Put, ButtonRow = ButtonRow, Heading = Heading, Options = Options,
+	Current = function() return cv end }
 
 ------------------------------------------------------------------------------------------------------------------------
 -- an extension's page
